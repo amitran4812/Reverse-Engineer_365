@@ -39,7 +39,7 @@ Go to [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases/la
 | macOS | `.dmg` |
 | Linux | `.AppImage` or `.deb` |
 
-The builds aren't code-signed yet, so Windows SmartScreen warns the first time: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open**. [SIGNING.md](SIGNING.md) explains how to sign the Windows installer, and [CHANGELOG.md](CHANGELOG.md) lists what each version adds.
+The builds aren't code-signed yet, so Windows SmartScreen warns the first time: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open**. [SIGNING.md](SIGNING.md) explains how to sign the Windows installer (see the [Code signing policy](#code-signing-policy)), and [CHANGELOG.md](CHANGELOG.md) lists what each version adds.
 
 Work updates itself from this repository's [releases](https://github.com/amitran4812/Reverse-Engineer_365/releases): it checks when it starts and every few hours, downloads the new version in the background, and offers **Restart and update**. Turn automatic checks off, or check by hand, in File > Options > Updates. In-place updates work with the Windows installer and the Linux AppImage; on macOS and with the .deb, Work tells you about the new version and opens the releases page.
 
@@ -203,6 +203,25 @@ The look follows the general layout conventions of desktop office suites (ribbon
 - `.xls` is read with SheetJS (the `@e965/xlsx` npm build of SheetJS 0.20.3); formulas and values come across, formatting doesn't.
 - LaTeX mode runs BibTeX but not Biber, so `biblatex` projects need a MiKTeX or TeX Live install (pick it from the Recompile menu). Shell escape (for `minted`) is off. `.tex` isn't registered as a Windows file type, so open projects from Work.
 - The Windows integration (shortcuts, Open with, New menu) is built into the installer but hasn't been tried on every Windows version yet.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org) (once the application is approved; until then the Windows installer is unsigned).
+
+- Only installers built by this repository's GitHub Actions workflow from the public source code are signed, and every release is approved by hand before it is signed.
+- Committers and reviewers: [amitran4812](https://github.com/amitran4812)
+- Approvers: [amitran4812](https://github.com/amitran4812)
+
+### Privacy
+
+Work doesn't collect telemetry or send anything to the project. It connects to other services only for features you turn on:
+
+- AI features send your prompt, and any files or document text you attach, to the provider you choose with your own key: Anthropic (Claude), OpenAI or Google (Gemini).
+- Google Drive, Google Sheets and OneDrive are contacted only after you sign in to them, to open, save and share the files you pick.
+- Compiling LaTeX with the built-in engine can download LaTeX packages it doesn't have yet from the Tectonic project's package server.
+- Update checks download release information and installers from this repository's GitHub Releases. You can turn them off in File > Options > Updates.
+
+Keys and sign-in tokens are stored encrypted on your computer and are never sent anywhere except to the provider they belong to.
 
 ## License
 
