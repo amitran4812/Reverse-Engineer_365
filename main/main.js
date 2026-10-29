@@ -62,7 +62,17 @@ function openWindow(appName, file = null) {
   launches.set(win.webContents.id, { app: appName, file });
   const id = win.webContents.id;
   win.once('ready-to-show', () => win.show());
+  // A window that never paints would keep Work running with nothing on screen.
+  const shown = setTimeout(() => !win.isDestroyed() && !win.isVisible() && win.show(), 8000);
+  win.webContents.on('render-process-gone', () => {
+    dirty.delete(id);
+    if (!win.isDestroyed()) win.destroy();
+  });
+  win.webContents.on('unresponsive', () => {
+    if (!win.isVisible()) win.destroy();
+  });
   win.on('closed', () => {
+    clearTimeout(shown);
     launches.delete(id);
     dirty.delete(id);
   });
@@ -355,6 +365,10 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (!BrowserWindow.getAllWindows().length) openWindow('home');
     });
+  }).catch((err) => {
+    // Never linger in the background after a failed start.
+    dialog.showErrorBox('Work could not start', String(err?.stack || err));
+    app.exit(1);
   });
 
   app.on('window-all-closed', () => {

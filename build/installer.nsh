@@ -53,7 +53,53 @@
   WinShell::SetLnkAUMI "$DESKTOP\${NAME}.lnk" "${APP_ID}.${APP}"
 !macroend
 
+; Close every running copy of Work (and of older Rea Office builds) before
+; installing or uninstalling, so no file stays locked. Runs in place of
+; electron-builder's own check, which can miss copies started from another folder.
+!macro workIsRunning EXE
+  nsExec::Exec 'cmd /c tasklist /NH /FI "IMAGENAME eq ${EXE}" | find /I "${EXE}"'
+!macroend
+
+!macro workKill EXE
+  nsExec::Exec 'taskkill /T /IM "${EXE}"'
+  Pop $0
+  Sleep 1500
+  nsExec::Exec 'taskkill /F /T /IM "${EXE}"'
+  Pop $0
+!macroend
+
+!macro customCheckAppRunning
+  !insertmacro workIsRunning "${APP_EXECUTABLE_FILENAME}"
+  Pop $R0
+  !insertmacro workIsRunning "Rea Office.exe"
+  Pop $R1
+  ${if} $R0 == 0
+  ${orIf} $R1 == 0
+    MessageBox MB_OKCANCEL|MB_ICONINFORMATION "Work is still running. Save your files, then choose OK to close Write, Plot and Present and continue." /SD IDOK IDOK +2
+    Quit
+    !insertmacro workKill "${APP_EXECUTABLE_FILENAME}"
+    !insertmacro workKill "Rea Office.exe"
+    Sleep 1000
+  ${endif}
+!macroend
+
+; An old copy that won't uninstall cleanly shouldn't block the new one;
+; the new files go over it.
+!macro customUnInstallCheck
+  ${if} $R0 != 0
+    DetailPrint "The previous version didn't uninstall cleanly (code $R0). Installing over it."
+  ${endif}
+  ClearErrors
+!macroend
+
 !macro customInstall
+  ; Leftovers from builds named Rea Office
+  ${if} "$INSTDIR" != "$LOCALAPPDATA\Programs\Rea Office"
+    RMDir /r "$LOCALAPPDATA\Programs\Rea Office"
+  ${endif}
+  Delete "$SMPROGRAMS\Rea Office.lnk"
+  Delete "$DESKTOP\Rea Office.lnk"
+
   !insertmacro workShortcut "Write" "docs" "write"
   !insertmacro workShortcut "Plot" "sheets" "plot"
   !insertmacro workShortcut "Present" "slides" "present"

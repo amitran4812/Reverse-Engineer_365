@@ -86,10 +86,39 @@ jobs:
             onedrive: { clientId: process.env.REA_MICROSOFT_CLIENT_ID || "" },
           }))'
       - name: Build installer
-        run: npm run ${{ matrix.script }}
+        # Windows builds are signed when signing secrets are set (see SIGNING.md):
+        # Azure Artifact Signing first, then a certificate file. Otherwise unsigned.
+        shell: bash
         env:
-          # Builds are unsigned; skip looking for signing identities.
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          SCRIPT: ${{ matrix.script }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          args=()
+          if [ "$SCRIPT" = dist:win ] && [ -n "$AZURE_CLIENT_SECRET" ] && [ -n "$AZURE_SIGN_PROFILE" ]; then
+            echo "Signing with Azure Artifact Signing as $AZURE_SIGN_PUBLISHER"
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+            args=(
+              "-c.win.azureSignOptions.publisherName=$AZURE_SIGN_PUBLISHER"
+              "-c.win.azureSignOptions.endpoint=$AZURE_SIGN_ENDPOINT"
+              "-c.win.azureSignOptions.codeSigningAccountName=$AZURE_SIGN_ACCOUNT"
+              "-c.win.azureSignOptions.certificateProfileName=$AZURE_SIGN_PROFILE"
+            )
+          elif [ "$SCRIPT" = dist:win ] && [ -n "$WIN_CSC_LINK" ]; then
+            echo "Signing with the certificate in WIN_CSC_LINK"
+          else
+            echo "No signing secrets; building unsigned"
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD AZURE_CLIENT_SECRET
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npm run "$SCRIPT" -- "${args[@]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: rea-office-${{ matrix.os }}
@@ -131,4 +160,4 @@ jobs:
             --repo "$REPO" \
             --target "$SHA" \
             --title "Work $TAG" \
-            --notes "Download **Work-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. The builds aren't code-signed yet: on Windows choose More info, then Run anyway. Connect Claude in File > Options."
+            --notes "Download **Work-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. If Windows shows an unknown-publisher warning, choose More info, then Run anyway. Connect Claude in File > Options."
