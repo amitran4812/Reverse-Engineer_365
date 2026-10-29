@@ -2,6 +2,12 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.7: Personal Google accounts
+
+- Connecting Google Drive always shows Google's account chooser, so you can pick your personal Gmail account even when you're signed in to a college or work account in the browser.
+- A college or work domain set for an account is now clearly marked. **Use any Google account** (or Microsoft account) removes the limit in one click.
+- The README explains what to change in the Google Cloud console if Google only lets college or work accounts sign in.
+
 ## 0.2.6: Large-data analysis in Plot
 
 - Plot has a new **Analysis** tab for data far bigger than a sheet can hold. It opens CSV, TSV, Parquet and Excel files with millions of rows in seconds; big files open there automatically.

@@ -56,7 +56,7 @@ const google = {
   // Full Drive access is needed to browse existing files; see README for the consent-screen setup.
   scope: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets openid email profile',
   redirectHost: '127.0.0.1',
-  extraParams: { access_type: 'offline', prompt: 'consent' },
+  extraParams: { access_type: 'offline', prompt: 'select_account consent' },
 
   async account(token) {
     const r = await call(token, `${this.api}/about?fields=user(displayName,emailAddress)`);
