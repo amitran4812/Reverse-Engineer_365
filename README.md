@@ -2,7 +2,7 @@
 
 An installable desktop office suite with AI built in (Claude by default, or OpenAI or Gemini with your own key):
 
-- **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`.
+- **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)).
 - **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open.
 - **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides`, exports `.pptx`, and opens `.pptx` and OpenDocument `.odp`.
 
@@ -20,6 +20,7 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 | App | Claude features |
 | --- | --- |
 | Write | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document |
+| Write (LaTeX) | **LaTeX helper**: write LaTeX from a description ("a 3-column table of results"), turn data into a table, convert plain text or math to LaTeX, explain a command, answer "which command do I need?", improve the wording without touching commands, and fix compile errors |
 | Plot | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
 | Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
 | Present | Write a whole deck from a topic, improve the current slide, suggest the next slide, write speaker notes for every slide, and **What to say** during a slide show: a short script for the slide on screen, shown at the bottom and different for each slide, that follows along as you change slides. Turn it on or off with the **What to say** button on the slide show bar, the S key, **Slide Show > What to say On/Off**, or **File > Options > AI assistant**; your choice is remembered |
@@ -46,13 +47,23 @@ To uninstall, use Settings > Apps > Installed apps > Work. The installer and uni
 
 | App | Opens and saves | Opens (save as a supported format) |
 | --- | --- | --- |
-| Write | `.docx`, `.html`, `.md`, `.txt` | `.odt` |
+| Write | `.docx`, `.html`, `.md`, `.txt`, `.tex` (as a LaTeX project) | `.odt` |
 | Plot | `.xlsx`, `.csv`, `.ods` | `.xls`, `.xlsm` (macros are dropped), `.xltx` |
 | Present | `.reaslides` (export `.pptx`) | `.pptx`, `.odp` |
 
 Imported presentations keep slide titles, text, two-column layouts and speaker notes; images, charts, animations and exact positions don't come across yet. Legacy Word `.doc` and PowerPoint `.ppt` files don't open yet: save them as `.docx` or `.pptx` first.
 
 On Windows the installer registers these types, so **Open with** lists Write, Plot and Present, and the right-click menu has **Open in Write / Plot / Present** (on Windows 11 it's under **Show more options**). It only becomes the default app for a type that has no other app, and `.reaslides`. Pick defaults yourself in **Settings > Apps > Default apps > Work**. **New > Write document** (and Plot, Present) appears in Explorer when no other app already provides a new-file entry for that type.
+
+## LaTeX projects
+
+Write opens a `.tex` file, or a folder (**File > Open > LaTeX project folder**, or **New > LaTeX project**), as a LaTeX project with three panes:
+
+- **Files**: the project's `.tex`, `.bib`, image and other files, with an outline of the open file's sections. Add files with the paperclip or by dropping them in, drag files between folders, right-click to rename, delete or **Set as main file**. Hide the pane to give the editor more room.
+- **Code**: syntax highlighting, and suggestions as you type: `\cite{` lists the keys in your `.bib` files (with author, year and title), `\ref{`, `\eqref{`, `\cref{` and friends list every `\label`, `\begin{` offers environments and fills in the matching `\end`, `\includegraphics{` and `\input{` list project files, and `\` suggests common commands and the ones you defined with `\newcommand`. Ctrl+F finds and replaces, Ctrl+/ comments lines, Ctrl+B and Ctrl+I make bold and italic.
+- **PDF preview**: compiles as you type (or press Ctrl+Enter / Ctrl+S). Errors and warnings show in **Logs** and in the editor margin; click one to jump to the line, or ask the AI to fix them. Double-click the PDF to jump to that spot in the code, and **Show in PDF** (Ctrl+Shift+L) goes the other way.
+
+Compiling uses [Tectonic](https://tectonic-typesetting.github.io/), a self-contained LaTeX engine that the installer includes along with the common packages (amsmath, graphicx, hyperref, BibTeX and natbib, tikz/pgfplots, beamer, IEEEtran and more), so projects compile offline. A package it doesn't have yet is downloaded once the first time a document uses it. If you have MiKTeX or TeX Live installed, pick latexmk, pdfLaTeX, XeLaTeX or LuaLaTeX from the arrow next to **Recompile**. Build files go to Work's own data folder, so your project folder stays clean.
 
 ## Connect Claude
 
@@ -132,6 +143,8 @@ npm test           # file format and formula engine tests
 npm run dist:win   # build the Windows installer into release/
 ```
 
+`npm run tectonic` downloads the LaTeX engine into `build/tectonic` and fills its package cache; the `dist` scripts run it for you. Without it, LaTeX mode uses MiKTeX or TeX Live if they're installed.
+
 `npm run dist:mac` and `npm run dist:linux` build the other installers (each on its own operating system). `npm run watch` rebuilds the screens on change; reload the window with Ctrl+R.
 
 ### Releases
@@ -157,13 +170,16 @@ main/            Electron main process
   ai.js          OpenAI and Gemini (same streaming contract as claude.js)
   formats/imports.js  reads .pptx, .odp, .odt, .xls, .ods
   formats/       .docx, .xlsx/.csv and .pptx conversion
-common/          helpers shared by main and renderer (cell references, CSV)
+  latex.js       LaTeX projects: files, compiling with Tectonic or a TeX install
+common/          helpers shared by main and renderer (cell references, CSV, LaTeX parsing)
 src/
   shared/        ribbon, app frame, File screen, Claude pane, icons, styles
   home/          start screen and the Claude app
   docs/          word processor (TipTap / ProseMirror)
+  latex/         Write's LaTeX mode (CodeMirror editor, pdf.js preview)
   sheets/        spreadsheet grid and formula engine
   slides/        presentation editor
+scripts/         fetch-tectonic.mjs: bundles the LaTeX engine into the installer
 test/            node:test suites
 build/icon.*     app icon
 .github/         Build workflow (tests, installers, releases)
@@ -171,7 +187,7 @@ build/icon.*     app icon
 
 ## Built on
 
-Open-source components only: [Electron](https://www.electronjs.org/), [TipTap](https://tiptap.dev/)/ProseMirror, [fast-formula-parser](https://github.com/LesterLyu/fast-formula-parser), [docx](https://github.com/dolanmiu/docx), [mammoth](https://github.com/mwilliamson/mammoth.js), [ExcelJS](https://github.com/exceljs/exceljs), [PptxGenJS](https://github.com/gitbrent/PptxGenJS), [marked](https://marked.js.org/) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
+Open-source components only: [Electron](https://www.electronjs.org/), [TipTap](https://tiptap.dev/)/ProseMirror, [fast-formula-parser](https://github.com/LesterLyu/fast-formula-parser), [docx](https://github.com/dolanmiu/docx), [mammoth](https://github.com/mwilliamson/mammoth.js), [ExcelJS](https://github.com/exceljs/exceljs), [PptxGenJS](https://github.com/gitbrent/PptxGenJS), [marked](https://marked.js.org/), [CodeMirror](https://codemirror.net/), [pdf.js](https://mozilla.github.io/pdf.js/), [Tectonic](https://tectonic-typesetting.github.io/) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
 
 The look follows the general layout conventions of desktop office suites (ribbon tabs, a File screen, a status bar). All icons, the app icon, colours and code are original; nothing is taken from Microsoft Office or any other proprietary product. Microsoft, Word, Excel and PowerPoint are trademarks of Microsoft Corporation; Work is not affiliated with Microsoft. File formats are handled through the open libraries above.
 
@@ -183,6 +199,7 @@ The look follows the general layout conventions of desktop office suites (ribbon
 - Live Google Sheets sync covers values and formulas; formatting, column widths and merged cells don't sync.
 - The Claude app reads PDF, images, .docx, .xlsx, CSV and text attachments (not .pptx yet).
 - `.xls` is read with SheetJS (the `@e965/xlsx` npm build of SheetJS 0.20.3); formulas and values come across, formatting doesn't.
+- LaTeX mode runs BibTeX but not Biber, so `biblatex` projects need a MiKTeX or TeX Live install (pick it from the Recompile menu). Shell escape (for `minted`) is off. `.tex` isn't registered as a Windows file type, so open projects from Work.
 - The Windows integration (shortcuts, Open with, New menu) is built into the installer but hasn't been tried on every Windows version yet.
 
 ## License

@@ -15,6 +15,14 @@ export const APPS = {
   slides: { title: 'Present', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
 };
 
+// "New LaTeX project" tile for the start screens: opens Write's LaTeX mode.
+export function latexTile(size = 40, appName = true) {
+  const t = h('button', 'bs-tile bs-tile-docs', `<div class="bs-tile-preview">${icon('texFile', size)}</div><span>LaTeX project</span>${appName ? '<small>Write</small>' : ''}`);
+  t.title = 'Pick a folder for a new LaTeX project, or one that already has .tex files';
+  t.onclick = () => window.office.latex.openFolder({ create: true });
+  return t;
+}
+
 export const h = (tag, cls, html) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -181,6 +189,7 @@ export async function createShell(opts) {
       shell.setTitle();
     },
     async save({ saveAs = false, ext } = {}) {
+      if (saveAs && !ext && opts.customSaveAs) return opts.customSaveAs();
       if (!saveAs && !ext && opts.customSave && (await opts.customSave())) return true;
       const payload = await opts.getSaveData();
       const baseName = state.name.replace(/\.[^.]+$/, '');
@@ -224,6 +233,7 @@ export async function createShell(opts) {
       return true;
     },
     async exportPdf() {
+      if (opts.exportPdf) return opts.exportPdf();
       document.body.classList.add('printing');
       opts.beforePrint?.();
       try {
@@ -234,6 +244,7 @@ export async function createShell(opts) {
       }
     },
     async print() {
+      if (opts.print) return opts.print();
       document.body.classList.add('printing');
       opts.beforePrint?.();
       await window.office.print();
@@ -362,6 +373,7 @@ class Backstage {
         };
         row.append(t);
       }
+      row.append(latexTile(40, false));
       return row;
     };
     if (section === 'home' || section === 'new') {
@@ -377,10 +389,17 @@ class Backstage {
         this.close();
         window.office.openDialog(null);
       };
-      c.append(browse, cloudPlaces((id) => {
+      const texFolder = h('button', 'bs-browse', `${icon('texFile', 28)}<span>LaTeX project folder…</span>`);
+      texFolder.onclick = () => {
+        this.close();
+        window.office.latex.openFolder();
+      };
+      const places = cloudPlaces((id) => {
         this.close();
         openFromCloud(id, null);
-      }), h('h2', '', 'Recent'), await recentList(() => this.close()));
+      });
+      places.append(texFolder);
+      c.append(browse, places, h('h2', '', 'Recent'), await recentList(() => this.close()));
     } else if (section === 'saveas') {
       c.append(h('h1', '', 'Save As'));
       const browse = h('button', 'bs-browse', `${icon('saveAs', 28)}<span>This PC: browse…</span>`);
