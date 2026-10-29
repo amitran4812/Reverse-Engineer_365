@@ -6,6 +6,7 @@ import { APPS, escapeHtml, h, settingsForm } from '../shared/shell.js';
 import { CLOUDS, cloudSettings, openFromCloud } from '../shared/cloud.js';
 import { ClaudePane } from '../shared/claude-pane.js';
 import { MAKE, SYSTEM } from './make.js';
+import { accountSwitcher, accountsSection } from '../shared/accounts.js';
 
 const info = await window.office.launchInfo();
 document.documentElement.dataset.platform = info.platform;
@@ -13,7 +14,7 @@ document.documentElement.style.setProperty('--accent', '#3b4a6b');
 
 const root = h('div', 'home');
 root.innerHTML = `
-  <header class="titlebar"><div class="titlebar-mark">${icon('appSuite', 20)}</div><div class="titlebar-title">Rea Office</div></header>
+  <header class="titlebar"><div class="titlebar-mark">${icon('appSuite', 20)}</div><div class="titlebar-title">Rea Office${info.account.count > 1 ? ` · ${escapeHtml(info.account.name)}` : ''}</div></header>
   <div class="home-body">
     <nav class="home-nav">
       <button data-view="start" class="active">${icon('home', 18)}<span>Home</span></button>
@@ -26,6 +27,7 @@ root.innerHTML = `
   </div>`;
 document.body.append(root);
 const main = root.querySelector('.home-main');
+root.querySelector('.home-version').before(accountSwitcher(info.account, () => show('options').then(() => main.querySelector('.acct-settings')?.scrollIntoView())));
 
 function greeting() {
   const hr = new Date().getHours();
@@ -104,14 +106,14 @@ async function show(view) {
       b.onclick = () => openFromCloud(cl.id, null);
       places.append(b);
     }
-    main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md and .txt in Docs, .xlsx and .csv in Sheets, and .reaslides in Slides. From Google Drive, Google Sheets and Docs open too.'));
+    main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md and .txt in Write, .xlsx and .csv in Plot, and .reaslides in Present. From Google Drive, Google Sheets and Docs open too.'));
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'options') {
-    main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await cloudSettings());
+    main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await cloudSettings(), await accountsSection());
   }
 }
 
-root.querySelectorAll('.home-nav button').forEach((b) => {
+root.querySelectorAll('.home-nav button[data-view]').forEach((b) => {
   b.onclick = () => show(b.dataset.view);
 });
 show('start');

@@ -143,7 +143,7 @@ export class ClaudePane {
     this.modelLabel.textContent = m ? m.label.replace(/\s*\(.*\)/, '') : '';
     this.setup.innerHTML = '';
     if (!this.settings.hasKey) {
-      this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect Claude</b><p>Sign in with your Anthropic account and paste a key to turn on Claude in Docs, Sheets and Slides.</p></div>`));
+      this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect Claude</b><p>Sign in with your Anthropic account and paste a key to turn on Claude in Write, Plot and Present.</p></div>`));
       this.setup.append(await settingsForm(() => this.loadSettings()));
     }
   }

@@ -27,6 +27,13 @@ contextBridge.exposeInMainWorld('office', {
   recent: () => ipcRenderer.invoke('app:recent'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
   newWith: (spec) => ipcRenderer.invoke('app:new-with', spec),
+  accounts: {
+    list: () => ipcRenderer.invoke('accounts:list'),
+    add: (name) => ipcRenderer.invoke('accounts:add', name),
+    rename: (id, name) => ipcRenderer.invoke('accounts:rename', id, name),
+    remove: (id) => ipcRenderer.invoke('accounts:remove', id),
+    open: (id) => ipcRenderer.invoke('accounts:open', id),
+  },
   onSaveAndClose: (fn) => {
     saveAndClose = fn;
   },
@@ -42,6 +49,7 @@ contextBridge.exposeInMainWorld('office', {
     open: (id, file) => ipcRenderer.invoke('cloud:open', id, file),
     saveNew: (req) => ipcRenderer.invoke('cloud:save-new', req),
     sheet: (local, op, args) => ipcRenderer.invoke('cloud:sheet', local, op, args),
+    share: (local, op, args) => ipcRenderer.invoke('cloud:share', local, op, args),
   },
   claude: {
     // Streams a response. onEvent receives {type:'text'|'done'|'error', ...}.

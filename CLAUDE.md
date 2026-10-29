@@ -1,6 +1,6 @@
 # Rea Office
 
-An Electron desktop suite: Rea Docs (word processor), Rea Sheets (spreadsheet) and Rea Slides (presentations), each with Claude built in through the Anthropic API.
+An Electron desktop suite: Rea Write (word processor), Rea Plot (spreadsheet) and Rea Present (presentations), each with Claude built in through the Anthropic API.
 
 ## Commands
 
@@ -10,10 +10,10 @@ An Electron desktop suite: Rea Docs (word processor), Rea Sheets (spreadsheet) a
 
 ## Layout
 
-- `main/`: Electron main process. `main.js` (windows, IPC, dialogs), `preload.js` (the `window.office` bridge), `claude.js` (streams from the Anthropic SDK; the API key never leaves this process), `settings.js` (settings, the encrypted key and cloud tokens), `formats/` (.docx, .xlsx/.csv, .pptx conversion), `attachments.js` (files attached to Claude messages), `generated.js` (opens what the Claude app made), `cloud/` (OAuth loopback + PKCE, Google Drive/Sheets and OneDrive via Graph).
+- `main/`: Electron main process. `main.js` (windows, IPC, dialogs), `preload.js` (the `window.office` bridge), `claude.js` (streams from the Anthropic SDK; the API key never leaves this process), `settings.js` (settings, the encrypted key and cloud tokens), `formats/` (.docx, .xlsx/.csv, .pptx conversion), `attachments.js` (files attached to Claude messages), `generated.js` (opens what the Claude app made), `cloud/` (OAuth loopback + PKCE, Google Drive/Sheets and OneDrive via Graph, sharing), `profiles.js` (accounts: each has its own userData folder and runs as its own process, set before app ready).
 - `common/`: code shared by main and renderer (cell references, CSV).
 - `src/shared/`: ribbon, app shell and File screen, Claude pane, original SVG icons, shared CSS.
-- `src/docs/`, `src/sheets/`, `src/slides/`, `src/home/`: one folder per app. `src/home/make.js` is the Claude app; `src/shared/cloud.js` is the cloud browser and Options section; live Google Sheets sync lives at the end of `src/sheets/sheets.js`.
+- `src/docs/`, `src/sheets/`, `src/slides/`, `src/home/`: one folder per app. `src/home/make.js` is the Claude app; `src/shared/cloud.js` is the cloud browser, Share dialog and Options section; `src/shared/accounts.js` is the account switcher; live Google Sheets sync lives at the end of `src/sheets/sheets.js`.
 
 ## Rules
 
@@ -21,4 +21,6 @@ An Electron desktop suite: Rea Docs (word processor), Rea Sheets (spreadsheet) a
 - The renderer is sandboxed (contextIsolation, CSP). Anything that needs Node or the network goes through an IPC handler in `main/` and the `window.office` bridge.
 - Claude calls go through `main/claude.js` with the official `@anthropic-ai/sdk`. Default model `claude-opus-5-5`. Users sign in with an Anthropic Console API key; don't add Claude.ai login (Anthropic doesn't allow it for third-party apps).
 - Cloud tokens and API calls stay in the main process (`main/cloud/`). Use the providers' official OAuth for installed apps; never ship a client secret that isn't meant for desktop apps.
+- The apps are named Rea Write, Rea Plot and Rea Present in the UI; the code keeps the ids `docs`, `sheets` and `slides`.
+- Accounts never share data: anything stored goes under `app.getPath('userData')`, never a fixed path.
 - Match the surrounding code style: plain ES modules, small helpers, few comments.

@@ -1,16 +1,17 @@
-// Application frame shared by Docs, Sheets and Slides: title bar with quick
+// Application frame shared by Write, Plot and Present: title bar with quick
 // access buttons, ribbon, File backstage, status bar, Claude pane, dialogs and
 // the open/save lifecycle.
 
 import { icon } from './icons.js';
 import { Ribbon } from './ribbon.js';
 import { ClaudePane } from './claude-pane.js';
-import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud } from './cloud.js';
+import { accountChip, accountsSection } from './accounts.js';
+import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
 export const APPS = {
-  docs: { title: 'Rea Docs', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
-  sheets: { title: 'Rea Sheets', accent: '#1b7a4b', kind: 'Workbook', mark: 'appSheets', newLabel: 'Blank workbook' },
-  slides: { title: 'Rea Slides', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
+  docs: { title: 'Rea Write', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
+  sheets: { title: 'Rea Plot', accent: '#1b7a4b', kind: 'Workbook', mark: 'appSheets', newLabel: 'Blank workbook' },
+  slides: { title: 'Rea Present', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
 };
 
 export const h = (tag, cls, html) => {
@@ -131,7 +132,10 @@ export async function createShell(opts) {
   }
   const titleText = h('div', 'titlebar-title');
   const search = h('div', 'titlebar-search', `${icon('sparkle', 14)}<input placeholder="Ask Claude or search commands" spellcheck="false">`);
-  titlebar.append(mark, qa, titleText, search, h('div', 'titlebar-spacer'));
+  const shareBtn = h('button', 'titlebar-share', `${icon('share', 16)}<span>Share</span>`);
+  shareBtn.title = 'Share with people by email';
+  shareBtn.onclick = () => shareDialog(shell);
+  titlebar.append(...[mark, qa, titleText, search, accountChip(info.account), shareBtn, h('div', 'titlebar-spacer')].filter(Boolean));
 
   const ribbonHost = h('div');
   const tabs = [...opts.tabs, ...(opts.claudeTab ? [opts.claudeTab] : [])];
@@ -413,7 +417,7 @@ class Backstage {
         else c.append(form);
       };
       await mount();
-      c.append(await cloudSettings());
+      c.append(await cloudSettings(), await accountsSection());
     }
   }
 }

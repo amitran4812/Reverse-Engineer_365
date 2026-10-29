@@ -33,7 +33,20 @@ function client(id) {
   return {
     clientId: saved.clientId || env.clientId || baked.clientId || '',
     clientSecret: saved.clientSecret || env.clientSecret || baked.clientSecret || '',
+    org: saved.org || '',
   };
+}
+
+// Work or school sign-in: Microsoft signs in through the organization's own
+// tenant (so its sharing and access policies apply); Google is limited to the
+// Workspace domain.
+function endpoints(p, org) {
+  if (!org) return p;
+  if (p.id === 'onedrive') {
+    const t = (u) => u.replace('/common/', `/${encodeURIComponent(org)}/`);
+    return { ...p, authUrl: t(p.authUrl), tokenUrl: t(p.tokenUrl) };
+  }
+  return { ...p, extraParams: { ...p.extraParams, hd: org } };
 }
 
 function provider(id) {
@@ -53,9 +66,12 @@ async function connect(id) {
   const p = provider(id);
   const c = client(id);
   if (!c.clientId) throw new Error(`Add a ${p.label} client ID in File > Options first. The README explains how to get one.`);
-  const tokens = await oauth.authorize({ ...p, ...c });
+  const tokens = await oauth.authorize({ ...endpoints(p, c.org), clientId: c.clientId, clientSecret: c.clientSecret });
   const account = await p.account(tokens.access_token).catch(() => null);
-  settings.setSecret(`cloud:${id}`, { ...tokens, account });
+  if (c.org && p.id === 'google' && account?.email && !account.email.toLowerCase().endsWith(`@${c.org}`)) {
+    throw new Error(`${account.email} isn't a ${c.org} account. Sign in with your ${c.org} account, or clear the organization field in File > Options.`);
+  }
+  settings.setSecret(`cloud:${id}`, { ...tokens, account, org: c.org });
   return status();
 }
 
@@ -74,7 +90,7 @@ async function token(id) {
   const c = client(id);
   let next;
   try {
-    next = await oauth.refresh(p.tokenUrl, { ...c, refreshToken: t.refresh_token, scope: id === 'onedrive' ? p.scope : undefined });
+    next = await oauth.refresh(endpoints(p, t.org).tokenUrl, { ...c, refreshToken: t.refresh_token, scope: id === 'onedrive' ? p.scope : undefined });
   } catch (err) {
     throw new Error(`Your ${p.label} sign-in expired (${err.message}). Connect it again in File > Options.`);
   }
@@ -149,4 +165,26 @@ function sheet(local, op, args) {
   return withToken('google', (t) => sheetsLive[op](t, b.id, args));
 }
 
-module.exports = { status, connect, disconnect, list, download, bindingFor, uploadBack, saveNew, sheet };
+// Sharing the cloud copy of the file open at `local`.
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+async function share(local, op, args = {}) {
+  const b = bindings.get(local);
+  if (!b) return { notInCloud: true };
+  const p = provider(b.provider);
+  if (op === 'people') return { provider: b.provider, label: p.label, ...(await withToken(b.provider, (t) => p.people(t, b.id))) };
+  if (op === 'invite') {
+    const emails = [...new Set(String(args.emails || '').split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean))];
+    const bad = emails.filter((e) => !EMAIL.test(e));
+    if (!emails.length) throw new Error('Add at least one email address.');
+    if (bad.length) throw new Error(`Check ${bad.join(', ')}: that doesn't look like an email address.`);
+    await withToken(b.provider, (t) => p.invite(t, b.id, { emails, role: args.role === 'edit' ? 'edit' : 'view', message: String(args.message || '').slice(0, 1000) }));
+    return { invited: emails };
+  }
+  if (op === 'remove') {
+    await withToken(b.provider, (t) => p.remove(t, b.id, String(args.id)));
+    return { removed: true };
+  }
+  throw new Error(`Unknown share operation: ${op}`);
+}
+
+module.exports = { status, connect, disconnect, list, download, bindingFor, uploadBack, saveNew, sheet, share };

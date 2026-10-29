@@ -2,6 +2,9 @@
 
 const path = require('path');
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
+const profiles = require('./profiles');
+
+const account = profiles.init(); // before anything reads userData
 const settings = require('./settings');
 const claude = require('./claude');
 const formats = require('./formats');
@@ -10,7 +13,7 @@ const attachments = require('./attachments');
 const generated = require('./generated');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
-const TITLES = { home: 'Rea Office', docs: 'Rea Docs', sheets: 'Rea Sheets', slides: 'Rea Slides' };
+const TITLES = { home: 'Rea Office', docs: 'Rea Write', sheets: 'Rea Plot', slides: 'Rea Present' };
 const DIST = path.join(__dirname, '..', 'dist');
 
 const launches = new Map(); // webContents id -> { app, file }
@@ -104,6 +107,7 @@ ipcMain.handle('app:launch-info', (e) => ({
   ...(launches.get(e.sender.id) || { app: 'home', file: null }),
   platform: process.platform,
   version: app.getVersion(),
+  account: profiles.active(),
 }));
 
 ipcMain.handle('app:new', (e, appName) => {
@@ -186,7 +190,8 @@ ipcMain.handle('app:set-dirty', (e, isDirty) => {
 });
 
 ipcMain.handle('app:set-title', (e, title) => {
-  senderWin(e)?.setTitle(title);
+  const a = profiles.active();
+  senderWin(e)?.setTitle(a.count > 1 ? `${title} (${a.name})` : title);
 });
 
 ipcMain.handle('app:close', (e) => {
@@ -228,6 +233,12 @@ ipcMain.handle('cloud:open', safe(async (e, id, file) => {
 }));
 ipcMain.handle('cloud:save-new', safe((e, { provider, folder, name, app: appName, payload }) =>
   cloud.saveNew(provider, { folder, name }, (local) => formats.saveFile(appName, local, payload))));
+ipcMain.handle('cloud:share', safe((e, local, op, args) => cloud.share(local, op, args)));
+ipcMain.handle('accounts:list', () => profiles.list());
+ipcMain.handle('accounts:add', safe((e, name) => profiles.add(name)));
+ipcMain.handle('accounts:rename', safe((e, id, name) => profiles.rename(id, name)));
+ipcMain.handle('accounts:remove', safe((e, id) => profiles.remove(id)));
+ipcMain.handle('accounts:open', safe((e, id) => profiles.open(id)));
 ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
 
 ipcMain.handle('settings:get', () => settings.publicSettings());
@@ -246,13 +257,29 @@ ipcMain.handle('claude:attach-dialog', async (e) => {
   return res.canceled ? [] : attachments.loadAll(res.filePaths);
 });
 ipcMain.handle('claude:attach-paths', (e, paths) => attachments.loadAll((Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string' && p).slice(0, 20)));
-// Opens something Claude made in a new Docs, Sheets or Slides window (unsaved).
+// Opens something Claude made in a new Write, Plot or Present window (unsaved).
 ipcMain.handle('app:new-with', safe(async (e, spec) => {
   const info = await generated.toFileInfo(spec);
   openWindow(info.app, info);
   return { ok: true };
 }));
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
+
+// --rea-new=docs|sheets|slides comes from the taskbar jump list.
+const newFromArgv = (argv) => TITLES[argv.find((a) => a.startsWith('--rea-new='))?.slice(10)] ? argv.find((a) => a.startsWith('--rea-new=')).slice(10) : null;
+
+function jumpList() {
+  if (process.platform !== 'win32') return;
+  const args = (x) => [...(app.isPackaged ? [] : [`"${app.getAppPath()}"`]), `--rea-account=${account.id}`, `--rea-new=${x}`].join(' ');
+  app.setUserTasks(['docs', 'sheets', 'slides'].map((x) => ({
+    program: process.execPath,
+    arguments: args(x),
+    iconPath: process.execPath,
+    iconIndex: 0,
+    title: `New in ${TITLES[x]}`,
+    description: `Open a blank ${TITLES[x]} window`,
+  })));
+}
 
 function filesFromArgv(argv) {
   return argv.slice(app.isPackaged ? 1 : 2).filter((a) => !a.startsWith('-') && formats.appForFile(a));
@@ -294,14 +321,15 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', (e, argv) => {
     const files = filesFromArgv(argv);
     if (files.length) files.forEach((f) => openPath(f));
-    else openWindow('home');
+    else openWindow(newFromArgv(argv) || 'home');
   });
 
   app.whenReady().then(() => {
-    app.setAppUserModelId?.('tools.rea.office');
+    app.setAppUserModelId?.(account.id === 'default' ? 'tools.rea.office' : `tools.rea.office.${account.id}`);
     buildMenu();
     const files = [...pending, ...filesFromArgv(process.argv)];
-    const startApp = process.env.REA_OFFICE_START;
+    jumpList();
+    const startApp = newFromArgv(process.argv) || process.env.REA_OFFICE_START;
     if (files.length) files.forEach((f) => openPath(f));
     else openWindow(TITLES[startApp] ? startApp : 'home');
     app.on('activate', () => {
