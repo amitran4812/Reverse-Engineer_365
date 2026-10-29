@@ -1185,9 +1185,15 @@ const playBtn = h('button', 'status-btn', 'Slide Show');
 playBtn.onclick = () => present(current);
 shell.statusRight.append(notesBtn, playBtn);
 
-if (shell.info.file?.data?.slides) {
+if (shell.info.file?.data?.deckSpec) {
+  // Made by Claude in the Claude app.
+  const d = shell.info.file.data;
+  deck = { theme: THEMES[d.theme] ? d.theme : 'paper', slides: d.deckSpec.slides.map(slideFromSpec) };
+  if (!deck.slides.length) deck.slides.push(newSlide('title'));
+} else if (shell.info.file?.data?.slides) {
   const d = shell.info.file.data;
   deck = { theme: THEMES[d.theme] ? d.theme : 'paper', slides: d.slides.map((s) => ({ ...s, elements: (s.elements || []).filter((e) => !(e.type === 'shape' && !e.id)) })) };
   if (!deck.slides.length) deck.slides.push(newSlide('title'));
 }
 renderAll();
+if (shell.info.file?.generated) shell.markDirty();

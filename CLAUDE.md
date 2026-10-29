@@ -10,14 +10,15 @@ An Electron desktop suite: Rea Docs (word processor), Rea Sheets (spreadsheet) a
 
 ## Layout
 
-- `main/`: Electron main process. `main.js` (windows, IPC, dialogs), `preload.js` (the `window.office` bridge), `claude.js` (streams from the Anthropic SDK; the API key never leaves this process), `settings.js` (settings and the encrypted key), `formats/` (.docx, .xlsx/.csv, .pptx conversion).
+- `main/`: Electron main process. `main.js` (windows, IPC, dialogs), `preload.js` (the `window.office` bridge), `claude.js` (streams from the Anthropic SDK; the API key never leaves this process), `settings.js` (settings, the encrypted key and cloud tokens), `formats/` (.docx, .xlsx/.csv, .pptx conversion), `attachments.js` (files attached to Claude messages), `generated.js` (opens what the Claude app made), `cloud/` (OAuth loopback + PKCE, Google Drive/Sheets and OneDrive via Graph).
 - `common/`: code shared by main and renderer (cell references, CSV).
 - `src/shared/`: ribbon, app shell and File screen, Claude pane, original SVG icons, shared CSS.
-- `src/docs/`, `src/sheets/`, `src/slides/`, `src/home/`: one folder per app.
+- `src/docs/`, `src/sheets/`, `src/slides/`, `src/home/`: one folder per app. `src/home/make.js` is the Claude app; `src/shared/cloud.js` is the cloud browser and Options section; live Google Sheets sync lives at the end of `src/sheets/sheets.js`.
 
 ## Rules
 
 - Clean-room only. Never copy or decompile Microsoft Office code, icons, logos, fonts or other assets, and don't use Microsoft product names in the UI. A similar layout (ribbon, tabs, File screen) is fine; draw new icons in `src/shared/icons.js`.
 - The renderer is sandboxed (contextIsolation, CSP). Anything that needs Node or the network goes through an IPC handler in `main/` and the `window.office` bridge.
 - Claude calls go through `main/claude.js` with the official `@anthropic-ai/sdk`. Default model `claude-opus-5-5`. Users sign in with an Anthropic Console API key; don't add Claude.ai login (Anthropic doesn't allow it for third-party apps).
+- Cloud tokens and API calls stay in the main process (`main/cloud/`). Use the providers' official OAuth for installed apps; never ship a client secret that isn't meant for desktop apps.
 - Match the surrounding code style: plain ES modules, small helpers, few comments.

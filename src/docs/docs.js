@@ -463,4 +463,5 @@ if (shell.info.file?.data) {
 }
 setZoom(100);
 updateStatus();
+if (shell.info.file?.generated) shell.markDirty();
 shell.refresh();

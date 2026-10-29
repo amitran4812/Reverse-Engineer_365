@@ -5,6 +5,9 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron')
 const settings = require('./settings');
 const claude = require('./claude');
 const formats = require('./formats');
+const cloud = require('./cloud');
+const attachments = require('./attachments');
+const generated = require('./generated');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
 const TITLES = { home: 'Rea Office', docs: 'Rea Docs', sheets: 'Rea Sheets', slides: 'Rea Slides' };
@@ -138,6 +141,14 @@ ipcMain.handle('app:save', async (e, { app: appName, payload, path: current, sav
   try {
     const saved = await formats.saveFile(appName, file, payload);
     const exported = appName === 'slides' && saved.ext === 'pptx';
+    if (cloud.bindingFor(file)) {
+      try {
+        return { ...saved, exported, cloud: await cloud.uploadBack(file) };
+      } catch (err) {
+        dialog.showErrorBox('Couldn’t upload', `Your changes are saved on this computer, but uploading them failed: ${err.message || err}`);
+        return null;
+      }
+    }
     if (!exported) settings.addRecent(appName, file);
     return { ...saved, exported };
   } catch (err) {
@@ -192,6 +203,33 @@ ipcMain.handle('app:open-external', (e, url) => {
   if (/^https:\/\//.test(url)) shell.openExternal(url);
 });
 
+// Cloud drives. Errors go back to the renderer as { error } so it can show them inline.
+const safe = (fn) => async (e, ...args) => {
+  try {
+    return await fn(e, ...args);
+  } catch (err) {
+    return { error: String(err.message || err) };
+  }
+};
+ipcMain.handle('cloud:status', () => cloud.status());
+ipcMain.handle('cloud:connect', safe((e, id) => cloud.connect(id)));
+ipcMain.handle('cloud:disconnect', safe((e, id) => cloud.disconnect(id)));
+ipcMain.handle('cloud:list', safe((e, id, opts) => cloud.list(id, opts || {})));
+ipcMain.handle('cloud:open', safe(async (e, id, file) => {
+  const got = await cloud.download(id, file);
+  const appName = formats.appForFile(got.path);
+  if (!appName) throw new Error(`Rea Office can't open ${file.name}.`);
+  const info = await formats.openFile(got.path);
+  info.cloud = { provider: id, label: got.label, native: got.native, live: got.native === 'Google Sheets' };
+  const from = senderWin(e);
+  openWindow(appName, info);
+  if (from && launches.get(from.webContents.id)?.app === 'home') from.close();
+  return { ok: true };
+}));
+ipcMain.handle('cloud:save-new', safe((e, { provider, folder, name, app: appName, payload }) =>
+  cloud.saveNew(provider, { folder, name }, (local) => formats.saveFile(appName, local, payload))));
+ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
+
 ipcMain.handle('settings:get', () => settings.publicSettings());
 ipcMain.handle('settings:set', (e, patch) => settings.update(patch || {}));
 
@@ -199,6 +237,21 @@ ipcMain.on('claude:start', (e, { id, payload }) => {
   claude.start(e.sender, id, payload);
 });
 ipcMain.on('claude:cancel', (e, id) => claude.cancel(id));
+ipcMain.handle('claude:attach-dialog', async (e) => {
+  const res = await dialog.showOpenDialog(senderWin(e), {
+    title: 'Attach files for Claude',
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Files Claude can read', extensions: attachments.EXTENSIONS }, { name: 'All files', extensions: ['*'] }],
+  });
+  return res.canceled ? [] : attachments.loadAll(res.filePaths);
+});
+ipcMain.handle('claude:attach-paths', (e, paths) => attachments.loadAll((Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string' && p).slice(0, 20)));
+// Opens something Claude made in a new Docs, Sheets or Slides window (unsaved).
+ipcMain.handle('app:new-with', safe(async (e, spec) => {
+  const info = await generated.toFileInfo(spec);
+  openWindow(info.app, info);
+  return { ok: true };
+}));
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
 
 function filesFromArgv(argv) {

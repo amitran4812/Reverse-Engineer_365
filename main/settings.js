@@ -45,6 +45,29 @@ function getApiKey() {
   return raw.apiKeyPlain || null;
 }
 
+// Small encrypted values (cloud sign-in tokens) stored next to the settings.
+function getSecret(name) {
+  const v = readRaw().secrets?.[name];
+  if (!v) return null;
+  try {
+    const text = v.enc && safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(v.enc, 'base64')) : v.plain;
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setSecret(name, value) {
+  const raw = readRaw();
+  raw.secrets = { ...(raw.secrets || {}) };
+  if (value == null) delete raw.secrets[name];
+  else {
+    const text = JSON.stringify(value);
+    raw.secrets[name] = safeStorage.isEncryptionAvailable() ? { enc: safeStorage.encryptString(text).toString('base64') } : { plain: text };
+  }
+  writeRaw(raw);
+}
+
 function publicSettings() {
   const raw = readRaw();
   return {
@@ -53,11 +76,21 @@ function publicSettings() {
     model: raw.model,
     effort: raw.effort,
     models: MODELS,
+    cloudClients: Object.fromEntries(Object.entries(raw.cloudClients || {}).map(([id, v]) => [id, { clientId: v.clientId, hasSecret: Boolean(v.clientSecret) }])),
   };
 }
 
-function update({ apiKey, model, effort }) {
+function update({ apiKey, model, effort, cloudClients }) {
   const raw = readRaw();
+  if (cloudClients && typeof cloudClients === 'object') {
+    raw.cloudClients = { ...(raw.cloudClients || {}) };
+    for (const [id, v] of Object.entries(cloudClients)) {
+      if (!['google', 'onedrive'].includes(id) || !v) continue;
+      const prev = raw.cloudClients[id] || {};
+      const secret = v.clientSecret == null || v.clientSecret === '' ? prev.clientSecret || '' : String(v.clientSecret).trim();
+      raw.cloudClients[id] = { clientId: String(v.clientId ?? prev.clientId ?? '').trim(), clientSecret: secret };
+    }
+  }
   if (typeof apiKey === 'string') {
     delete raw.apiKeyEnc;
     delete raw.apiKeyPlain;
@@ -87,4 +120,4 @@ function recent() {
   return readRaw().recent.filter((r) => fs.existsSync(r.path));
 }
 
-module.exports = { getApiKey, publicSettings, update, addRecent, recent, readRaw };
+module.exports = { getApiKey, getSecret, setSecret, publicSettings, update, addRecent, recent, readRaw };
