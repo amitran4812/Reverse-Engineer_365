@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const docx = require('./docx');
 const xlsx = require('./xlsx');
@@ -18,7 +19,7 @@ const APPS = {
     ],
   },
   sheets: {
-    open: ['xlsx', 'xlsm', 'xltx', 'xls', 'ods', 'csv'],
+    open: ['xlsx', 'xlsm', 'xltx', 'xls', 'ods', 'csv', 'tsv', 'tab', 'parquet', 'workplot'],
     save: [
       { name: 'Excel workbook', extensions: ['xlsx'] },
       { name: 'CSV (current sheet)', extensions: ['csv'] },
@@ -52,6 +53,31 @@ function appForFile(file) {
   return Object.keys(APPS).find((k) => APPS[k].open.includes(ext)) || null;
 }
 
+// Files bigger than a sheet should hold open in Plot's analysis workspace,
+// which streams them into columns instead of building a cell grid.
+const ANALYSIS_ALWAYS = ['tsv', 'tab', 'parquet'];
+const ANALYSIS_OVER = { csv: 8 * 1024 * 1024, xlsx: 12 * 1024 * 1024, xlsm: 12 * 1024 * 1024 };
+
+// A saved analysis points at its data file; look next to the project too.
+function resolveSource(projectPath, source) {
+  if (!source?.path) return null;
+  if (fsSync.existsSync(source.path)) return source.path;
+  const near = path.join(path.dirname(projectPath), path.basename(source.path));
+  return fsSync.existsSync(near) ? near : null;
+}
+
+async function analysisLaunch(file, ext, name, size) {
+  if (ext === 'workplot') {
+    const project = JSON.parse(await fs.readFile(file, 'utf8'));
+    const source = resolveSource(file, project.source);
+    return { app: 'sheets', path: null, name, ext, data: BLANK.sheets(), analysis: { project, projectPath: file, path: source } };
+  }
+  if (ANALYSIS_ALWAYS.includes(ext) || size > (ANALYSIS_OVER[ext] ?? Infinity)) {
+    return { app: 'sheets', path: null, name: name.replace(/\.[^.]+$/, ''), ext, data: BLANK.sheets(), analysis: { path: file } };
+  }
+  return null;
+}
+
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -62,7 +88,12 @@ async function openFile(file) {
   const name = path.basename(file);
   if (ext === 'tex') return latexProject(file);
   // Right-click > New makes an empty file; open it as a blank document.
-  if (app && (await fs.stat(file)).size === 0) return { app, path: file, name, ext, data: BLANK[app]() };
+  const { size } = await fs.stat(file);
+  if (app && size === 0) return { app, path: file, name, ext, data: BLANK[app]() };
+  if (app === 'sheets') {
+    const big = await analysisLaunch(file, ext, name, size);
+    if (big) return big;
+  }
   let data;
   switch (ext) {
     case 'odt':

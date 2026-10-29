@@ -31,9 +31,15 @@ const options = {
   logLevel: 'info',
 };
 
+// Plot's analysis data engine runs in a classic worker of its own.
+const worker = {
+  ...options,
+  entryPoints: { 'analysis-worker': join(here, 'src', 'sheets', 'analysis', 'worker.js') },
+  format: 'iife',
+};
+
 if (watch) {
-  const ctx = await context(options);
-  await ctx.watch();
+  for (const o of [options, worker]) await (await context(o)).watch();
 } else {
-  await build(options);
+  await Promise.all([build(options), build(worker)]);
 }

@@ -75,6 +75,18 @@ contextBridge.exposeInMainWorld('office', {
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
   },
+  data: {
+    openDialog: () => ipcRenderer.invoke('data:open-dialog'),
+    launch: () => ipcRenderer.invoke('data:launch'),
+    fromFiles: (files) => ipcRenderer.invoke('data:from-paths', [...files].map((f) => webUtils.getPathForFile(f))),
+    read: (handle, offset, length) => ipcRenderer.invoke('data:read', handle, offset, length),
+    saveBytes: (req) => ipcRenderer.invoke('data:save-bytes', req),
+    beginWrite: (req) => ipcRenderer.invoke('data:begin-write', req),
+    write: (id, text) => ipcRenderer.invoke('data:write', id, text),
+    endWrite: (id) => ipcRenderer.invoke('data:end-write', id),
+    savePdf: (req) => ipcRenderer.invoke('data:save-pdf', req),
+    saveProject: (req) => ipcRenderer.invoke('data:save-project', req),
+  },
   claude: {
     // Streams a response. onEvent receives {type:'text'|'done'|'error', ...}.
     stream: (id, payload, onEvent) => {
