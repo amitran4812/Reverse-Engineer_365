@@ -1,0 +1,152 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import { parquetWriteBuffer } from 'hyparquet-writer';
+import { parseDelimited } from '../src/sheets/analysis/csv.js';
+import { parseXlsx } from '../src/sheets/analysis/xlsx-stream.js';
+import { parseParquet } from '../src/sheets/analysis/parquet.js';
+import { evaluateColumn } from '../src/sheets/analysis/expr.js';
+import { fit, polyFit } from '../src/sheets/analysis/fit.js';
+import { Dataset, m4 } from '../src/sheets/analysis/engine.js';
+import { cellText } from '../src/sheets/analysis/columns.js';
+
+const reader = (bytes, chunk = 1 << 20) => ({
+  size: bytes.length,
+  read: async (offset, length) => bytes.subarray(offset, offset + Math.min(length, chunk)),
+});
+const enc = (s) => new TextEncoder().encode(s);
+const byName = (res) => Object.fromEntries(res.columns.map((c) => [c.name, c]));
+
+test('CSV streams across chunk edges with quotes, dates, missing values and long numbers', async () => {
+  const text = '﻿Date,Site,Value,Id\r\n2024-01-01,"A, north",1.5,12345678901234567\r\n2024-01-02,B,,2\r\n2024-01-03,"say ""hi""",-3e2,3\r\n';
+  const res = await parseDelimited(reader(enc(text), 7));
+  assert.equal(res.rows, 3);
+  const c = byName(res);
+  assert.equal(c.Date.type, 'date');
+  assert.equal(c.Site.type, 'string');
+  assert.deepEqual([0, 1, 2].map((i) => cellText(c.Site, i)), ['A, north', 'B', 'say "hi"']);
+  assert.equal(c.Value.type, 'number');
+  assert.ok(Number.isNaN(c.Value.data[1]));
+  assert.equal(c.Value.data[2], -300);
+  assert.equal(c.Id.type, 'number');
+  assert.equal(cellText(c.Date, 1), '2024-01-02');
+});
+
+test('tab-separated text is detected and columns get unique names', async () => {
+  const res = await parseDelimited(reader(enc('x\tx\ty\n1\t2\t3\n4\t5\t6\n')), { ext: 'tsv' });
+  assert.deepEqual(res.columns.map((c) => c.name), ['x', 'x (2)', 'y']);
+  assert.deepEqual(Array.from(res.columns[2].data), [3, 6]);
+});
+
+test('date columns with times show one format for every row', async () => {
+  const res = await parseDelimited(reader(enc('t,v\n2024-01-01T00:00:00,1\n2024-01-01T00:00:10,2\n')));
+  const t = res.columns[0];
+  assert.equal(cellText(t, 0), '2024-01-01 00:00:00');
+  assert.equal(cellText(t, 1), '2024-01-01 00:00:10');
+});
+
+test('xlsx sheets stream with shared strings, numbers and dates', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Data');
+  ws.addRow(['When', 'Name', 'Amount']);
+  for (let i = 0; i < 500; i += 1) ws.addRow([new Date(Date.UTC(2024, 0, 1 + i)), `n${i % 7}`, i * 0.5]);
+  wb.addWorksheet('Other').addRow(['only']);
+  const bytes = new Uint8Array(await wb.xlsx.writeBuffer());
+  const res = await parseXlsx(reader(bytes));
+  assert.deepEqual(res.sheets, ['Data', 'Other']);
+  assert.equal(res.rows, 500);
+  const c = byName(res);
+  assert.equal(c.When.type, 'date');
+  assert.equal(cellText(c.When, 31), '2024-02-01');
+  assert.equal(cellText(c.Name, 8), 'n1');
+  assert.equal(c.Amount.data[499], 249.5);
+  const other = await parseXlsx(reader(bytes), { sheet: 'Other' });
+  assert.equal(other.sheet, 'Other');
+});
+
+test('Parquet files load by row group', async () => {
+  const n = 2500;
+  const buf = parquetWriteBuffer({
+    columnData: [
+      { name: 'id', data: Int32Array.from({ length: n }, (_, i) => i), type: 'INT32' },
+      { name: 'value', data: Float64Array.from({ length: n }, (_, i) => i / 4), type: 'DOUBLE' },
+      { name: 'label', data: Array.from({ length: n }, (_, i) => `L${i % 3}`), type: 'STRING' },
+    ],
+    rowGroupSize: 1000,
+  });
+  const res = await parseParquet(reader(new Uint8Array(buf)));
+  assert.equal(res.rows, n);
+  const c = byName(res);
+  assert.equal(c.id.data[2499], 2499);
+  assert.equal(c.value.data[10], 2.5);
+  assert.equal(cellText(c.label, 4), 'L1');
+});
+
+const sample = () => {
+  const n = 1000;
+  const x = Float64Array.from({ length: n }, (_, i) => i);
+  const y = Float64Array.from(x, (v) => 2 + 3 * v);
+  const dict = ['A', 'B'];
+  const g = Int32Array.from({ length: n }, (_, i) => i % 2);
+  return new Dataset({ name: 't', columns: [{ name: 'x', type: 'number', data: x }, { name: 'y', type: 'number', data: y }, { name: 'g', type: 'string', data: g, dict }] });
+};
+
+test('formulas evaluate whole columns', () => {
+  const d = sample();
+  const ctx = d.exprContext();
+  const v = evaluateColumn('[y] - 3 * [x] + if([g] == "A", 1, 0)', ctx);
+  assert.equal(v[0], 3);
+  assert.equal(v[1], 2);
+  const cs = evaluateColumn('cumsum([x])', ctx);
+  assert.equal(cs[3], 6);
+  assert.equal(evaluateColumn('mean([x])', ctx)[5], 499.5);
+  assert.throws(() => evaluateColumn('[nope] + 1', ctx));
+});
+
+test('filters, calculated columns and marking work together', () => {
+  const d = sample();
+  d.addCalculated('z', '[x] * 2');
+  d.setFilter('x', { kind: 'range', min: 100, max: 199 });
+  assert.equal(d.info().filtered, 100);
+  d.setFilter('g', { kind: 'values', values: ['A'] });
+  assert.equal(d.info().filtered, 50);
+  d.setExpressionFilters(['[z] < 300']);
+  assert.equal(d.info().filtered, 25);
+  d.markPlot({ type: 'scatter', x: 'x', y: [{ col: 'y' }] }, { x0: 100, x1: 120 }, 'replace');
+  assert.equal(d.info().marked, 11);
+  d.setRowset('marked');
+  assert.equal(d.info().filtered, 11);
+  d.resetFilters();
+  assert.equal(d.info().filtered, 1000);
+  const bars = d.aggregate({ type: 'bar', x: 'g', y: [{ col: 'x' }], agg: 'count' });
+  assert.deepEqual(bars.labels, ['A', 'B']);
+  assert.deepEqual(Array.from(bars.values), [500, 500]);
+});
+
+test('M4 keeps the extremes of each pixel column', () => {
+  const n = 100000;
+  const x = Float64Array.from({ length: n }, (_, i) => i);
+  const y = Float64Array.from(x, (v) => Math.sin(v / 50));
+  y[50001] = 10;
+  const rows = Uint32Array.from(x);
+  const out = m4(rows, x, y, 0, n - 1, 200);
+  assert.ok(out.n <= 800);
+  assert.ok(Math.max(...out.y) === 10);
+  assert.ok(Math.min(...out.y) < -0.99);
+});
+
+test('fits recover their parameters', () => {
+  const x = Float64Array.from({ length: 200 }, (_, i) => i / 10);
+  const lin = polyFit(x, Float64Array.from(x, (v) => 1.5 + 0.25 * v), 1);
+  assert.ok(Math.abs(lin.coef[0] - 1.5) < 1e-9 && Math.abs(lin.coef[1] - 0.25) < 1e-9);
+  assert.ok(lin.r2 > 0.999999);
+  const quad = fit(x, Float64Array.from(x, (v) => 1 - 2 * v + 0.5 * v * v), { model: 'poly', degree: 2 });
+  assert.ok(Math.abs(quad.coef[2] - 0.5) < 1e-8);
+  const ex = fit(x, Float64Array.from(x, (v) => 3 * Math.exp(-0.4 * v) + 0.01 * Math.sin(v * 7)), { model: 'expdecay' });
+  assert.ok(ex.converged);
+  assert.ok(ex.r2 > 0.999);
+  const g = fit(x, Float64Array.from(x, (v) => 5 * Math.exp(-((v - 10) ** 2) / (2 * 1.5 ** 2))), { model: 'gauss' });
+  assert.ok(g.r2 > 0.9999);
+  const custom = fit(x, Float64Array.from(x, (v) => 2 * Math.sqrt(v) + 1), { model: 'custom', equation: 'a*sqrt(x)+b' });
+  assert.ok(Math.abs(custom.coef[0] - 2) < 1e-4 && Math.abs(custom.coef[1] - 1) < 1e-4);
+});

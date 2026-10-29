@@ -1,0 +1,1600 @@
+// Plot's analysis workspace: a page of linked visualizations over one big
+// table, with a data panel and plot properties on the left, filters and fit
+// results on the right and the rows underneath. Data lives in a worker.
+
+import { icon } from '../../shared/icons.js';
+import { dialog, escapeHtml, h, toast } from '../../shared/shell.js';
+import { popup, closePopup } from '../../shared/ribbon.js';
+import { DataClient } from './client.js';
+import { AGGS, PLOT_TYPES, PlotView, autoTitle, fitText } from './plot.js';
+import { MODELS, fitExpression } from './fit.js';
+import { FUNCTIONS } from './expr.js';
+import { formatValue } from './axes.js';
+
+const TYPE_ICON = { number: 'colNumber', string: 'colText', date: 'colDate' };
+const ROW_H = 22;
+const fmtInt = (n) => Number(n || 0).toLocaleString();
+let plotSeq = 0;
+
+export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
+  const shell = { refresh: () => getShell()?.refresh(), get claude() { return getShell()?.claude; } };
+  const client = new DataClient();
+  const st = {
+    info: null,
+    plots: [],
+    views: new Map(),
+    active: null,
+    source: null,
+    projectPath: null,
+    calculated: [],
+    table: { open: true, source: 'filtered', height: 210 },
+    panels: { left: true, right: true },
+    undo: null,
+  };
+
+  // ---------- DOM ----------
+  const root = h('div', 'an-root');
+  const main = h('div', 'an-main');
+  const left = h('aside', 'an-side an-left');
+  const center = h('section', 'an-center');
+  const right = h('aside', 'an-side an-right');
+  const page = h('div', 'an-page');
+  const empty = h('div', 'an-empty');
+  const loading = h('div', 'an-loading', '<div class="an-load-box"><b></b><div class="an-bar"><i></i></div><span></span></div>');
+  center.append(page, empty, loading);
+  main.append(left, center, right);
+  const tableWrap = h('div', 'an-table');
+  root.append(main, tableWrap);
+  const statusEl = h('span', 'an-status');
+
+  empty.innerHTML = `
+    <div class="an-empty-box">
+      ${icon('chartScatter', 44)}
+      <h2>Analyze and plot large data</h2>
+      <p>Open a CSV, TSV, Parquet or Excel file of any size. Data is read in a background worker into columns, so files with tens of millions of rows open without a row limit.</p>
+      <div class="an-empty-actions">
+        <button class="btn primary" data-act="open">${icon('open', 16)} Open data file…</button>
+        <button class="btn" data-act="sheet">${icon('table', 16)} Use this sheet’s data</button>
+      </div>
+      <p class="muted">Or drop a file here. Then make plots from the Analyze tab, filter on the right, and drag across any plot to mark rows in every plot.</p>
+    </div>`;
+  empty.querySelector('[data-act="open"]').onclick = () => openData();
+  empty.querySelector('[data-act="sheet"]').onclick = () => useSheet();
+
+  root.addEventListener('dragover', (e) => {
+    if ([...(e.dataTransfer?.types || [])].includes('Files')) {
+      e.preventDefault();
+      root.classList.add('an-drop');
+    }
+  });
+  root.addEventListener('dragleave', (e) => {
+    if (!root.contains(e.relatedTarget)) root.classList.remove('an-drop');
+  });
+  root.addEventListener('drop', async (e) => {
+    root.classList.remove('an-drop');
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    const got = await window.office.data.fromFiles(e.dataTransfer.files);
+    if (got?.error) return toast(got.error, 'error');
+    if (got?.[0]) loadSource(got[0]);
+    return undefined;
+  });
+
+  // ---------- loading ----------
+  function setLoading(text, fraction = null, rows = null) {
+    if (text == null) {
+      loading.classList.remove('show');
+      return;
+    }
+    loading.classList.add('show');
+    loading.querySelector('b').textContent = text;
+    loading.querySelector('i').style.width = `${Math.round((fraction ?? 0) * 100)}%`;
+    loading.querySelector('.an-bar').classList.toggle('indeterminate', fraction == null);
+    loading.querySelector('span').textContent = rows != null ? `${fmtInt(rows)} rows read` : '';
+  }
+
+  async function confirmReplace() {
+    if (!st.info) return true;
+    const ok = await dialog({ title: 'Replace the data?', body: 'This analysis will switch to the new data. Plots are kept where their columns still exist; filters and calculated columns are cleared.', ok: 'Replace' });
+    return !!ok;
+  }
+
+  async function openData() {
+    const picked = await window.office.data.openDialog();
+    if (picked?.error) return toast(picked.error, 'error');
+    if (picked) await loadSource(picked);
+    return undefined;
+  }
+
+  async function loadSource(src, { sheet = null, restore = null } = {}) {
+    if (!restore && !(await confirmReplace())) return;
+    onShow?.();
+    let opts = { ext: src.ext };
+    if ((src.ext === 'xlsx' || src.ext === 'xlsm') && sheet == null) {
+      try {
+        setLoading(`Reading ${src.name}…`);
+        const sheets = await client.call('sheets', { handle: src.handle, size: src.size, name: src.name });
+        if (sheets.length > 1) {
+          setLoading(null);
+          const pick = await dialog({ title: 'Choose a sheet', fields: [{ name: 'sheet', label: 'Sheet', type: 'select', options: sheets.map((s, i) => ({ value: String(i), label: s.name })) }], ok: 'Open' });
+          if (!pick) return;
+          sheet = Number(pick.sheet);
+        }
+      } catch (err) {
+        setLoading(null);
+        toast(err.message, 'error');
+        return;
+      }
+    }
+    if (sheet != null) opts = { ...opts, sheet };
+    const started = performance.now();
+    setLoading(`Opening ${src.name}…`, 0);
+    try {
+      const info = await client.callWith({ onProgress: (p) => setLoading(`Opening ${src.name}…`, p.fraction, p.rows) }, 'load', { handle: src.handle, size: src.size, name: src.name }, opts);
+      st.source = { kind: 'file', path: src.path, name: src.name, ext: src.ext, sheet: opts.sheet ?? null };
+      await afterLoad(info, restore);
+      const secs = (performance.now() - started) / 1000;
+      toast(`Opened ${fmtInt(info.rows)} rows × ${info.columns.length} columns in ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`);
+    } catch (err) {
+      toast(err.message || String(err), 'error');
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function useSheet() {
+    const sheet = onSheetData?.();
+    if (!sheet?.matrix?.length) return toast('This sheet is empty. Put a header row and data in it first.', 'error');
+    if (!(await confirmReplace())) return undefined;
+    onShow?.();
+    try {
+      const info = await client.call('fromRows', sheet.matrix, sheet.name);
+      st.source = { kind: 'sheet', name: sheet.name, rows: sheet.matrix };
+      await afterLoad(info);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    return undefined;
+  }
+
+  async function afterLoad(info, restore = null) {
+    st.info = info;
+    st.calculated = [];
+    st.undo = null;
+    if (restore) {
+      for (const c of restore.calculated || []) {
+        try {
+          st.info = (await client.call('addCalculated', c.name, c.expr)).info;
+          st.calculated.push(c);
+        } catch (err) {
+          toast(`Calculated column ${c.name}: ${err.message}`, 'error');
+        }
+      }
+      if (restore.filters) st.info = await client.call('restoreFilters', restore.filters).catch(() => st.info);
+      clearPlots();
+      for (const spec of restore.plots || []) addPlot(spec, { quiet: true });
+      if (restore.table) Object.assign(st.table, restore.table);
+    } else {
+      const cols = new Set(info.columns.map((c) => c.name));
+      const keep = st.plots.filter((v) => [v.spec.x, ...(v.spec.y || []).map((s) => s.col)].filter(Boolean).every((n) => cols.has(n)));
+      for (const v of st.plots) if (!keep.includes(v)) removePlot(v, { quiet: true });
+      if (!st.plots.length) defaultPlots();
+    }
+    root.classList.add('has-data');
+    renderAll();
+    refreshPlots();
+  }
+
+  function defaultPlots() {
+    const cols = st.info.columns;
+    const nums = cols.filter((c) => c.type === 'number');
+    const date = cols.find((c) => c.type === 'date');
+    const text = cols.find((c) => c.type === 'string');
+    if (date && nums.length) addPlot({ type: 'line', x: date.name, y: [{ col: nums[0].name }] }, { quiet: true });
+    else if (nums.length >= 2) addPlot({ type: 'scatter', x: nums[0].name, y: [{ col: nums[1].name }], color: text?.name || null }, { quiet: true });
+    if (nums.length) addPlot({ type: 'histogram', x: nums[nums.length > 1 ? 1 : 0].name }, { quiet: true });
+    else if (text) addPlot({ type: 'bar', x: text.name, y: [], agg: 'count' }, { quiet: true });
+  }
+
+  // ---------- plots ----------
+  function newSpec(type) {
+    const cols = st.info?.columns || [];
+    const nums = cols.filter((c) => c.type !== 'string');
+    const texts = cols.filter((c) => c.type === 'string');
+    const date = cols.find((c) => c.type === 'date');
+    const a = st.active?.spec;
+    const xNum = a?.x && cols.find((c) => c.name === a.x && c.type !== 'string') ? a.x : (date || nums[0])?.name;
+    const yNum = a?.y?.[0]?.col || nums.find((c) => c.name !== xNum)?.name || nums[0]?.name;
+    switch (type) {
+      case 'scatter': return { type, x: xNum, y: [{ col: yNum }], color: texts[0]?.name || null };
+      case 'line': return { type, x: xNum, y: [{ col: yNum }] };
+      case 'multi': {
+        const ys = nums.filter((c) => c.name !== xNum).slice(0, 2);
+        return { type: 'line', x: xNum, y: ys.map((c, i) => ({ col: c.name, axis: i ? 'right' : 'left' })) };
+      }
+      case 'bar': return texts[0] ? { type, x: texts[0].name, y: yNum ? [{ col: yNum }] : [], agg: yNum ? 'mean' : 'count' } : { type, x: xNum, y: [], agg: 'count' };
+      case 'histogram': return { type, x: yNum || xNum, color: null };
+      case 'box': return { type, x: texts[0]?.name || null, y: [{ col: yNum }] };
+      case 'heatmap': return { type, x: xNum, y: [{ col: yNum }], bins: 40 };
+      default: return { type: 'scatter', x: xNum, y: [{ col: yNum }] };
+    }
+  }
+
+  function addPlot(spec, { quiet = false } = {}) {
+    if (!st.info) {
+      toast('Open a data file first');
+      return null;
+    }
+    const s = { id: `p${++plotSeq}`, fits: [], ...JSON.parse(JSON.stringify(spec)) };
+    if (typeof s.y === 'string') s.y = [{ col: s.y }];
+    s.y ||= [];
+    const view = new PlotView(s, viewCtx);
+    st.plots.push(view);
+    page.append(view.el);
+    layoutPage();
+    setActive(view);
+    if (!quiet) {
+      view.fetch();
+      renderProps();
+    }
+    return view;
+  }
+
+  function removePlot(view, { quiet = false } = {}) {
+    st.plots = st.plots.filter((v) => v !== view);
+    view.destroy();
+    if (st.active === view) st.active = st.plots[st.plots.length - 1] || null;
+    layoutPage();
+    if (!quiet) {
+      st.active?.el.classList.add('active');
+      renderProps();
+      renderFits();
+    }
+  }
+
+  function clearPlots() {
+    for (const v of [...st.plots]) removePlot(v, { quiet: true });
+  }
+
+  function layoutPage() {
+    const n = st.plots.length;
+    const colsN = n <= 1 ? 1 : n <= 4 ? 2 : 3;
+    page.style.gridTemplateColumns = `repeat(${colsN}, minmax(0, 1fr))`;
+    page.style.gridTemplateRows = `repeat(${Math.max(1, Math.ceil(n / colsN))}, minmax(220px, 1fr))`;
+  }
+
+  function setActive(view) {
+    if (st.active === view) return;
+    st.active?.el.classList.remove('active');
+    st.active = view;
+    view?.el.classList.add('active');
+    renderProps();
+    renderFits();
+    shell.refresh?.();
+  }
+
+  const viewCtx = {
+    client,
+    activate: (v) => setActive(v),
+    remove: (v) => removePlot(v),
+    changed: () => {},
+    rename: async (v) => {
+      const got = await dialog({ title: 'Plot title', fields: [{ name: 'title', label: 'Title', value: v.spec.title || autoTitle(v.spec) }] });
+      if (got) {
+        v.spec.title = got.title.trim() || null;
+        v.updateHead();
+        v.draw();
+        renderProps();
+      }
+    },
+    mark: async (v, sel, mode) => {
+      st.info = await client.call('markPlot', v.spec, sel, mode);
+      afterMark();
+    },
+    markRows: async (ids, mode) => {
+      st.info = await client.call('markRows', ids, mode);
+      afterMark();
+    },
+    clearMark: () => clearMark(),
+  };
+
+  function refreshPlots(except = null) {
+    for (const v of st.plots) if (v !== except) v.fetch();
+  }
+
+  async function afterMark() {
+    refreshPlots();
+    if (st.table.source === 'marked') tableReset();
+    else tableRender();
+    renderStatus();
+    shell.refresh?.();
+  }
+
+  async function clearMark() {
+    if (!st.info?.marked) return;
+    st.info = await client.call('clearMark');
+    afterMark();
+  }
+
+  async function afterFilter(info) {
+    st.info = info;
+    refreshPlots();
+    tableReset();
+    renderStatus();
+    renderFilterCounts();
+    shell.refresh?.();
+  }
+
+  // ---------- left: data + properties ----------
+  function renderLeft() {
+    left.innerHTML = '';
+    if (!st.info) return;
+    const data = h('div', 'an-section');
+    data.append(h('div', 'an-section-head', `${icon('database', 15)}<b>${escapeHtml(st.info.name)}</b>`));
+    data.append(h('div', 'an-meta', `${fmtInt(st.info.rows)} rows · ${st.info.columns.length} columns`));
+    const list = h('div', 'an-cols');
+    for (const c of st.info.columns) {
+      const row = h('div', 'an-col', `${icon(c.expr ? 'colCalc' : TYPE_ICON[c.type], 14)}<span title="${escapeHtml(c.expr ? `${c.name} = ${c.expr}` : c.name)}">${escapeHtml(c.name)}</span>`);
+      row.draggable = true;
+      row.ondragstart = (e) => e.dataTransfer.setData('text/x-column', c.name);
+      row.onclick = (e) => columnMenu(c, row, e);
+      list.append(row);
+    }
+    data.append(list);
+    const addCalc = h('button', 'btn an-wide', `${icon('colCalc', 14)} Calculated column…`);
+    addCalc.onclick = () => calculatedColumn();
+    data.append(addCalc);
+    left.append(data);
+    propsHost = h('div', 'an-section an-props');
+    left.append(propsHost);
+    renderProps();
+  }
+  let propsHost = null;
+
+  function columnMenu(c, anchor) {
+    const m = h('div', 'rb-menu');
+    const item = (label, ic, run) => {
+      const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${label}</span>`);
+      b.onclick = () => {
+        closePopup();
+        run();
+      };
+      m.append(b);
+    };
+    if (st.active) {
+      item('Use as X axis', 'chartLine', () => setProp((s) => { s.x = c.name; }));
+      if (['scatter', 'line'].includes(st.active.spec.type)) item('Add as Y series', 'plus', () => setProp((s) => { s.y.push({ col: c.name }); }));
+      else item('Use as Y axis', 'up', () => setProp((s) => { s.y = [{ col: c.name }]; }));
+      item('Color by', 'theme', () => setProp((s) => { s.color = c.name; }));
+    }
+    item(c.type === 'string' ? 'Bar chart of this column' : 'Histogram of this column', c.type === 'string' ? 'chartBar' : 'chartHist', () => addPlot(c.type === 'string' ? { type: 'bar', x: c.name, y: [], agg: 'count' } : { type: 'histogram', x: c.name }));
+    item('Show its filter', 'filter', () => openFilter(c.name));
+    if (c.expr) {
+      item('Edit formula…', 'colCalc', () => calculatedColumn(c));
+      item('Delete column', 'trash', async () => {
+        try {
+          const info = await client.call('removeColumn', c.name);
+          st.calculated = st.calculated.filter((x) => x.name !== c.name);
+          await afterFilter(info);
+          renderLeft();
+          renderFilters();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    }
+    popup(anchor, m);
+  }
+
+  function colOptions(filter = () => true, none = null) {
+    const opts = (st.info?.columns || []).filter(filter).map((c) => ({ value: c.name, label: c.name }));
+    return none ? [{ value: '', label: none }, ...opts] : opts;
+  }
+
+  function setProp(fn) {
+    const v = st.active;
+    if (!v) return;
+    fn(v.spec);
+    v.spec.view = null;
+    v.setSpec(v.spec);
+    renderProps();
+    renderFits();
+  }
+
+  function field(label, control) {
+    const row = h('label', 'an-field');
+    row.append(h('span', '', escapeHtml(label)), control);
+    return row;
+  }
+
+  function select(options, value, change) {
+    const s = h('select');
+    for (const o of options) {
+      const opt = h('option', '', escapeHtml(o.label));
+      opt.value = o.value;
+      s.append(opt);
+    }
+    s.value = value ?? '';
+    s.onchange = () => change(s.value);
+    return s;
+  }
+
+  function check(label, value, change) {
+    const l = h('label', 'an-check');
+    const c = h('input');
+    c.type = 'checkbox';
+    c.checked = !!value;
+    c.onchange = () => change(c.checked);
+    l.append(c, document.createTextNode(` ${label}`));
+    return l;
+  }
+
+  // Columns can be dropped on axis pickers.
+  function droppable(el, onDrop) {
+    el.addEventListener('dragover', (e) => {
+      if ([...e.dataTransfer.types].includes('text/x-column')) {
+        e.preventDefault();
+        el.classList.add('an-dropping');
+      }
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('an-dropping'));
+    el.addEventListener('drop', (e) => {
+      el.classList.remove('an-dropping');
+      const name = e.dataTransfer.getData('text/x-column');
+      if (name) {
+        e.preventDefault();
+        onDrop(name);
+      }
+    });
+    return el;
+  }
+
+  function renderProps() {
+    if (!propsHost) return;
+    propsHost.innerHTML = '';
+    const v = st.active;
+    propsHost.append(h('div', 'an-section-head', `${icon('settings', 15)}<b>Plot properties</b>`));
+    if (!v) {
+      propsHost.append(h('div', 'an-meta', 'Add a plot from the Analyze tab.'));
+      return;
+    }
+    const s = v.spec;
+    const numeric = (c) => c.type !== 'string';
+    const typeSel = select(Object.entries(PLOT_TYPES).map(([value, t]) => ({ value, label: t.label })), s.type, (t) => setProp((x) => {
+      x.type = t;
+      if (t === 'bar' && !x.agg) x.agg = x.y?.[0]?.col ? 'mean' : 'count';
+      if (['bar', 'box', 'heatmap', 'histogram'].includes(t)) x.y = (x.y || []).slice(0, 1);
+      if (t === 'histogram') x.y = [];
+    }));
+    propsHost.append(field('Type', typeSel));
+    const title = h('input');
+    title.value = s.title || '';
+    title.placeholder = autoTitle(s);
+    title.onchange = () => {
+      s.title = title.value.trim() || null;
+      v.updateHead();
+      v.draw();
+    };
+    propsHost.append(field('Title', title));
+    const xOptional = s.type === 'bar' || s.type === 'box';
+    const xFilter = s.type === 'histogram' ? numeric : () => true;
+    propsHost.append(droppable(field(s.type === 'bar' || s.type === 'box' ? 'Category (X)' : 'X axis', select(colOptions(xFilter, xOptional ? '(none)' : null), s.x || '', (val) => setProp((x) => { x.x = val || null; }))), (name) => setProp((x) => { x.x = name; })));
+    if (s.type === 'scatter' || s.type === 'line') {
+      const box = h('div', 'an-series');
+      s.y.forEach((ys, i) => {
+        const row = h('div', 'an-series-row');
+        row.append(select(colOptions(numeric), ys.col, (val) => setProp((x) => { x.y[i].col = val; })));
+        const axis = h('button', `btn an-axis${ys.axis === 'right' ? ' on' : ''}`, ys.axis === 'right' ? 'Right' : 'Left');
+        axis.title = 'Which Y axis this series uses';
+        axis.onclick = () => setProp((x) => { x.y[i].axis = x.y[i].axis === 'right' ? 'left' : 'right'; });
+        row.append(axis);
+        if (s.y.length > 1) {
+          const rm = h('button', 'btn an-x', icon('close', 12));
+          rm.title = 'Remove this series';
+          rm.onclick = () => setProp((x) => { x.y.splice(i, 1); });
+          row.append(rm);
+        }
+        box.append(row);
+      });
+      const add = h('button', 'btn an-wide', `${icon('plus', 12)} Add Y series`);
+      add.onclick = () => setProp((x) => {
+        const used = new Set(x.y.map((y) => y.col));
+        const next = st.info.columns.find((c) => numeric(c) && !used.has(c.name) && c.name !== x.x);
+        if (next) x.y.push({ col: next.name, axis: x.y.length ? 'right' : 'left' });
+      });
+      box.append(add);
+      propsHost.append(droppable(field('Y axis', box), (name) => setProp((x) => { x.y.push({ col: name }); })));
+    } else if (s.type !== 'histogram') {
+      const yFilter = s.type === 'bar' ? () => true : numeric;
+      propsHost.append(droppable(field(s.type === 'bar' ? 'Value (Y)' : 'Y axis', select(colOptions(yFilter, s.type === 'bar' ? '(row count)' : null), s.y?.[0]?.col || '', (val) => setProp((x) => {
+        x.y = val ? [{ col: val }] : [];
+        if (x.type === 'bar' && !val) x.agg = 'count';
+        if (x.type === 'bar' && val && x.agg === 'count') x.agg = 'mean';
+      }))), (name) => setProp((x) => { x.y = [{ col: name }]; })));
+    }
+    if (s.type === 'bar' && s.y?.[0]?.col) propsHost.append(field('Aggregation', select(AGGS, s.agg || 'sum', (val) => setProp((x) => { x.agg = val; }))));
+    if (s.type === 'heatmap') {
+      propsHost.append(field('Color by value', select(colOptions(numeric, '(row count)'), s.z || '', (val) => setProp((x) => { x.z = val || null; if (val && !x.agg) x.agg = 'mean'; }))));
+      if (s.z) propsHost.append(field('Aggregation', select(AGGS.filter((a) => a.value !== 'median' && a.value !== 'std'), s.agg || 'mean', (val) => setProp((x) => { x.agg = val; }))));
+    }
+    if (['scatter', 'line', 'bar', 'histogram'].includes(s.type) && (s.y || []).length <= 1) {
+      propsHost.append(droppable(field('Color by', select(colOptions(() => true, '(none)'), s.color || '', (val) => setProp((x) => { x.color = val || null; }))), (name) => setProp((x) => { x.color = name; })));
+    }
+    if (s.type === 'box') propsHost.append(check('Color each box', !!s.color, (on) => setProp((x) => { x.color = on ? x.x : null; })));
+    if (s.type === 'histogram' || s.type === 'heatmap') {
+      const bins = h('input');
+      bins.type = 'number';
+      bins.min = 2;
+      bins.max = 500;
+      bins.placeholder = 'Auto';
+      bins.value = s.bins || '';
+      bins.onchange = () => setProp((x) => { x.bins = Number(bins.value) > 1 ? Math.min(500, Math.round(Number(bins.value))) : null; });
+      propsHost.append(field('Bins', bins));
+    }
+    if (s.type === 'histogram') propsHost.append(field('Show', select([{ value: 'count', label: 'Count' }, { value: 'percent', label: 'Percent' }, { value: 'density', label: 'Density' }], s.normalize || 'count', (val) => setProp((x) => { x.normalize = val; }))));
+    if (s.type === 'bar') {
+      propsHost.append(field('Order', select([{ value: 'name', label: 'By category' }, { value: 'value', label: 'By value (largest first)' }], s.sort || 'name', (val) => setProp((x) => { x.sort = val; }))));
+      if (s.color) propsHost.append(check('Stacked bars', s.stacked, (on) => setProp((x) => { x.stacked = on; })));
+    }
+    if (s.type === 'scatter' || s.type === 'line' || s.type === 'box') {
+      const scale = h('div', 'an-checks');
+      if (s.type !== 'box') scale.append(check('Log X', s.logX, (on) => setProp((x) => { x.logX = on; })));
+      scale.append(check('Log Y', s.logY, (on) => setProp((x) => { x.logY = on; })));
+      if (s.y.some((y) => y.axis === 'right')) scale.append(check('Log Y (right)', s.logY2, (on) => setProp((x) => { x.logY2 = on; })));
+      if (s.type === 'line') scale.append(check('Markers', s.markers, (on) => setProp((x) => { x.markers = on; })));
+      propsHost.append(field('Scale', scale));
+    }
+    if (s.type === 'scatter') {
+      const size = h('input');
+      size.type = 'range';
+      size.min = 1;
+      size.max = 12;
+      size.step = 0.5;
+      size.value = s.markerSize || 4;
+      size.oninput = () => {
+        s.markerSize = Number(size.value);
+        v.draw();
+      };
+      propsHost.append(field('Marker size', size));
+    }
+    if (s.type === 'scatter' || s.type === 'line') {
+      const fits = h('div', 'an-fit-list');
+      for (const f of s.fits || []) {
+        const row = h('div', 'an-fit-chip', `<span>${escapeHtml(f.result?.label || MODELS[f.model]?.label || f.model)}${f.model === 'poly' ? ` (${f.degree})` : ''}</span>`);
+        const x = h('button', '', '×');
+        x.title = 'Remove fit';
+        x.onclick = () => {
+          s.fits = s.fits.filter((g) => g !== f);
+          v.draw();
+          renderProps();
+          renderFits();
+        };
+        row.append(x);
+        fits.append(row);
+      }
+      const add = h('button', 'btn an-wide', `${icon('fitCurve', 14)} Fit curve…`);
+      add.onclick = () => fitMenu(add);
+      fits.append(add);
+      propsHost.append(field('Curve fit', fits));
+    }
+  }
+
+  // ---------- calculated columns ----------
+  async function calculatedColumn(existing = null) {
+    if (!st.info) return toast('Open a data file first');
+    const help = h('div', 'an-calc-help');
+    help.innerHTML = `<p class="muted">Write a formula over whole columns. Refer to columns as <code>[Column name]</code> or <code>col(A)</code>. Example: <code>[Voltage] * [Current] / 1000</code> or <code>if([Temp] &gt; 30, "hot", "ok")</code>.</p>`;
+    const colsBox = h('div', 'an-calc-cols');
+    for (const c of st.info.columns) {
+      const b = h('button', 'an-chip', `${icon(TYPE_ICON[c.type], 12)} ${escapeHtml(c.name)}`);
+      b.type = 'button';
+      b.onclick = () => insertAtCursor(`[${c.name}]`);
+      colsBox.append(b);
+    }
+    const fnBox = h('div', 'an-calc-fns');
+    for (const f of FUNCTIONS) {
+      const b = h('button', 'an-chip an-fn', escapeHtml(f));
+      b.type = 'button';
+      b.onclick = () => insertAtCursor(`${f.replace(/\(.*$/, '')}(`);
+      fnBox.append(b);
+    }
+    help.append(h('b', '', 'Columns'), colsBox, h('b', '', 'Functions'), fnBox);
+    const insertAtCursor = (text) => {
+      const ta = help.closest('.modal')?.querySelector('textarea');
+      if (!ta) return;
+      const a = ta.selectionStart;
+      ta.value = ta.value.slice(0, a) + text + ta.value.slice(ta.selectionEnd);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = a + text.length;
+    };
+    let name = existing?.name || '';
+    let expr = existing?.expr || '';
+    for (;;) {
+      const got = await dialog({
+        title: existing ? `Edit ${existing.name}` : 'Calculated column',
+        body: help,
+        wide: true,
+        fields: [{ name: 'name', label: 'Column name', value: name || `Calc ${st.calculated.length + 1}` }, { name: 'expr', label: 'Formula', type: 'textarea', rows: 3, value: expr }],
+        ok: existing ? 'Update' : 'Add column',
+      });
+      if (!got) return undefined;
+      name = got.name.trim();
+      expr = got.expr.trim();
+      try {
+        const res = await client.call('addCalculated', name, expr);
+        st.calculated = st.calculated.filter((c) => c.name.toLowerCase() !== res.name.toLowerCase() && c.name !== existing?.name);
+        st.calculated.push({ name: res.name, expr });
+        await afterFilter(res.info);
+        renderLeft();
+        renderFilters();
+        toast(`Added ${res.name}`);
+        return res.name;
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }
+  }
+
+  // ---------- filters ----------
+  const openFilters = new Set();
+  function renderRight() {
+    right.innerHTML = '';
+    if (!st.info) return;
+    filtersHost = h('div', 'an-section an-filters');
+    fitsHost = h('div', 'an-section an-fits');
+    right.append(filtersHost, fitsHost);
+    renderFilters();
+    renderFits();
+  }
+  let filtersHost = null;
+  let fitsHost = null;
+  let filterSpecs = {};
+
+  async function renderFilters() {
+    if (!filtersHost) return;
+    const state = await client.call('filterState').catch(() => ({ columns: {}, expressions: [] }));
+    filterSpecs = state.columns;
+    filtersHost.innerHTML = '';
+    const head = h('div', 'an-section-head', `${icon('filter', 15)}<b>Filters</b>`);
+    const reset = h('button', 'btn an-small', 'Reset all');
+    reset.onclick = async () => {
+      openFilters.clear();
+      await afterFilter(await client.call('resetFilters'));
+      renderFilters();
+    };
+    head.append(reset);
+    filtersHost.append(head);
+    filterCount = h('div', 'an-meta');
+    filtersHost.append(filterCount);
+    renderFilterCounts();
+    const exprBox = h('div', 'an-expr');
+    const input = h('input');
+    input.placeholder = 'Filter formula, e.g. [Temp] > 20 and [Site] == "B"';
+    input.value = state.expressions.join(' and ');
+    input.spellcheck = false;
+    input.onkeydown = async (e) => {
+      if (e.key !== 'Enter') return;
+      try {
+        await afterFilter(await client.call('setExpressionFilters', input.value.trim() ? [input.value.trim()] : []));
+        input.classList.remove('bad');
+      } catch (err) {
+        input.classList.add('bad');
+        toast(err.message, 'error');
+      }
+    };
+    exprBox.append(input);
+    filtersHost.append(exprBox);
+    if (state.rowset) {
+      const note = h('div', 'an-rowset', `${icon('markFilter', 14)} Showing only rows kept from marking`);
+      const undo = h('button', 'btn an-small', 'Show all');
+      undo.onclick = async () => {
+        await afterFilter(await client.call('setRowset', null));
+        renderFilters();
+      };
+      note.append(undo);
+      filtersHost.append(note);
+    }
+    const search = h('input', 'an-filter-search');
+    search.placeholder = 'Find a column…';
+    filtersHost.append(search);
+    const list = h('div', 'an-filter-list');
+    for (const c of st.info.columns) {
+      const d = h('details', 'an-filter');
+      d.dataset.col = c.name;
+      if (filterSpecs[c.name]) d.classList.add('on');
+      const sum = h('summary', '', `${icon(c.expr ? 'colCalc' : TYPE_ICON[c.type], 13)}<span>${escapeHtml(c.name)}</span>`);
+      d.append(sum);
+      d.ontoggle = () => {
+        if (d.open) {
+          openFilters.add(c.name);
+          fillFilter(d, c);
+        } else openFilters.delete(c.name);
+      };
+      if (openFilters.has(c.name)) d.open = true;
+      list.append(d);
+    }
+    search.oninput = () => {
+      const q = search.value.toLowerCase();
+      for (const d of list.children) d.hidden = q && !d.dataset.col.toLowerCase().includes(q);
+    };
+    filtersHost.append(list);
+  }
+  let filterCount = null;
+
+  function renderFilterCounts() {
+    if (!filterCount || !st.info) return;
+    const i = st.info;
+    filterCount.textContent = i.filtered === i.rows ? `All ${fmtInt(i.rows)} rows shown` : `${fmtInt(i.filtered)} of ${fmtInt(i.rows)} rows (${((i.filtered / Math.max(1, i.rows)) * 100).toFixed(i.filtered / i.rows < 0.01 ? 2 : 1)}%)`;
+    for (const d of filtersHost?.querySelectorAll('details.an-filter[open]') || []) {
+      const c = st.info.columns.find((x) => x.name === d.dataset.col);
+      if (c && !d.dataset.busy) fillFilter(d, c, true);
+    }
+  }
+
+  function openFilter(name) {
+    st.panels.right = true;
+    applyPanels();
+    const d = filtersHost?.querySelector(`details[data-col="${CSS.escape(name)}"]`);
+    if (d) {
+      d.open = true;
+      d.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  async function setFilter(name, spec) {
+    if (spec) filterSpecs[name] = spec;
+    else delete filterSpecs[name];
+    filtersHost?.querySelector(`details[data-col="${CSS.escape(name)}"]`)?.classList.toggle('on', !!spec);
+    try {
+      await afterFilter(await client.call('setFilter', name, spec));
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function fillFilter(d, c, countsOnly = false) {
+    d.dataset.busy = '1';
+    const prof = await client.call('profile', c.name).catch(() => null);
+    delete d.dataset.busy;
+    if (!prof) return;
+    let body = d.querySelector('.an-filter-body');
+    if (countsOnly && body) {
+      if (prof.type === 'string') {
+        for (const row of body.querySelectorAll('[data-v]')) {
+          const v = prof.values.find((x) => x.value === row.dataset.v);
+          row.querySelector('em').textContent = v ? fmtInt(v.shown) : '0';
+          row.classList.toggle('dim', !v?.shown);
+        }
+      } else drawHist(body.querySelector('.an-hist'), prof);
+      return;
+    }
+    body?.remove();
+    body = h('div', 'an-filter-body');
+    d.append(body);
+    if (prof.type === 'string') return stringFilter(body, c, prof);
+    return rangeFilter(body, c, prof);
+  }
+
+  function drawHist(el, prof) {
+    if (!el) return;
+    const max = Math.max(1, ...prof.hist);
+    el.innerHTML = prof.hist.map((v, i) => `<i style="height:${(v / max) * 100}%"><b style="height:${v ? (prof.shown[i] / v) * 100 : 0}%"></b></i>`).join('');
+  }
+
+  function rangeFilter(body, c, prof) {
+    if (prof.min == null) {
+      body.append(h('div', 'an-meta', 'No values in this column.'));
+      return;
+    }
+    const spec = filterSpecs[c.name] || {};
+    const hist = h('div', 'an-hist');
+    drawHist(hist, prof);
+    const slider = h('div', 'an-range', '<div class="an-range-fill"></div><span class="an-thumb" data-k="lo"></span><span class="an-thumb" data-k="hi"></span>');
+    const isDate = c.type === 'date';
+    const toText = (v) => (isDate ? formatValue(v, 'date') : formatValue(v, 'number'));
+    const fromText = (t) => {
+      if (!t.trim()) return null;
+      if (isDate) {
+        const ms = Date.parse(t.includes('T') || t.length <= 10 ? t : t.replace(' ', 'T'));
+        return Number.isNaN(ms) ? null : ms;
+      }
+      const n = Number(t);
+      return Number.isNaN(n) ? null : n;
+    };
+    let lo = spec.min ?? prof.min;
+    let hi = spec.max ?? prof.max;
+    const span = prof.max - prof.min || 1;
+    const inputs = h('div', 'an-range-inputs');
+    const a = h('input');
+    const b = h('input');
+    inputs.append(a, h('span', '', 'to'), b);
+    const missing = check(`Include empty values (${fmtInt(prof.missing)})`, spec.missing !== false, () => commit());
+    const sync = () => {
+      const pa = ((lo - prof.min) / span) * 100;
+      const pb = ((hi - prof.min) / span) * 100;
+      slider.querySelector('[data-k="lo"]').style.left = `${pa}%`;
+      slider.querySelector('[data-k="hi"]').style.left = `${pb}%`;
+      Object.assign(slider.querySelector('.an-range-fill').style, { left: `${pa}%`, width: `${pb - pa}%` });
+      if (document.activeElement !== a) a.value = toText(lo);
+      if (document.activeElement !== b) b.value = toText(hi);
+    };
+    let timer = 0;
+    const commit = (delay = 0) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const full = lo <= prof.min && hi >= prof.max;
+        const keepMissing = missing.querySelector('input').checked;
+        setFilter(c.name, full && keepMissing ? null : { kind: 'range', min: full ? null : lo, max: full ? null : hi, missing: keepMissing });
+      }, delay);
+    };
+    slider.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const r = slider.getBoundingClientRect();
+      const valueAt = (x) => prof.min + Math.max(0, Math.min(1, (x - r.left) / r.width)) * span;
+      const v0 = valueAt(e.clientX);
+      const which = e.target.dataset.k || (Math.abs(v0 - lo) < Math.abs(v0 - hi) ? 'lo' : 'hi');
+      const move = (ev) => {
+        const v = valueAt(ev.clientX);
+        if (which === 'lo') lo = Math.min(v, hi);
+        else hi = Math.max(v, lo);
+        sync();
+        commit(120);
+      };
+      move(e);
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+    for (const [inp, k] of [[a, 'lo'], [b, 'hi']]) {
+      inp.onchange = () => {
+        const v = fromText(inp.value);
+        if (v == null) return sync();
+        if (k === 'lo') lo = Math.min(v, hi);
+        else hi = Math.max(v, lo);
+        sync();
+        commit();
+        return undefined;
+      };
+    }
+    const reset = h('button', 'btn an-small', 'Reset');
+    reset.onclick = () => {
+      lo = prof.min;
+      hi = prof.max;
+      missing.querySelector('input').checked = true;
+      sync();
+      commit();
+    };
+    body.append(hist, slider, inputs);
+    if (prof.missing) body.append(missing);
+    body.append(reset);
+    sync();
+  }
+
+  function stringFilter(body, c, prof) {
+    const spec = filterSpecs[c.name];
+    if (prof.distinct > 2000) {
+      const t = h('input');
+      t.placeholder = `Contains… (${fmtInt(prof.distinct)} values)`;
+      t.value = spec?.kind === 'text' ? spec.text : '';
+      t.onchange = () => setFilter(c.name, t.value.trim() ? { kind: 'text', text: t.value.trim() } : null);
+      body.append(t);
+      return;
+    }
+    const all = prof.values.map((v) => v.value);
+    if (prof.missing) all.push('');
+    let chosen = new Set(spec?.kind === 'values' ? (spec.exclude ? all.filter((v) => !spec.values.includes(v)) : spec.values) : all);
+    const tools = h('div', 'an-filter-tools');
+    const find = h('input');
+    find.placeholder = 'Search values…';
+    const allBtn = h('button', 'btn an-small', 'All');
+    const noneBtn = h('button', 'btn an-small', 'None');
+    tools.append(find, allBtn, noneBtn);
+    const list = h('div', 'an-values');
+    const commit = () => {
+      if (chosen.size === all.length) setFilter(c.name, null);
+      else if (chosen.size > all.length / 2) setFilter(c.name, { kind: 'values', values: all.filter((v) => !chosen.has(v)), exclude: true });
+      else setFilter(c.name, { kind: 'values', values: [...chosen] });
+    };
+    const rows = [...prof.values.map((v) => ({ value: v.value, label: v.value, shown: v.shown })), ...(prof.missing ? [{ value: '', label: '(Empty)', shown: null }] : [])];
+    for (const v of rows) {
+      const row = h('label', `an-value${v.shown === 0 ? ' dim' : ''}`);
+      row.dataset.v = v.value;
+      const box = h('input');
+      box.type = 'checkbox';
+      box.checked = chosen.has(v.value);
+      box.onchange = () => {
+        if (box.checked) chosen.add(v.value);
+        else chosen.delete(v.value);
+        commit();
+      };
+      row.append(box, h('span', '', escapeHtml(v.label)), h('em', '', v.shown == null ? '' : fmtInt(v.shown)));
+      list.append(row);
+    }
+    find.oninput = () => {
+      const q = find.value.toLowerCase();
+      for (const r of list.children) r.hidden = q && !r.dataset.v.toLowerCase().includes(q);
+    };
+    allBtn.onclick = () => {
+      chosen = new Set(all);
+      list.querySelectorAll('input').forEach((i) => { i.checked = true; });
+      commit();
+    };
+    noneBtn.onclick = () => {
+      chosen = new Set();
+      list.querySelectorAll('input').forEach((i) => { i.checked = false; });
+      commit();
+    };
+    body.append(tools, list);
+  }
+
+  // ---------- curve fitting ----------
+  function fitMenu(anchor) {
+    const v = st.active;
+    if (!v || !['scatter', 'line'].includes(v.spec.type)) return toast('Curve fits go on a scatter or line plot. Select one first.');
+    const m = h('div', 'rb-menu');
+    for (const [id, model] of Object.entries(MODELS)) {
+      const b = h('button', 'rb-menu-item', `${icon('fitCurve', 16)}<span>${escapeHtml(model.label)}${id === 'poly' || id === 'custom' ? '…' : ''}<small>${escapeHtml(model.equation)}</small></span>`);
+      b.onclick = () => {
+        closePopup();
+        addFit(id);
+      };
+      m.append(b);
+    }
+    popup(anchor, m);
+    return undefined;
+  }
+
+  async function addFit(model, extra = {}) {
+    const v = st.active;
+    if (!v || !['scatter', 'line'].includes(v.spec.type)) return toast('Curve fits go on a scatter or line plot. Select one first.');
+    const f = { model, series: 0, ...extra };
+    if (v.spec.y.length > 1 && extra.series == null) {
+      const got = await dialog({ title: 'Fit which series?', fields: [{ name: 's', label: 'Series', type: 'select', options: v.spec.y.map((y, i) => ({ value: String(i), label: y.col })) }] });
+      if (!got) return undefined;
+      f.series = Number(got.s);
+    }
+    if (model === 'poly' && extra.degree == null) {
+      const got = await dialog({ title: 'Polynomial fit', fields: [{ name: 'degree', label: 'Degree (2–9)', type: 'number', min: 2, max: 9, value: 2 }] });
+      if (!got) return undefined;
+      f.degree = Math.max(2, Math.min(9, Number(got.degree) || 2));
+    }
+    if (model === 'custom' && !extra.equation) {
+      const got = await dialog({
+        title: 'Custom fit equation',
+        body: '<p class="muted">Use <code>x</code> for X and any other names as parameters, for example <code>y = A*exp(-x/t) + y0</code>. Starting values help with harder models.</p>',
+        fields: [{ name: 'eq', label: 'Equation', value: 'y = a*exp(-b*x) + c' }, { name: 'init', label: 'Starting values (optional)', placeholder: 'a=1, b=0.5, c=0' }],
+        wide: true,
+      });
+      if (!got?.eq?.trim()) return undefined;
+      f.equation = got.eq.trim();
+      f.initial = Object.fromEntries(String(got.init || '').split(/[,;]/).map((p) => p.split('=').map((x) => x.trim())).filter(([k, val]) => k && val !== undefined && !Number.isNaN(Number(val))).map(([k, val]) => [k, Number(val)]));
+    }
+    if (st.info.marked && extra.markedOnly == null) f.markedOnly = !!(await dialog({ title: 'Fit marked rows only?', body: `${fmtInt(st.info.marked)} rows are marked. Fit only those, or every row that passes the filters?`, ok: 'Marked rows', cancel: 'All filtered rows' }));
+    try {
+      toast('Fitting…');
+      f.result = await client.call('fit', v.spec, f);
+      v.spec.fits = [...(v.spec.fits || []), f];
+      v.draw();
+      renderProps();
+      renderFits();
+      st.panels.right = true;
+      applyPanels();
+      return f.result;
+    } catch (err) {
+      toast(err.message, 'error');
+      return undefined;
+    }
+  }
+
+  async function refitAll() {
+    for (const v of st.plots) {
+      for (const f of v.spec.fits || []) {
+        try {
+          f.result = await client.call('fit', v.spec, f);
+        } catch {
+          f.result = null;
+        }
+      }
+      if (v.spec.fits?.length) v.draw();
+    }
+    renderFits();
+  }
+
+  function renderFits() {
+    if (!fitsHost) return;
+    fitsHost.innerHTML = '';
+    const fits = (st.active?.spec.fits || []).filter((f) => f.result);
+    fitsHost.hidden = !fits.length;
+    if (!fits.length) return;
+    const head = h('div', 'an-section-head', `${icon('fitCurve', 15)}<b>Fit results</b>`);
+    const refit = h('button', 'btn an-small', 'Refit');
+    refit.title = 'Fit again to the rows that pass the filters now';
+    refit.onclick = () => refitAll();
+    head.append(refit);
+    fitsHost.append(head);
+    const f6 = (x) => (Number.isFinite(x) ? String(Number(x.toPrecision(6))) : '—');
+    const fp = (p) => (!Number.isFinite(p) ? '—' : p < 1e-4 ? '< 0.0001' : p.toFixed(4));
+    for (const f of fits) {
+      const r = f.result;
+      const box = h('div', 'an-fit');
+      box.innerHTML = `
+        <div class="an-fit-title">${escapeHtml(r.label || (r.model === 'linear' ? 'Linear' : `Polynomial, degree ${r.degree}`))}<small>${escapeHtml(r.yName)} vs ${escapeHtml(r.xName)}${r.markedOnly ? ', marked rows' : ''}${r.sampled ? ', sampled' : ''}</small></div>
+        <div class="an-fit-eq">${escapeHtml(r.custom ? `y = ${r.custom.replace(/^\s*y\s*=\s*/i, '')}` : r.equation)}</div>
+        <table class="an-fit-table"><thead><tr><th>Parameter</th><th>Value</th><th>Std. error</th><th>t</th><th>p</th><th>95% CI</th></tr></thead><tbody>
+        ${r.params.map((p) => `<tr><td>${escapeHtml(p.name)}</td><td>${f6(p.value)}</td><td>${f6(p.se)}</td><td>${f6(p.t)}</td><td>${fp(p.p)}</td><td>${f6(p.lo)} … ${f6(p.hi)}</td></tr>`).join('')}
+        </tbody></table>
+        <table class="an-fit-stats"><tbody>
+          <tr><td>Points (N)</td><td>${fmtInt(r.n)}</td><td>Deg. of freedom</td><td>${fmtInt(r.dof)}</td></tr>
+          <tr><td>R²</td><td>${f6(r.r2)}</td><td>Adjusted R²</td><td>${f6(r.adjR2)}</td></tr>
+          <tr><td>RMSE</td><td>${f6(r.rmse)}</td><td>Reduced χ²</td><td>${f6(r.redChi2)}</td></tr>
+          ${r.f != null ? `<tr><td>F</td><td>${f6(r.f)}</td><td>Prob &gt; F</td><td>${fp(r.fP)}</td></tr>` : ''}
+          ${r.pearson != null ? `<tr><td>Pearson r</td><td>${f6(r.pearson)}</td><td></td><td></td></tr>` : ''}
+          ${r.iterations != null ? `<tr><td>Iterations</td><td>${r.iterations}</td><td>Converged</td><td>${r.converged ? 'Yes' : 'No'}</td></tr>` : ''}
+        </tbody></table>`;
+      const actions = h('div', 'an-fit-actions');
+      const btn = (label, run) => {
+        const b = h('button', 'btn an-small', label);
+        b.onclick = run;
+        actions.append(b);
+      };
+      btn('Copy', () => {
+        const lines = [`${r.label || r.model}: ${r.yName} vs ${r.xName}`, r.custom || r.equation, ...r.params.map((p) => `${p.name}\t${p.value}\t± ${p.se}\tt=${p.t}\tp=${p.p}`), `N\t${r.n}`, `R²\t${r.r2}`, `Adj. R²\t${r.adjR2}`, `RMSE\t${r.rmse}`];
+        navigator.clipboard.writeText(lines.join('\n'));
+        toast('Fit report copied');
+      });
+      btn('Add fitted column', () => addFitColumns(r, false));
+      btn('Add residuals', () => addFitColumns(r, true));
+      btn('Remove', () => {
+        st.active.spec.fits = st.active.spec.fits.filter((g) => g !== f);
+        st.active.draw();
+        renderProps();
+        renderFits();
+      });
+      box.append(actions);
+      fitsHost.append(box);
+    }
+  }
+
+  async function addFitColumns(r, residuals) {
+    const body = fitExpression(r, `[${r.xName}]`);
+    const expr = residuals ? `[${r.yName}] - (${body})` : body;
+    const name = `${residuals ? 'Residual' : 'Fit'} ${r.yName}`;
+    try {
+      const res = await client.call('addCalculated', name, expr);
+      st.calculated = st.calculated.filter((c) => c.name !== res.name);
+      st.calculated.push({ name: res.name, expr });
+      await afterFilter(res.info);
+      renderLeft();
+      renderFilters();
+      toast(`Added column ${res.name}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  // ---------- data table ----------
+  const tableHead = h('div', 'an-table-head');
+  const tableGrid = h('div', 'an-grid');
+  const tableScroll = h('div', 'an-grid-scroll');
+  const tableSpacer = h('div', 'an-grid-spacer');
+  const tableRows = h('div', 'an-grid-rows');
+  const tableViewport = h('div', 'an-grid-view');
+  tableViewport.append(tableRows);
+  tableScroll.append(tableSpacer);
+  tableGrid.append(tableViewport, tableScroll);
+  const resizer = h('div', 'an-table-resize');
+  tableWrap.append(resizer, tableHead, tableGrid);
+  let tableTop = 0;
+  let tableTotal = 0;
+  let tableToken = 0;
+  let colWidths = [];
+  const MAX_SCROLL = 8_000_000;
+
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const y0 = e.clientY;
+    const h0 = st.table.height;
+    const move = (ev) => {
+      st.table.height = Math.max(90, Math.min(window.innerHeight * 0.7, h0 - (ev.clientY - y0)));
+      tableWrap.style.height = `${st.table.height}px`;
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      tableRender();
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+
+  function renderTableHead() {
+    tableHead.innerHTML = '';
+    if (!st.info) return;
+    const title = h('b', '', 'Rows');
+    const src = select([{ value: 'filtered', label: 'Rows that pass the filters' }, { value: 'marked', label: 'Marked rows' }], st.table.source, (v) => {
+      st.table.source = v;
+      tableReset();
+    });
+    const exp = h('button', 'btn an-small', `${icon('export', 12)} Export…`);
+    exp.onclick = () => exportMenu(exp);
+    const close = h('button', 'btn an-small an-x', icon('close', 12));
+    close.title = 'Hide the rows';
+    close.onclick = () => togglePanel('table');
+    tableHead.append(title, src, h('span', 'an-table-count'), h('span', 'an-spacer'), exp, close);
+  }
+
+  function tableReset() {
+    tableTop = 0;
+    tableScroll.scrollTop = 0;
+    tableRender();
+  }
+
+  const visibleRows = () => Math.max(1, Math.floor((tableGrid.clientHeight - ROW_H) / ROW_H));
+
+  async function tableRender() {
+    if (!st.info || !st.table.open) return;
+    const token = ++tableToken;
+    const count = visibleRows() + 1;
+    const res = await client.call('rows', tableTop, count, st.table.source).catch(() => null);
+    if (!res || token !== tableToken) return;
+    tableTotal = res.total;
+    tableHead.querySelector('.an-table-count').textContent = `${fmtInt(res.total)} rows`;
+    const scrollH = Math.min(MAX_SCROLL, res.total * ROW_H + ROW_H);
+    tableSpacer.style.height = `${scrollH}px`;
+    if (colWidths.length !== res.columns.length) colWidths = res.columns.map((c, j) => Math.max(70, Math.min(260, Math.max(c.length, ...res.rows.map((r) => String(r[j] ?? '').length)) * 7 + 22)));
+    const tpl = `64px ${colWidths.map((w) => `${w}px`).join(' ')}`;
+    let html = `<div class="an-row an-hrow" style="grid-template-columns:${tpl}"><span>#</span>${res.columns.map((c) => `<span title="${escapeHtml(c)}">${escapeHtml(c)}</span>`).join('')}</div>`;
+    res.rows.forEach((r, k) => {
+      html += `<div class="an-row${res.marked[k] ? ' marked' : ''}" data-id="${res.ids[k]}" style="grid-template-columns:${tpl}"><span class="n">${fmtInt(res.ids[k] + 1)}</span>${r.map((v) => `<span>${escapeHtml(v)}</span>`).join('')}</div>`;
+    });
+    if (!res.total) html += `<div class="an-table-empty">${st.table.source === 'marked' ? 'No rows are marked. Drag across a plot to mark rows.' : 'No rows pass the filters.'}</div>`;
+    tableRows.innerHTML = html;
+    tableRows.style.width = `${64 + colWidths.reduce((a, b) => a + b, 0)}px`;
+  }
+
+  tableScroll.addEventListener('scroll', () => {
+    const max = tableScroll.scrollHeight - tableScroll.clientHeight;
+    const rowsMax = Math.max(0, tableTotal - visibleRows());
+    tableTop = max > 0 ? Math.round((tableScroll.scrollTop / max) * rowsMax) : 0;
+    tableRender();
+  });
+  tableGrid.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      tableViewport.scrollLeft += e.deltaX;
+      return;
+    }
+    e.preventDefault();
+    const rowsMax = Math.max(0, tableTotal - visibleRows());
+    tableTop = Math.max(0, Math.min(rowsMax, tableTop + Math.round(e.deltaY / ROW_H) * (e.deltaMode === 1 ? 3 : 1)));
+    const max = tableScroll.scrollHeight - tableScroll.clientHeight;
+    tableScroll.scrollTop = rowsMax ? (tableTop / rowsMax) * max : 0;
+    tableRender();
+  }, { passive: false });
+  tableRows.addEventListener('click', async (e) => {
+    const row = e.target.closest('.an-row[data-id]');
+    if (!row) return;
+    st.info = await client.call('markRows', [Number(row.dataset.id)], e.ctrlKey || e.metaKey ? 'toggle' : 'replace');
+    afterMark();
+  });
+
+  // ---------- export ----------
+  function exportMenu(anchor) {
+    const m = h('div', 'rb-menu');
+    const item = (label, ic, run) => {
+      const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${label}</span>`);
+      b.onclick = () => {
+        closePopup();
+        run();
+      };
+      m.append(b);
+    };
+    item('Filtered rows as CSV…', 'grid', () => exportCsv('filtered'));
+    item('Marked rows as CSV…', 'mark', () => exportCsv('marked'));
+    if (sendToSheet) {
+      item('Marked rows to a new sheet', 'table', () => toSheet('marked'));
+      item('Filtered rows to a new sheet', 'table', () => toSheet('filtered'));
+    }
+    popup(anchor, m);
+  }
+
+  async function exportCsv(source) {
+    if (!st.info) return;
+    const count = source === 'marked' ? st.info.marked : st.info.filtered;
+    if (!count) return toast(source === 'marked' ? 'No rows are marked' : 'No rows pass the filters');
+    const base = st.info.name.replace(/\.[^.]+(\s*\(.*\))?$/, '');
+    const w = await window.office.data.beginWrite({ name: `${base}-${source}.csv`, filters: [{ name: 'CSV', extensions: ['csv'] }] });
+    if (!w || w.error) return w?.error && toast(w.error, 'error');
+    let start = 0;
+    try {
+      setLoading(`Exporting ${fmtInt(count)} rows…`, 0);
+      await window.office.data.write(w.writer, '﻿');
+      for (;;) {
+        const chunk = await client.call('csv', source, start, 50000);
+        await window.office.data.write(w.writer, chunk.text);
+        start = chunk.next;
+        setLoading(`Exporting ${fmtInt(count)} rows…`, start / Math.max(1, chunk.total));
+        if (start >= chunk.total) break;
+      }
+      await window.office.data.endWrite(w.writer);
+      toast(`Exported ${fmtInt(start)} rows to ${w.name}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setLoading(null);
+    }
+    return undefined;
+  }
+
+  async function toSheet(source) {
+    const limit = 10000;
+    const res = await client.call('rows', 0, limit, source);
+    if (!res.total) return toast(source === 'marked' ? 'No rows are marked' : 'No rows pass the filters');
+    sendToSheet([res.columns, ...res.rows], `${source === 'marked' ? 'Marked' : 'Filtered'} rows`);
+    if (res.total > limit) toast(`Sent the first ${fmtInt(limit)} of ${fmtInt(res.total)} rows. Export as CSV to get all of them.`);
+    return undefined;
+  }
+
+  async function exportPlot(kind) {
+    const v = st.active;
+    if (!v) return toast('Select a plot first');
+    const name = (v.spec.title || autoTitle(v.spec)).replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 80) || 'plot';
+    let res;
+    if (kind === 'png') {
+      const blob = await v.toPng(3);
+      res = await window.office.data.saveBytes({ name: `${name}.png`, filters: [{ name: 'PNG image', extensions: ['png'] }], data: new Uint8Array(await blob.arrayBuffer()) });
+    } else if (kind === 'svg') {
+      res = await window.office.data.saveBytes({ name: `${name}.svg`, filters: [{ name: 'SVG image', extensions: ['svg'] }], data: v.toSvg() });
+    } else {
+      const { w, h: ht } = v.size();
+      res = await window.office.data.savePdf({ svg: v.toSvg(w, ht), width: w, height: ht, name: `${name}.pdf` });
+    }
+    if (res?.error) toast(res.error, 'error');
+    else if (res) toast(`Saved ${res.name}`);
+    return undefined;
+  }
+
+  // ---------- project ----------
+  function projectState() {
+    return {
+      app: 'Plot analysis',
+      version: 1,
+      source: st.source?.kind === 'file' ? { path: st.source.path, name: st.source.name, ext: st.source.ext, sheet: st.source.sheet } : st.source ? { rows: st.source.rows, name: st.source.name } : null,
+      calculated: st.calculated,
+      plots: st.plots.map((v) => v.spec),
+      table: { open: st.table.open, source: st.table.source, height: st.table.height },
+    };
+  }
+
+  async function saveProject(saveAs = false) {
+    if (!st.info) return false;
+    const state = projectState();
+    state.filters = await client.call('filterState');
+    const base = st.info.name.replace(/\.[^.]+(\s*\(.*\))?$/, '');
+    const res = await window.office.data.saveProject({ name: `${base}.workplot`, path: saveAs ? null : st.projectPath, data: JSON.stringify(state, null, 1) });
+    if (res?.error) {
+      toast(res.error, 'error');
+      return false;
+    }
+    if (!res) return false;
+    st.projectPath = res.path;
+    toast(`Saved ${res.name}`);
+    return true;
+  }
+
+  async function restoreProject({ project, projectPath, handle }) {
+    st.projectPath = projectPath;
+    if (project.source?.rows) {
+      const info = await client.call('fromRows', project.source.rows, project.source.name || 'Sheet');
+      st.source = { kind: 'sheet', name: project.source.name, rows: project.source.rows };
+      await afterLoad(info, project);
+      return;
+    }
+    if (!handle) {
+      toast(`Can't find the data file ${project.source?.path || ''}. Open it again with Open Data.`, 'error');
+      return;
+    }
+    await loadSource(handle, { sheet: project.source?.sheet ?? null, restore: project });
+    await refitAll();
+  }
+
+  // ---------- panels ----------
+  function applyPanels() {
+    root.classList.toggle('no-left', !st.panels.left);
+    root.classList.toggle('no-right', !st.panels.right);
+    tableWrap.hidden = !st.table.open || !st.info;
+    tableWrap.style.height = `${st.table.height}px`;
+    for (const v of st.plots) v.onResize();
+  }
+
+  function togglePanel(which) {
+    if (which === 'table') {
+      st.table.open = !st.table.open;
+      applyPanels();
+      tableRender();
+    } else {
+      st.panels[which] = !st.panels[which];
+      applyPanels();
+    }
+    shell.refresh?.();
+  }
+
+  function renderStatus() {
+    if (!st.info) {
+      statusEl.textContent = '';
+      return;
+    }
+    const i = st.info;
+    statusEl.textContent = `${fmtInt(i.rows)} rows · ${i.columns.length} columns${i.filtered !== i.rows ? `    Filtered: ${fmtInt(i.filtered)}` : ''}${i.marked ? `    Marked: ${fmtInt(i.marked)}` : ''}`;
+  }
+
+  function renderAll() {
+    renderLeft();
+    renderRight();
+    renderTableHead();
+    applyPanels();
+    colWidths = [];
+    tableReset();
+    renderStatus();
+    shell.refresh?.();
+  }
+
+  // ---------- AI ----------
+  async function aiContext() {
+    if (!st.info) return '<analysis>No data is open in the analysis workspace yet.</analysis>';
+    const summary = await client.call('summary').catch(() => []);
+    const filters = await client.call('filterState').catch(() => ({}));
+    const cols = summary.map((c) => {
+      const base = `- ${c.name} (${c.type}${c.expr ? `, calculated = ${c.expr}` : ''}${c.missing ? `, ${c.missing} empty` : ''})`;
+      if (c.type === 'string') return `${base}: ${c.distinct} distinct; most common ${c.top.map(([v, n]) => `"${v}" (${n})`).join(', ')}`;
+      return `${base}: min ${c.min}, max ${c.max}${c.mean != null ? `, mean ${c.mean}` : ''}`;
+    }).join('\n');
+    const plots = st.plots.map((v, i) => `${i + 1}. ${v.spec.type}${v === st.active ? ' (selected)' : ''}: ${JSON.stringify({ title: v.spec.title || autoTitle(v.spec), x: v.spec.x, y: v.spec.y, color: v.spec.color, agg: v.spec.agg, fits: (v.spec.fits || []).filter((f) => f.result).map((f) => `${f.result.label || f.model} ${fitText(f.result)}`) })}`).join('\n') || '(none)';
+    return `<analysis dataset="${escapeHtml(st.info.name)}" rows="${st.info.rows}" filtered="${st.info.filtered}" marked="${st.info.marked}">
+<columns>
+${cols}
+</columns>
+<filters>${JSON.stringify(filters.columns || {})}${filters.expressions?.length ? ` formula: ${filters.expressions.join(' and ')}` : ''}</filters>
+<plots>
+${plots}
+</plots>
+</analysis>`;
+  }
+
+  async function applyPlan(plan) {
+    const before = { plots: st.plots.map((v) => JSON.parse(JSON.stringify(v.spec))), filters: await client.call('filterState').catch(() => null), calculated: [...st.calculated] };
+    const notes = [];
+    for (const c of plan.calculated || []) {
+      if (!c.name || !c.expression) continue;
+      try {
+        const res = await client.call('addCalculated', c.name, c.expression);
+        st.calculated = st.calculated.filter((x) => x.name !== res.name);
+        st.calculated.push({ name: res.name, expr: c.expression });
+        st.info = res.info;
+      } catch (err) {
+        notes.push(`Column ${c.name}: ${err.message}`);
+      }
+    }
+    for (const f of plan.filters || []) {
+      try {
+        if (f.kind === 'reset') st.info = await client.call('resetFilters');
+        else if (f.kind === 'expression' && f.expression) st.info = await client.call('setExpressionFilters', [f.expression]);
+        else if (f.kind === 'range' && f.column) {
+          const col = st.info.columns.find((c) => c.name.toLowerCase() === f.column.toLowerCase());
+          const parse = (t) => (t === '' || t == null ? null : col?.type === 'date' ? Date.parse(t) : Number(t));
+          st.info = await client.call('setFilter', col?.name || f.column, { kind: 'range', min: parse(f.min), max: parse(f.max), missing: false });
+        } else if (f.kind === 'values' && f.column) st.info = await client.call('setFilter', f.column, f.values?.length ? { kind: 'values', values: f.values } : null);
+        else if (f.kind === 'clear' && f.column) st.info = await client.call('setFilter', f.column, null);
+      } catch (err) {
+        notes.push(`Filter on ${f.column || 'rows'}: ${err.message}`);
+      }
+    }
+    if (plan.clearPlots) clearPlots();
+    const made = [];
+    for (const p of plan.plots || []) {
+      const ys = [...(p.y || []).map((col) => ({ col })), ...(p.rightAxis || []).map((col) => ({ col, axis: 'right' }))];
+      const spec = { type: p.type, title: p.title || null, x: p.x || null, y: ys, color: p.color || null, agg: p.agg || (p.type === 'bar' ? (ys.length ? 'mean' : 'count') : undefined), bins: p.bins || null, z: p.value || null, logX: !!p.logX, logY: !!p.logY };
+      const v = addPlot(spec, { quiet: true });
+      if (v) made.push(v);
+    }
+    renderAll();
+    refreshPlots();
+    for (const fit of plan.fits || []) {
+      const target = fit.plot >= 1 ? made[fit.plot - 1] : st.active;
+      if (!target) continue;
+      setActive(target);
+      await addFit(fit.model, { degree: fit.degree || 2, equation: fit.equation || undefined, series: 0, markedOnly: false });
+    }
+    await renderFilters();
+    st.undo = before;
+    if (notes.length) toast(notes.join(' · '), 'error');
+  }
+
+  async function undoPlan() {
+    const u = st.undo;
+    if (!u) return;
+    st.undo = null;
+    for (const c of st.calculated) {
+      if (!u.calculated.find((x) => x.name === c.name)) st.info = await client.call('removeColumn', c.name).catch(() => st.info);
+    }
+    st.calculated = u.calculated;
+    if (u.filters) st.info = await client.call('restoreFilters', u.filters);
+    clearPlots();
+    for (const s of u.plots) addPlot(s, { quiet: true });
+    renderAll();
+    refreshPlots();
+    toast('Undid the AI changes');
+  }
+
+  const PLAN_SCHEMA = {
+    type: 'object',
+    properties: {
+      reply: { type: 'string', description: 'Short Markdown answer for the user: what you did and what the plots show, or the answer to their question.' },
+      calculated: { type: 'array', description: 'New calculated columns, created before plots and filters.', items: { type: 'object', properties: { name: { type: 'string' }, expression: { type: 'string' } }, required: ['name', 'expression'], additionalProperties: false } },
+      filters: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['range', 'values', 'expression', 'clear', 'reset'] },
+            column: { type: 'string', description: 'Column name for range, values and clear; empty otherwise.' },
+            min: { type: 'string', description: 'Lower bound (number or ISO date); empty for none.' },
+            max: { type: 'string', description: 'Upper bound (number or ISO date); empty for none.' },
+            values: { type: 'array', items: { type: 'string' }, description: 'Values to keep for a text column.' },
+            expression: { type: 'string', description: 'Filter formula for kind expression, e.g. [Temp] > 20 and [Site] == "B".' },
+          },
+          required: ['kind', 'column', 'min', 'max', 'values', 'expression'],
+          additionalProperties: false,
+        },
+      },
+      clearPlots: { type: 'boolean', description: 'True to remove the existing plots first.' },
+      plots: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['scatter', 'line', 'bar', 'histogram', 'box', 'heatmap'] },
+            title: { type: 'string' },
+            x: { type: 'string', description: 'X column (category column for bar and box; empty for none).' },
+            y: { type: 'array', items: { type: 'string' }, description: 'Y columns on the left axis. Empty for histogram, or for a bar chart of row counts.' },
+            rightAxis: { type: 'array', items: { type: 'string' }, description: 'Y columns on a second axis on the right (line or scatter).' },
+            color: { type: 'string', description: 'Column to color or group by; empty for none.' },
+            agg: { type: 'string', enum: ['count', 'sum', 'mean', 'median', 'min', 'max', 'std'] },
+            bins: { type: 'integer', description: 'Histogram or heat map bins; 0 for automatic.' },
+            value: { type: 'string', description: 'Heat map value column (averaged per cell); empty to count rows.' },
+            logX: { type: 'boolean' },
+            logY: { type: 'boolean' },
+          },
+          required: ['type', 'title', 'x', 'y', 'rightAxis', 'color', 'agg', 'bins', 'value', 'logX', 'logY'],
+          additionalProperties: false,
+        },
+      },
+      fits: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            plot: { type: 'integer', description: '1-based index into the plots you create here, or 0 for the selected existing plot.' },
+            model: { type: 'string', enum: Object.keys(MODELS) },
+            degree: { type: 'integer', description: 'Polynomial degree (2-9); 0 otherwise.' },
+            equation: { type: 'string', description: 'Custom equation such as y = a*exp(-x/b)+c; empty otherwise.' },
+          },
+          required: ['plot', 'model', 'degree', 'equation'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['reply', 'calculated', 'filters', 'clearPlots', 'plots', 'fits'],
+    additionalProperties: false,
+  };
+
+  const aiQuick = {
+    label: 'Make plots and filters',
+    icon: 'chartScatter',
+    working: 'Planning the analysis',
+    prompt: [
+      'You are helping in the analysis workspace of Plot. The open dataset is described in <analysis>. Answer the request below by returning a plan.',
+      'Use exact column names from <columns>. Formulas refer to columns as [Column name] and support + - * / ^, comparisons, and, or, not, if(c, a, b), abs, sqrt, exp, ln, log10, round, min, max, mean, std, cumsum, diff, lag, movavg and contains.',
+      'Only create plots, filters, calculated columns or fits the request asks for or clearly needs; leave lists empty otherwise. For a plain question, answer it in reply and leave everything else empty.',
+      'Plot types: scatter and line (x and y numeric or date; a line can take several y columns and rightAxis for a second y axis), bar (category x and an aggregated y, or row counts), histogram (one numeric x), box (numeric y grouped by an optional category x) and heatmap (x and y, optional value).',
+      'Fit models: linear, poly (with degree), exp, expdecay, power, log, gauss, lorentz, boltzmann, logistic, michaelis, custom (with equation). Fits only apply to scatter or line plots.',
+    ].join('\n'),
+    format: PLAN_SCHEMA,
+    autoApply: true,
+    summary: (d) => d.reply || 'Done.',
+    history: (d) => `${d.reply}\n(Applied: ${d.plots.length} plots, ${d.filters.length} filters, ${d.calculated.length} calculated columns, ${d.fits.length} fits.)`,
+    actions: (d) => [
+      { label: 'Apply', icon: 'chartScatter', run: () => applyPlan(d) },
+      ...(d.plots.length || d.filters.length || d.calculated.length || d.fits.length ? [{ label: 'Undo these changes', icon: 'undo', run: () => undoPlan() }] : []),
+    ],
+  };
+
+  // ---------- ribbon ----------
+  const needData = () => !!st.info;
+  const hasPlot = () => !!st.active;
+  const ribbonTab = {
+    id: 'analyze',
+    label: 'Analyze',
+    groups: [
+      { label: 'Data', items: [
+        { type: 'big', icon: 'database', label: 'Open Data', title: 'Open a large CSV, TSV, Parquet or Excel file', run: () => openData() },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'table', label: 'Use Sheet Data', run: () => useSheet() },
+          { type: 'small', icon: 'colCalc', label: 'Calculated Column', run: () => calculatedColumn(), enabled: needData },
+          { type: 'menu', icon: 'export', label: 'Export Data', items: () => [
+            { label: 'Filtered rows as CSV…', icon: 'grid', run: () => exportCsv('filtered') },
+            { label: 'Marked rows as CSV…', icon: 'mark', run: () => exportCsv('marked') },
+            ...(sendToSheet ? [{ label: 'Marked rows to a new sheet', icon: 'table', run: () => toSheet('marked') }, { label: 'Filtered rows to a new sheet', icon: 'table', run: () => toSheet('filtered') }] : []),
+          ] },
+        ] },
+      ] },
+      { label: 'Visualizations', items: [
+        { type: 'big', icon: 'chartScatter', label: 'Scatter', run: () => addPlot(newSpec('scatter')), enabled: needData },
+        { type: 'big', icon: 'chartLine', label: 'Line', run: () => addPlot(newSpec('line')), enabled: needData },
+        { type: 'big', icon: 'chartBar', label: 'Bar', run: () => addPlot(newSpec('bar')), enabled: needData },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'chartHist', label: 'Histogram', run: () => addPlot(newSpec('histogram')), enabled: needData },
+          { type: 'small', icon: 'chartBox', label: 'Box Plot', run: () => addPlot(newSpec('box')), enabled: needData },
+          { type: 'small', icon: 'chartHeat', label: 'Heat Map', run: () => addPlot(newSpec('heatmap')), enabled: needData },
+        ] },
+        { type: 'big', icon: 'chartMulti', label: 'Multi-Axis', title: 'Line plot with a second Y axis', run: () => addPlot(newSpec('multi')), enabled: needData },
+      ] },
+      { label: 'Filter & Mark', items: [
+        { type: 'stack', items: [
+          { type: 'small', icon: 'filterOff', label: 'Reset Filters', run: async () => { await afterFilter(await client.call('resetFilters')); renderFilters(); }, enabled: needData },
+          { type: 'small', icon: 'markFilter', label: 'Filter to Marked', run: async () => { if (!st.info?.marked) return toast('Mark some rows first by dragging across a plot'); await afterFilter(await client.call('setRowset', 'marked')); renderFilters(); return undefined; }, enabled: needData },
+          { type: 'small', icon: 'filterOff', label: 'Remove Marked', run: async () => { if (!st.info?.marked) return toast('Mark some rows first by dragging across a plot'); await afterFilter(await client.call('setRowset', 'unmarked')); renderFilters(); return undefined; }, enabled: needData },
+        ] },
+        { type: 'big', icon: 'markClear', label: 'Clear Marking', title: 'Clear marking (Esc)', run: () => clearMark(), enabled: () => !!st.info?.marked },
+      ] },
+      { label: 'Analysis', items: [
+        { type: 'menu', big: true, icon: 'fitCurve', label: 'Fit Curve', items: () => Object.entries(MODELS).map(([id, m]) => ({ label: `${m.label}${id === 'poly' || id === 'custom' ? '…' : ''}`, icon: 'fitCurve', run: () => addFit(id) })) },
+      ] },
+      { label: 'Export', items: [
+        { type: 'stack', items: [
+          { type: 'small', icon: 'image', label: 'Plot as PNG', run: () => exportPlot('png'), enabled: hasPlot },
+          { type: 'small', icon: 'export', label: 'Plot as SVG', run: () => exportPlot('svg'), enabled: hasPlot },
+          { type: 'small', icon: 'pdf', label: 'Plot as PDF', run: () => exportPlot('pdf'), enabled: hasPlot },
+        ] },
+        { type: 'big', icon: 'save', label: 'Save Analysis', title: 'Save plots, filters and formulas as a .workplot file', run: () => saveProject(), enabled: needData },
+      ] },
+      { label: 'Show', items: [
+        { type: 'stack', items: [
+          { type: 'small', icon: 'panelLeft', label: 'Data Panel', run: () => togglePanel('left'), active: () => st.panels.left },
+          { type: 'small', icon: 'panel', label: 'Filters', run: () => togglePanel('right'), active: () => st.panels.right },
+          { type: 'small', icon: 'panelBottom', label: 'Rows', run: () => togglePanel('table'), active: () => st.table.open },
+        ] },
+      ] },
+      { label: 'AI', items: [{ type: 'big', icon: 'sparkle', label: 'Ask AI', title: 'Describe the plots or filters you want', run: () => shell.claude?.runQuick(aiQuick) }] },
+    ],
+  };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && root.isConnected && root.offsetParent && st.info?.marked && !document.querySelector('.modal-back')) clearMark();
+  });
+
+  async function startFromLaunch(analysis) {
+    onShow?.();
+    const handle = analysis.path ? await window.office.data.launch() : null;
+    if (handle?.error) return toast(handle.error, 'error');
+    if (analysis.project) return restoreProject({ project: analysis.project, projectPath: analysis.projectPath, handle });
+    if (handle) return loadSource(handle);
+    return undefined;
+  }
+
+  return {
+    el: root,
+    statusEl,
+    ribbonTab,
+    aiQuick,
+    aiContext,
+    hasData: () => !!st.info,
+    openData,
+    useSheet,
+    startFromLaunch,
+    saveProject,
+    resize: () => applyPanels(),
+  };
+}

@@ -1,10 +1,12 @@
 import '../shared/ui.css';
 import './sheets.css';
+import './analysis/analysis.css';
 import cellref from '../../common/cellref.js';
 import { computeBook, format, isError } from './engine.js';
 import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
+import { createAnalysis } from './analysis/workspace.js';
 
 const { colName, mapRefs, parseRef, rangeName, rect, refName, shiftFormula } = cellref;
 
@@ -848,6 +850,10 @@ function renderTabs() {
     };
     tabsBar.append(t);
   });
+  const an = h('button', `sheet-tab sheet-analysis${analysisOn ? ' active' : ''}`, `${icon('chartScatter', 14)}<span>Analysis</span>`);
+  an.title = 'Plot and analyze large data';
+  an.onclick = () => shell.ribbon.select('analyze');
+  tabsBar.append(an);
   const add = h('button', 'sheet-add', '+');
   add.title = 'New sheet';
   add.onclick = () => {
@@ -891,6 +897,7 @@ function deleteSheet(i) {
 
 function switchSheet(i) {
   if (editing) commitEdit();
+  if (analysisOn) shell.ribbon.select('home');
   book.active = i;
   sel = { a: { row: 0, col: 0 }, f: { row: 0, col: 0 } };
   buildGrid();
@@ -1011,6 +1018,74 @@ const QUICK = {
   clean: { label: 'Clean up the selection', icon: 'wand', prompt: 'Clean up the selected cells: fix inconsistent capitalisation, spelling, spacing, date and number formats. Keep the same number of rows and columns and the same order. Put the cleaned header row (if the first selected row is a header) in "columns" and the rest in "rows"; if there is no header, leave "columns" empty.', format: TABLE_SCHEMA, working: 'Cleaning up', summary: (d) => d.summary, actions: (d) => [{ label: 'Replace selection', icon: 'replace', run: () => { const s = selRect(); sel = { a: { row: s.r0, col: s.c0 }, f: sel.f }; writeMatrix(d.columns.length ? [d.columns, ...d.rows] : d.rows); } }] },
   explain: { label: 'Explain the active cell’s formula', icon: 'help', prompt: 'Explain what the formula in the active cell does, step by step, in plain language. If it has a problem, suggest a fix in a ```excel code block.', actions: formulaActions },
 };
+
+// ---------- analysis workspace ----------
+let analysisOn = false;
+const GRID_TABS = new Set(['home', 'insert', 'formulas', 'data', 'view']);
+
+// The current sheet's values as rows, for analysis.
+function sheetMatrix() {
+  const e = extent();
+  if (!Object.keys(sheet().cells).length) return null;
+  const out = [];
+  for (let r = 0; r <= e.rows; r += 1) {
+    const row = [];
+    for (let c = 0; c <= e.cols; c += 1) {
+      const v = valueAt(r, c);
+      row.push(v == null || v === '' || isError(v) ? null : typeof v === 'object' ? format(v) : v);
+    }
+    out.push(row);
+  }
+  return { matrix: out, name: sheet().name };
+}
+
+function matrixToSheet(matrix, name) {
+  snapshot();
+  const cells = {};
+  matrix.forEach((row, r) => row.forEach((v, c) => {
+    if (v !== '' && v != null) cells[refName(r, c)] = r === 0 ? { v: String(v), s: { b: true } } : { v: String(v) };
+  }));
+  book.sheets.push({ name: uniqueName(name), cells, cols: {} });
+  switchSheet(book.sheets.length - 1);
+  toast(`Added sheet ${book.sheets[book.sheets.length - 1].name}`);
+}
+
+const analysis = createAnalysis({
+  getShell: () => shell,
+  onSheetData: sheetMatrix,
+  onShow: () => shell.ribbon.select('analyze'),
+  sendToSheet: matrixToSheet,
+});
+
+const SHEET_AI = {};
+function setAnalysisMode(on) {
+  if (on === analysisOn) return;
+  if (editing) commitEdit();
+  analysisOn = on;
+  wrap.classList.toggle('analysis-mode', on);
+  analysis.el.hidden = !on;
+  statText.hidden = on;
+  zoomBox.hidden = on;
+  analysis.statusEl.hidden = !on;
+  renderTabs();
+  const cfg = shell.claude?.cfg;
+  if (cfg) {
+    if (!SHEET_AI.system) Object.assign(SHEET_AI, { system: cfg.system, quick: cfg.quick, placeholder: cfg.placeholder, intro: cfg.intro });
+    if (on) {
+      Object.assign(cfg, {
+        system: 'You are the AI built into Plot, a spreadsheet and data analysis app. In the analysis workspace you build plots, filters, calculated columns and curve fits over large datasets by returning a structured plan. Be concise and use the exact column names you are given.',
+        quick: [analysis.aiQuick],
+        defaultQuick: analysis.aiQuick,
+        placeholder: 'Ask for a plot, a filter or a fit…',
+        intro: 'Describe the plots you want, for example “plot temperature over time for site B with a linear fit” or “show only rows from 2024 where pressure is above 2”.',
+      });
+    } else Object.assign(cfg, SHEET_AI, { defaultQuick: null });
+    if (!shell.claude.history.length) shell.claude.reset();
+    shell.claude.input.placeholder = cfg.placeholder;
+  }
+  if (on) analysis.resize();
+  else scroller.focus({ preventScroll: true });
+}
 
 // ---------- ribbon ----------
 const active = (key) => () => !!cellAt(sel.a.row, sel.a.col)?.s?.[key];
@@ -1168,7 +1243,11 @@ const claudeTab = {
 const shell = await createShell({
   app: 'sheets',
   defaultExt: 'xlsx',
-  tabs: [homeTab, insertTab, formulasTab, dataTab, viewTab],
+  tabs: [homeTab, insertTab, formulasTab, dataTab, analysis.ribbonTab, viewTab],
+  onTab: (id) => {
+    if (id === 'analyze') setAnalysisMode(true);
+    else if (GRID_TABS.has(id)) setAnalysisMode(false);
+  },
   claudeTab,
   undo,
   redo,
@@ -1184,7 +1263,13 @@ const shell = await createShell({
     }
     return out;
   },
-  customSave: () => liveSave(),
+  customSave: async () => {
+    if (analysisOn && analysis.hasData()) {
+      await analysis.saveProject();
+      return true;
+    }
+    return liveSave();
+  },
   exports: [{ label: 'CSV (current sheet)', detail: 'Values of the current sheet, comma-separated.', icon: 'grid', ext: 'csv' }],
   pdfOptions: () => ({ landscape: true }),
   claude: {
@@ -1196,6 +1281,7 @@ const shell = await createShell({
       'When you give a formula the user can insert, put the formula alone in a ```excel code block. When you give tabular data, use a Markdown table. Be concise.',
     ].join('\n'),
     context: () => {
+      if (analysisOn) return analysis.aiContext();
       const s = selRect();
       const multi = s.r0 !== s.r1 || s.c0 !== s.c1;
       const sels = multi ? `\n<selection range="${rangeName(trimmedSelection())}">\n${selectionMatrix(true).slice(0, 200).map((r) => r.join('\t')).join('\n')}\n</selection>` : '';
@@ -1440,6 +1526,9 @@ async function liveSave() {
   return true;
 }
 
+wrap.insertBefore(analysis.el, tabsBar);
+analysis.el.hidden = true;
+analysis.statusEl.hidden = true;
 shell.workspace.append(wrap);
 const zoomBox = h('div', 'zoom', '<button title="Zoom out">−</button><input type="range" min="40" max="250"><button title="Zoom in">+</button><span></span>');
 const zoomRange = zoomBox.querySelector('input');
@@ -1447,7 +1536,7 @@ const zoomLabel = zoomBox.querySelector('span');
 zoomRange.oninput = () => setZoom(Number(zoomRange.value));
 zoomBox.querySelectorAll('button')[0].onclick = () => setZoom(zoom - 10);
 zoomBox.querySelectorAll('button')[1].onclick = () => setZoom(zoom + 10);
-shell.statusLeft.append(statText);
+shell.statusLeft.append(statText, analysis.statusEl);
 shell.statusRight.append(zoomBox);
 
 if (shell.info.file?.data?.sheets) {
@@ -1463,6 +1552,7 @@ refreshCells();
 setZoom(100);
 scroller.focus();
 if (shell.info.file?.generated) shell.markDirty();
+if (shell.info.file?.analysis) analysis.startFromLaunch(shell.info.file.analysis);
 if (shell.info.file?.cloud?.live) {
   shell.statusRight.prepend(liveBadge);
   liveStart();
