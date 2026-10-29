@@ -263,7 +263,7 @@ export async function createShell(opts) {
     },
   };
 
-  const ribbon = new Ribbon(ribbonHost, { tabs, accent: meta.accent, onFile: () => shell.openBackstage() });
+  const ribbon = new Ribbon(ribbonHost, { tabs, accent: meta.accent, onFile: () => shell.openBackstage(), onSelect: (id) => opts.onTab?.(id) });
   const backstage = new Backstage(shell, opts, meta);
   root.append(backstage.node);
 

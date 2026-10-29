@@ -57,7 +57,11 @@
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "fast-formula-parser": "^1.0.19",
-    "pdfjs-dist": "^6.4.299"
+    "pdfjs-dist": "^6.4.299",
+    "fflate": "^0.8.3",
+    "hyparquet": "^1.32.0",
+    "hyparquet-compressors": "^1.1.2",
+    "hyparquet-writer": "^0.18.0"
   },
   "build": {
     "appId": "tools.rea.office",
