@@ -12,6 +12,7 @@ const cloud = require('./cloud');
 const attachments = require('./attachments');
 const generated = require('./generated');
 const updates = require('./updates');
+const latex = require('./latex');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
 const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
@@ -105,7 +106,7 @@ function openWindow(appName, file = null) {
       if (/^https?:/.test(url)) shell.openExternal(url);
     }
   });
-  win.loadFile(path.join(DIST, `${appName}.html`));
+  win.loadFile(path.join(DIST, `${file?.latex ? 'latex' : appName}.html`));
   return win;
 }
 
@@ -301,6 +302,74 @@ ipcMain.handle('app:new-with', safe(async (e, spec) => {
   openWindow(info.app, info);
   return { ok: true };
 }));
+// LaTeX projects. Every call works inside the folder this window opened.
+function latexRoot(e) {
+  const root = launches.get(e.sender.id)?.file?.latex?.root;
+  if (!root) throw new Error('This window has no LaTeX project open.');
+  return root;
+}
+
+async function openLatexFolder(win, { create = false } = {}) {
+  const res = await dialog.showOpenDialog(win, {
+    title: create ? 'Choose a folder for the new LaTeX project' : 'Open a LaTeX project folder',
+    buttonLabel: create ? 'Create project here' : 'Open project',
+    properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+  });
+  const root = res.filePaths[0];
+  if (res.canceled || !root) return null;
+  await require('fs/promises').mkdir(root, { recursive: true });
+  await latex.scaffold(root);
+  const main = await latex.mainFile(root);
+  if (main) settings.addRecent('docs', path.join(root, main));
+  openWindow('docs', { app: 'docs', path: main ? path.join(root, main) : null, name: path.basename(root), ext: 'tex', latex: { root, main, open: main } });
+  if (win && launches.get(win.webContents.id)?.app === 'home') win.close();
+  return { ok: true };
+}
+
+ipcMain.handle('latex:open-folder', safe((e, opts) => openLatexFolder(senderWin(e), opts || {})));
+ipcMain.handle('latex:list', safe((e) => latex.list(latexRoot(e))));
+ipcMain.handle('latex:sources', safe((e) => latex.sources(latexRoot(e))));
+ipcMain.handle('latex:read', safe((e, rel) => latex.read(latexRoot(e), rel)));
+ipcMain.handle('latex:write', safe((e, rel, text) => latex.write(latexRoot(e), rel, text)));
+ipcMain.handle('latex:create', safe((e, rel, opts) => latex.create(latexRoot(e), rel, opts || {})));
+ipcMain.handle('latex:rename', safe((e, from, to) => latex.rename(latexRoot(e), from, to)));
+ipcMain.handle('latex:delete', safe(async (e, rel) => {
+  const full = latex.inside(latexRoot(e), rel);
+  if (full === latexRoot(e)) throw new Error('Can’t delete the project folder here.');
+  await shell.trashItem(full);
+  return { ok: true };
+}));
+ipcMain.handle('latex:import-paths', safe((e, paths, dir) => latex.importPaths(latexRoot(e), (Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string').slice(0, 100), dir)));
+ipcMain.handle('latex:upload', safe(async (e, dir) => {
+  const res = await dialog.showOpenDialog(senderWin(e), {
+    title: 'Add files to the project',
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'LaTeX project files', extensions: ['tex', 'bib', 'png', 'jpg', 'jpeg', 'pdf', 'eps', 'svg', 'sty', 'cls', 'bst', 'csv', 'txt'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  return res.canceled ? { ok: true, added: [] } : latex.importPaths(latexRoot(e), res.filePaths, dir);
+}));
+ipcMain.handle('latex:engines', () => latex.engines());
+ipcMain.handle('latex:compile', safe((e, opts) => latex.compile(latexRoot(e), opts || {})));
+ipcMain.handle('latex:stop', safe((e) => latex.stop(latexRoot(e))));
+ipcMain.handle('latex:reveal', safe((e, rel) => shell.showItemInFolder(latex.inside(latexRoot(e), rel || ''))));
+ipcMain.handle('latex:save-pdf', safe(async (e, main) => {
+  const pdf = await latex.lastPdf(latexRoot(e), main);
+  if (!pdf) throw new Error('Compile the project first.');
+  const res = await dialog.showSaveDialog(senderWin(e), {
+    defaultPath: path.join(latexRoot(e), path.basename(pdf)),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+  if (res.canceled || !res.filePath) return null;
+  await require('fs/promises').copyFile(pdf, res.filePath);
+  return { ok: true, path: res.filePath, name: path.basename(res.filePath) };
+}));
+ipcMain.handle('latex:open-pdf-external', safe(async (e, main) => {
+  const pdf = await latex.lastPdf(latexRoot(e), main);
+  if (!pdf) throw new Error('Compile the project first.');
+  await shell.openPath(pdf);
+  return { ok: true };
+}));
+
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
 ipcMain.handle('ai:models', (e, provider, key) => require('./ai').models(provider, key));
 

@@ -57,6 +57,24 @@ contextBridge.exposeInMainWorld('office', {
     sheet: (local, op, args) => ipcRenderer.invoke('cloud:sheet', local, op, args),
     share: (local, op, args) => ipcRenderer.invoke('cloud:share', local, op, args),
   },
+  latex: {
+    openFolder: (opts) => ipcRenderer.invoke('latex:open-folder', opts),
+    list: () => ipcRenderer.invoke('latex:list'),
+    sources: () => ipcRenderer.invoke('latex:sources'),
+    read: (rel) => ipcRenderer.invoke('latex:read', rel),
+    write: (rel, text) => ipcRenderer.invoke('latex:write', rel, text),
+    create: (rel, opts) => ipcRenderer.invoke('latex:create', rel, opts),
+    rename: (from, to) => ipcRenderer.invoke('latex:rename', from, to),
+    remove: (rel) => ipcRenderer.invoke('latex:delete', rel),
+    upload: (dir) => ipcRenderer.invoke('latex:upload', dir),
+    importFiles: (files, dir) => ipcRenderer.invoke('latex:import-paths', [...files].map((f) => webUtils.getPathForFile(f)), dir),
+    engines: () => ipcRenderer.invoke('latex:engines'),
+    compile: (opts) => ipcRenderer.invoke('latex:compile', opts),
+    stop: () => ipcRenderer.invoke('latex:stop'),
+    reveal: (rel) => ipcRenderer.invoke('latex:reveal', rel),
+    savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
+    openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
+  },
   claude: {
     // Streams a response. onEvent receives {type:'text'|'done'|'error', ...}.
     stream: (id, payload, onEvent) => {
