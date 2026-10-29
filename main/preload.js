@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const listeners = new Map();
 ipcRenderer.on('claude:event', (e, evt) => {
@@ -26,12 +26,22 @@ contextBridge.exposeInMainWorld('office', {
   fullscreen: (on) => ipcRenderer.invoke('app:fullscreen', on),
   recent: () => ipcRenderer.invoke('app:recent'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  newWith: (spec) => ipcRenderer.invoke('app:new-with', spec),
   onSaveAndClose: (fn) => {
     saveAndClose = fn;
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch) => ipcRenderer.invoke('settings:set', patch),
+  },
+  cloud: {
+    status: () => ipcRenderer.invoke('cloud:status'),
+    connect: (id) => ipcRenderer.invoke('cloud:connect', id),
+    disconnect: (id) => ipcRenderer.invoke('cloud:disconnect', id),
+    list: (id, opts) => ipcRenderer.invoke('cloud:list', id, opts),
+    open: (id, file) => ipcRenderer.invoke('cloud:open', id, file),
+    saveNew: (req) => ipcRenderer.invoke('cloud:save-new', req),
+    sheet: (local, op, args) => ipcRenderer.invoke('cloud:sheet', local, op, args),
   },
   claude: {
     // Streams a response. onEvent receives {type:'text'|'done'|'error', ...}.
@@ -41,5 +51,8 @@ contextBridge.exposeInMainWorld('office', {
     },
     cancel: (id) => ipcRenderer.send('claude:cancel', id),
     verify: (key) => ipcRenderer.invoke('claude:verify', key),
+    attach: () => ipcRenderer.invoke('claude:attach-dialog'),
+    // Dropped File objects: the path is only readable here in the preload.
+    attachFiles: (files) => ipcRenderer.invoke('claude:attach-paths', [...files].map((f) => webUtils.getPathForFile(f))),
   },
 });

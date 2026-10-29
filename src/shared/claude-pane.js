@@ -5,11 +5,13 @@
 //   context()        string describing the document/selection, sent with each request
 //   quick            [{ label, icon, prompt, input?, format?, render?, actions? }] one-click actions
 //   actions(text)    buttons shown under a normal answer, e.g. Insert / Replace
+//   defaultQuick     quick action used for typed messages (the Claude app makes files)
 // A quick action with `format` asks for structured JSON; its `actions(json)` apply it.
+// Files can be attached with the paperclip or dropped on the pane; they go with the next message.
 
 import { marked } from 'marked';
 import { icon } from './icons.js';
-import { escapeHtml, h, settingsForm } from './shell.js';
+import { escapeHtml, h, settingsForm, toast } from './shell.js';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -62,18 +64,39 @@ export class ClaudePane {
     this.log = h('div', 'cp-log');
     this.body.append(this.setup, this.log);
     const composer = h('form', 'cp-composer');
+    this.attached = [];
+    this.chipsEl = h('div', 'cp-files');
+    const attach = h('button', 'cp-attach', icon('attach', 18));
+    attach.type = 'button';
+    attach.title = 'Attach files (PDF, images, Word, Excel, CSV, text)';
+    attach.onclick = async () => this.addFiles(await window.office.claude.attach());
     this.input = h('textarea');
     this.input.rows = 3;
     this.input.placeholder = cfg.placeholder || 'Ask Claude…';
     this.send = h('button', 'cp-send', icon('send', 18));
     this.send.type = 'submit';
     this.send.title = 'Send (Enter)';
-    composer.append(this.input, this.send);
+    composer.append(this.chipsEl, attach, this.input, this.send);
+    host.addEventListener('dragover', (e) => {
+      if ([...(e.dataTransfer?.types || [])].includes('Files')) {
+        e.preventDefault();
+        host.classList.add('cp-drop');
+      }
+    });
+    host.addEventListener('dragleave', (e) => {
+      if (!host.contains(e.relatedTarget)) host.classList.remove('cp-drop');
+    });
+    host.addEventListener('drop', async (e) => {
+      host.classList.remove('cp-drop');
+      if (!e.dataTransfer?.files?.length) return;
+      e.preventDefault();
+      this.addFiles(await window.office.claude.attachFiles(e.dataTransfer.files));
+    });
     composer.onsubmit = (e) => {
       e.preventDefault();
       if (this.busy) this.stop();
-      else if (this.input.value.trim()) {
-        this.ask(this.input.value.trim());
+      else if (this.input.value.trim() || this.attached.length) {
+        this.ask(this.input.value.trim() || 'Take a look at the attached files.');
         this.input.value = '';
       }
     };
@@ -87,6 +110,31 @@ export class ClaudePane {
     host.append(head, this.body, composer);
     this.reset();
     this.loadSettings();
+  }
+
+  addFiles(list) {
+    for (const f of list || []) {
+      if (f.error) toast(f.error, 'error');
+      else this.attached.push(f);
+    }
+    this.drawFiles();
+    this.input.focus();
+  }
+
+  drawFiles() {
+    this.chipsEl.innerHTML = '';
+    for (const f of this.attached) {
+      const chip = h('span', 'cp-file', `${icon('attach', 12)}<span>${escapeHtml(f.name)}</span>`);
+      const x = h('button', '', '×');
+      x.type = 'button';
+      x.title = 'Remove';
+      x.onclick = () => {
+        this.attached = this.attached.filter((a) => a !== f);
+        this.drawFiles();
+      };
+      chip.append(x);
+      this.chipsEl.append(chip);
+    }
   }
 
   async loadSettings() {
@@ -154,6 +202,10 @@ export class ClaudePane {
       quick = this.pendingQuick;
       label = `${quick.label}: ${prompt}`;
       prompt = `${quick.prompt}\n\n${prompt}`;
+    } else if (!quick && this.cfg.defaultQuick) {
+      quick = this.cfg.defaultQuick;
+      label = prompt;
+      prompt = `${quick.prompt}\n\n${prompt}`;
     }
     this.pendingQuick = null;
     this.input.placeholder = this.cfg.placeholder || 'Ask Claude…';
@@ -164,10 +216,17 @@ export class ClaudePane {
       return;
     }
     const display = label || (quick ? quick.label : prompt);
+    const files = this.attached;
+    this.attached = [];
+    this.drawFiles();
     const context = this.cfg.context?.() || '';
-    const content = context ? `${context}\n\n<request>\n${prompt}\n</request>` : prompt;
-    const messages = [...this.history, { role: 'user', content }];
-    this.log.append(h('div', 'cp-msg user', escapeHtml(display)));
+    const note = files.length ? `\n\n(Attached: ${files.map((f) => f.name).join(', ')})` : '';
+    const content = context ? `${context}\n\n<request>\n${prompt}${note}\n</request>` : `${prompt}${note}`;
+    const ids = files.map((f) => f.id);
+    const messages = [...this.history, { role: 'user', content, attachments: ids }];
+    const userMsg = h('div', 'cp-msg user', escapeHtml(display));
+    if (files.length) userMsg.append(h('div', 'cp-msg-files', files.map((f) => `<span>${icon('attach', 12)} ${escapeHtml(f.name)}</span>`).join('')));
+    this.log.append(userMsg);
     const bubble = h('div', 'cp-msg assistant');
     const textEl = h('div', 'cp-text', '<span class="cp-typing"><i></i><i></i><i></i></span>');
     bubble.append(textEl);
@@ -215,7 +274,7 @@ export class ClaudePane {
         textEl.innerHTML = '<span class="muted">Stopped.</span>';
         return;
       }
-      this.history.push({ role: 'user', content: quick ? `${quick.label}: ${prompt}` : prompt });
+      this.history.push({ role: 'user', content: (quick ? `${quick.label}: ${prompt}` : prompt) + note, attachments: ids });
       let actions;
       if (structured) {
         let data = null;
@@ -229,7 +288,7 @@ export class ClaudePane {
           return;
         }
         textEl.innerHTML = markdownToHtml(quick.summary ? quick.summary(data) : 'Done.');
-        this.history.push({ role: 'assistant', content: quick.summary ? quick.summary(data) : text });
+        this.history.push({ role: 'assistant', content: quick.history ? quick.history(data) : quick.summary ? quick.summary(data) : text });
         actions = quick.actions(data);
         if (quick.autoApply) actions[0]?.run();
       } else {

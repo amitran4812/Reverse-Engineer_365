@@ -1,7 +1,7 @@
 {
   "name": "rea-office",
   "productName": "Rea Office",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "An Office-style desktop suite (documents, spreadsheets, presentations) with Claude built in.",
   "private": true,
   "license": "MIT",

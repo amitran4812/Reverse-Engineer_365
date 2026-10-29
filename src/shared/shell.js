@@ -5,6 +5,7 @@
 import { icon } from './icons.js';
 import { Ribbon } from './ribbon.js';
 import { ClaudePane } from './claude-pane.js';
+import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud } from './cloud.js';
 
 export const APPS = {
   docs: { title: 'Rea Docs', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
@@ -175,6 +176,7 @@ export async function createShell(opts) {
       shell.setTitle();
     },
     async save({ saveAs = false, ext } = {}) {
+      if (!saveAs && !ext && opts.customSave && (await opts.customSave())) return true;
       const payload = await opts.getSaveData();
       const baseName = state.name.replace(/\.[^.]+$/, '');
       const res = await window.office.save({
@@ -192,7 +194,28 @@ export async function createShell(opts) {
       state.path = res.path;
       state.name = res.name;
       shell.markClean();
-      toast(`Saved ${res.name}`);
+      toast(res.cloud ? `Saved ${res.name} to ${res.cloud}` : `Saved ${res.name}`);
+      return true;
+    },
+    async saveToCloud(provider) {
+      if (!(await ensureConnected(provider))) return false;
+      const picked = await cloudBrowser(provider, { mode: 'save' });
+      if (!picked) return false;
+      const baseName = state.name.replace(/\.[^.]+$/, '');
+      const got = await dialog({ title: 'Save as', fields: [{ name: 'name', label: 'File name', value: `${baseName}.${opts.defaultExt}` }], ok: 'Save' });
+      if (!got?.name?.trim()) return false;
+      let name = got.name.trim();
+      if (!/\.[a-z0-9]+$/i.test(name)) name += `.${opts.defaultExt}`;
+      const payload = await opts.getSaveData();
+      const res = await window.office.cloud.saveNew({ provider, folder: picked.folder, name, app: opts.app, payload });
+      if (res?.error) {
+        toast(res.error, 'error');
+        return false;
+      }
+      state.path = res.path;
+      state.name = res.name;
+      shell.markClean();
+      toast(`Saved ${res.name} to ${res.cloud}`);
       return true;
     },
     async exportPdf() {
@@ -292,7 +315,7 @@ class Backstage {
       { id: 'open', label: 'Open', icon: 'open' },
       '-',
       { id: 'save', label: 'Save', icon: 'save', run: () => this.close() || shell.save() },
-      { id: 'saveas', label: 'Save As', icon: 'saveAs', run: () => this.close() || shell.save({ saveAs: true }) },
+      { id: 'saveas', label: 'Save As', icon: 'saveAs' },
       { id: 'export', label: 'Export', icon: 'export' },
       { id: 'print', label: 'Print', icon: 'print', run: () => this.close() || shell.print() },
       '-',
@@ -349,7 +372,21 @@ class Backstage {
         this.close();
         window.office.openDialog(null);
       };
-      c.append(browse, h('h2', '', 'Recent'), await recentList(() => this.close()));
+      c.append(browse, cloudPlaces((id) => {
+        this.close();
+        openFromCloud(id, null);
+      }), h('h2', '', 'Recent'), await recentList(() => this.close()));
+    } else if (section === 'saveas') {
+      c.append(h('h1', '', 'Save As'));
+      const browse = h('button', 'bs-browse', `${icon('saveAs', 28)}<span>This PC: browse…</span>`);
+      browse.onclick = () => {
+        this.close();
+        this.shell.save({ saveAs: true });
+      };
+      c.append(browse, cloudPlaces((id) => {
+        this.close();
+        this.shell.saveToCloud(id);
+      }));
     } else if (section === 'export') {
       c.append(h('h1', '', 'Export'));
       const list = h('div', 'bs-exports');
@@ -371,12 +408,24 @@ class Backstage {
           mount();
           this.shell.claude?.loadSettings?.();
         });
-        c.querySelector('.settings-form')?.remove();
-        c.append(form);
+        const prev = c.querySelector('.settings-form');
+        if (prev) prev.replaceWith(form);
+        else c.append(form);
       };
       await mount();
+      c.append(await cloudSettings());
     }
   }
+}
+
+function cloudPlaces(run) {
+  const row = h('div', 'bs-places');
+  for (const cl of CLOUDS) {
+    const b = h('button', 'bs-browse', `${icon(cl.icon, 28)}<span>${cl.label}</span>`);
+    b.onclick = () => run(cl.id);
+    row.append(b);
+  }
+  return row;
 }
 
 async function recentList(onOpen) {

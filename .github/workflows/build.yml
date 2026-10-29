@@ -59,6 +59,8 @@ jobs:
               release/*.deb
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      HAS_CLOUD_IDS: ${{ secrets.REA_GOOGLE_CLIENT_ID != '' || secrets.REA_MICROSOFT_CLIENT_ID != '' }}
     permissions:
       contents: read
     steps:
@@ -70,6 +72,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Add cloud app IDs
+        # Optional repository secrets; without them users enter their own IDs in Options.
+        if: env.HAS_CLOUD_IDS == 'true'
+        shell: bash
+        env:
+          REA_GOOGLE_CLIENT_ID: ${{ secrets.REA_GOOGLE_CLIENT_ID }}
+          REA_GOOGLE_CLIENT_SECRET: ${{ secrets.REA_GOOGLE_CLIENT_SECRET }}
+          REA_MICROSOFT_CLIENT_ID: ${{ secrets.REA_MICROSOFT_CLIENT_ID }}
+        run: |
+          node -e 'require("fs").writeFileSync("main/cloud-config.json", JSON.stringify({
+            google: { clientId: process.env.REA_GOOGLE_CLIENT_ID || "", clientSecret: process.env.REA_GOOGLE_CLIENT_SECRET || "" },
+            onedrive: { clientId: process.env.REA_MICROSOFT_CLIENT_ID || "" },
+          }))'
       - name: Build installer
         run: npm run ${{ matrix.script }}
         env:

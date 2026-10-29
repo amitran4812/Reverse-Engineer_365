@@ -4,6 +4,7 @@ import cellref from '../../common/cellref.js';
 import { computeBook, format, isError } from './engine.js';
 import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { codeBlock } from '../shared/claude-pane.js';
+import { icon } from '../shared/icons.js';
 
 const { colName, mapRefs, parseRef, rangeName, rect, refName, shiftFormula } = cellref;
 
@@ -139,6 +140,7 @@ function refreshCells(prevRefs = []) {
   }
   drawSelection();
   updateStatus();
+  if (live && !live.applying) liveSoon(700);
 }
 
 // ---------- selection ----------
@@ -838,6 +840,7 @@ function renderTabs() {
       if (v?.action === 'dup') {
         snapshot();
         const copy = JSON.parse(JSON.stringify(s));
+        delete copy.gid;
         copy.name = uniqueName(`${s.name} (2)`);
         book.sheets.splice(i + 1, 0, copy);
         switchSheet(i + 1);
@@ -1181,6 +1184,7 @@ const shell = await createShell({
     }
     return out;
   },
+  customSave: () => liveSave(),
   exports: [{ label: 'CSV (current sheet)', detail: 'Values of the current sheet, comma-separated.', icon: 'grid', ext: 'csv' }],
   pdfOptions: () => ({ landscape: true }),
   claude: {
@@ -1202,6 +1206,239 @@ const shell = await createShell({
     actions: formulaActions,
   },
 });
+
+// ---------- live Google Sheets ----------
+// A Google Sheet opened from Drive stays connected: local edits (yours or
+// Claude's) are written through the Sheets API within a second, and changes
+// made elsewhere are pulled every few seconds. Values and formulas sync;
+// formatting comes from the copy opened at the start.
+let live = null;
+const POLL_MS = 4000;
+
+const liveBadge = h('span', 'live-badge', `${icon('live', 14)}<span>Connecting to Google Sheets…</span>`);
+function liveState(state, text) {
+  liveBadge.className = `live-badge ${state}`;
+  liveBadge.querySelector('span').textContent = text;
+  liveBadge.title = state === 'off' ? text : 'Edits sync with Google Sheets while this workbook is open.';
+}
+
+const cellsOf = (s) => Object.fromEntries(Object.entries(s.cells).filter(([, c]) => c.v !== '' && c.v != null).map(([ref, c]) => [ref, String(c.v)]));
+
+function setCellValue(s, ref, v) {
+  if (v === '' || v == null) {
+    if (s.cells[ref]?.s && Object.keys(s.cells[ref].s).length) s.cells[ref].v = '';
+    else delete s.cells[ref];
+  } else s.cells[ref] = { ...(s.cells[ref] || {}), v };
+}
+
+async function liveCall(op, args) {
+  const r = await window.office.cloud.sheet(shell.state.path, op, args);
+  if (r?.error) throw new Error(r.error);
+  return r;
+}
+
+async function liveStart() {
+  live = { base: new Map(), busy: false, again: false, timer: 0, applying: false, failures: 0 };
+  liveState('busy', 'Connecting to Google Sheets…');
+  try {
+    const remote = await liveCall('read');
+    live.applying = true;
+    // Match local tabs to remote ones by position (the export keeps the order), then take remote values as the truth.
+    remote.forEach((r, i) => {
+      let local = book.sheets[i];
+      if (!local) {
+        local = { name: r.title, cells: {}, cols: {} };
+        book.sheets.push(local);
+      }
+      local.gid = r.gid;
+      local.name = r.title;
+      const lc = cellsOf(local);
+      for (const ref of new Set([...Object.keys(lc), ...Object.keys(r.cells)])) if ((lc[ref] ?? '') !== (r.cells[ref] ?? '')) setCellValue(local, ref, r.cells[ref] ?? '');
+      live.base.set(r.gid, { title: r.title, cells: { ...r.cells } });
+    });
+    book.sheets.splice(remote.length);
+    book.active = Math.min(book.active, book.sheets.length - 1);
+    afterRemote();
+    shell.markClean();
+    liveState('on', 'Live with Google Sheets');
+  } catch (err) {
+    liveState('off', `Not syncing: ${err.message}`);
+  } finally {
+    if (live) live.applying = false;
+  }
+  // Poll while the window is visible; slow down when it's hidden.
+  let tick = 0;
+  setInterval(() => {
+    tick += 1;
+    if (document.visibilityState === 'visible' || tick % 4 === 0) liveSync();
+  }, POLL_MS);
+}
+
+function afterRemote() {
+  buildGrid();
+  renderTabs();
+  refreshCells();
+}
+
+function liveSoon(ms) {
+  clearTimeout(live.timer);
+  live.timer = setTimeout(liveSync, ms);
+}
+
+// Pull remote changes, merge them, then push local ones. Local edits win a conflict.
+async function liveSync() {
+  if (!live || editing) return;
+  if (live.busy) {
+    live.again = true;
+    return;
+  }
+  live.busy = true;
+  try {
+    await livePull();
+    const pushed = await livePush();
+    live.failures = 0;
+    if (pushed) liveState('on', 'Saved to Google Sheets');
+    else if (!liveBadge.classList.contains('on')) liveState('on', 'Live with Google Sheets');
+    if (!livePending()) shell.markClean();
+  } catch (err) {
+    live.failures += 1;
+    liveState('off', `Not syncing: ${err.message}`);
+  } finally {
+    live.busy = false;
+    if (live.again) {
+      live.again = false;
+      liveSoon(200);
+    }
+  }
+}
+
+async function livePull() {
+  const remote = await liveCall('read');
+  const seen = new Set();
+  let changed = false;
+  live.applying = true;
+  try {
+    for (const r of remote) {
+      seen.add(r.gid);
+      const b = live.base.get(r.gid);
+      let local = book.sheets.find((x) => x.gid === r.gid);
+      if (!b) {
+        // A tab added elsewhere.
+        if (!local) {
+          local = { name: r.title, cells: {}, cols: {}, gid: r.gid };
+          for (const [ref, v] of Object.entries(r.cells)) setCellValue(local, ref, v);
+          book.sheets.push(local);
+          changed = true;
+        }
+      } else if (local) {
+        if (r.title !== b.title && local.name === b.title) {
+          local.name = r.title;
+          changed = true;
+        }
+        const lc = cellsOf(local);
+        for (const ref of new Set([...Object.keys(r.cells), ...Object.keys(b.cells)])) {
+          const rv = r.cells[ref] ?? '';
+          const bv = b.cells[ref] ?? '';
+          if (rv !== bv && (lc[ref] ?? '') === bv) {
+            setCellValue(local, ref, rv);
+            changed = true;
+          }
+        }
+      }
+      live.base.set(r.gid, { title: r.title, cells: { ...r.cells } });
+    }
+    // Tabs deleted elsewhere.
+    for (const gid of [...live.base.keys()]) {
+      if (seen.has(gid)) continue;
+      live.base.delete(gid);
+      const i = book.sheets.findIndex((x) => x.gid === gid);
+      if (i >= 0 && book.sheets.length > 1) {
+        book.sheets.splice(i, 1);
+        book.active = Math.min(book.active, book.sheets.length - 1);
+        changed = true;
+      }
+    }
+    if (changed) afterRemote();
+  } finally {
+    live.applying = false;
+  }
+}
+
+function liveDiff() {
+  const ops = [];
+  const adds = [];
+  const owned = new Set();
+  for (const s of book.sheets) {
+    if (s.gid == null || !live.base.has(s.gid) || owned.has(s.gid)) {
+      ops.push({ add: s.name });
+      adds.push(s);
+      continue;
+    }
+    owned.add(s.gid);
+    if (live.base.get(s.gid).title !== s.name) ops.push({ rename: s.gid, title: s.name });
+  }
+  for (const gid of live.base.keys()) if (!owned.has(gid)) ops.push({ remove: gid });
+  return { ops, adds };
+}
+
+function cellChanges() {
+  const out = [];
+  for (const s of book.sheets) {
+    const b = live.base.get(s.gid);
+    if (!b) continue;
+    const lc = cellsOf(s);
+    for (const ref of new Set([...Object.keys(lc), ...Object.keys(b.cells)])) {
+      const v = lc[ref] ?? '';
+      if (v !== (b.cells[ref] ?? '')) out.push({ gid: s.gid, title: s.name, ref, v });
+    }
+  }
+  return out;
+}
+
+function livePending() {
+  return liveDiff().ops.length > 0 || cellChanges().length > 0;
+}
+
+async function livePush() {
+  const { ops, adds } = liveDiff();
+  let pushed = false;
+  if (ops.length) {
+    liveState('busy', 'Saving to Google Sheets…');
+    const ids = await liveCall('structure', ops);
+    let n = 0;
+    ops.forEach((o, i) => {
+      if (o.add != null) {
+        const s = adds[n++];
+        s.gid = ids[i];
+        live.base.set(s.gid, { title: s.name, cells: {} });
+      } else if (o.rename != null) live.base.get(o.rename).title = o.title;
+      else live.base.delete(o.remove);
+    });
+    pushed = true;
+  }
+  const changes = cellChanges();
+  if (changes.length) {
+    liveState('busy', 'Saving to Google Sheets…');
+    await liveCall('write', changes.map(({ title, ref, v }) => ({ title, ref, v })));
+    for (const c of changes) {
+      const b = live.base.get(c.gid);
+      if (c.v === '') delete b.cells[c.ref];
+      else b.cells[c.ref] = c.v;
+    }
+    pushed = true;
+  }
+  return pushed;
+}
+
+// Ctrl+S on a live sheet: push now instead of uploading a file.
+async function liveSave() {
+  if (!live) return false;
+  if (editing) commitEdit();
+  await liveSync();
+  if (liveBadge.classList.contains('off')) toast(liveBadge.title, 'error');
+  else toast('All changes are saved to Google Sheets');
+  return true;
+}
 
 shell.workspace.append(wrap);
 const zoomBox = h('div', 'zoom', '<button title="Zoom out">−</button><input type="range" min="40" max="250"><button title="Zoom in">+</button><span></span>');
@@ -1225,3 +1462,8 @@ renderTabs();
 refreshCells();
 setZoom(100);
 scroller.focus();
+if (shell.info.file?.generated) shell.markDirty();
+if (shell.info.file?.cloud?.live) {
+  shell.statusRight.prepend(liveBadge);
+  liveStart();
+}

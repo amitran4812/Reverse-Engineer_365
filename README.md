@@ -6,6 +6,9 @@ An installable desktop office suite with Claude built in:
 - **Rea Sheets**: a spreadsheet with formulas, multiple sheets, fill handle, sorting and `.xlsx`/`.csv` support.
 - **Rea Slides**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides` and exports `.pptx`.
 
+- **Claude app**: on the start screen, type what you need ("a 10-slide pitch deck for…", "a monthly budget…") and attach PDFs, images, Word, Excel, CSV or text files. Claude makes the presentation, spreadsheet or document and opens it in the right app.
+- **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Rea Sheets.
+
 Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export, Print, Options), a status bar and a **Claude** tab and side pane.
 
 ## What Claude can do
@@ -14,6 +17,7 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 | --- | --- |
 | Docs | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document |
 | Sheets | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
+| Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
 | Slides | Write a whole deck from a topic, improve the current slide, suggest the next slide, write speaker notes for every slide, and **What to say** during a slide show: a button on the bottom bar (or the S key) shows a short script for the slide on screen that follows along as you change slides |
 
 Claude runs through your own Anthropic account: see [Connect Claude](#connect-claude) below.
@@ -41,6 +45,40 @@ The builds aren't code-signed yet, so Windows SmartScreen warns the first time: 
 The key is encrypted with your operating system's keychain (Electron `safeStorage`) and is only sent to Anthropic. **Sign out** removes it. You can also set the `ANTHROPIC_API_KEY` environment variable instead.
 
 Why an API key and not a Claude.ai login? Anthropic doesn't allow third-party apps to offer Claude.ai (Pro/Max) login, so Rea Office uses the official API-key sign-in from the Anthropic Console. API usage is billed to your Console account.
+
+## Google Drive and OneDrive
+
+Open from the cloud with **File > Open > Google Drive / OneDrive** (or **Open** on the start screen), and save into a cloud folder with **File > Save As**. A file opened from the cloud saves back to the same place with Ctrl+S.
+
+| Source | What happens |
+| --- | --- |
+| Excel (.xlsx), Word (.docx), CSV, text, .reaslides | Downloaded, edited, and uploaded back when you save |
+| Google Docs | Opened as .docx; saving converts it back into the same Google Doc |
+| Google Sheets | Opened live: cell values and formulas sync both ways every few seconds while the workbook is open, including tabs you add, rename or delete. Formatting changes stay local. |
+
+Sign-in uses each provider's official OAuth flow for desktop apps (your browser opens, you approve, and Rea Office keeps an encrypted token). Rea Office only talks to Google and Microsoft directly; nothing goes through a third-party server.
+
+### Register the app with Google and Microsoft
+
+Each copy of Rea Office needs an OAuth client ID from Google and from Microsoft. Enter them in **File > Options > Cloud storage > App registration**. To ship them inside the installers instead, add them as repository secrets (`REA_GOOGLE_CLIENT_ID`, `REA_GOOGLE_CLIENT_SECRET`, `REA_MICROSOFT_CLIENT_ID`); the Build workflow bakes them into `main/cloud-config.json`. You can also set the same names as environment variables.
+
+**Google (Drive and Sheets)**
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project.
+2. Under **APIs & Services > Library**, enable the **Google Drive API** and the **Google Sheets API**.
+3. Under **Google Auth Platform**, set up the consent screen: user type **External**, then add your Google account under **Audience > Test users**.
+4. Under **Data access**, add the scopes `https://www.googleapis.com/auth/drive` and `https://www.googleapis.com/auth/spreadsheets`.
+5. Under **Clients**, create a client of type **Desktop app** and copy the client ID and client secret.
+
+While the app is in "Testing", only the test users you add can sign in, and Google asks them to sign in again every 7 days. Opening it to everyone needs Google's verification for the Drive scope.
+
+**Microsoft (OneDrive)**
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/), open **App registrations > New registration**.
+2. For supported account types, choose **Accounts in any organizational directory and personal Microsoft accounts**.
+3. Add a redirect URI with platform **Public client/native (mobile & desktop)** and the value `http://localhost`.
+4. Under **API permissions**, add the Microsoft Graph delegated permissions `Files.ReadWrite.All`, `User.Read` and `offline_access`.
+5. Copy the **Application (client) ID**. No client secret is needed.
 
 ## Build it yourself
 
@@ -72,12 +110,15 @@ main/            Electron main process
   main.js        windows, menus, IPC, open/save/export dialogs
   preload.js     the window.office bridge exposed to the renderer
   claude.js      streams Claude responses (the API key stays in this process)
+  attachments.js files attached to Claude messages (PDF, images, Office files, text)
+  generated.js   opens what the Claude app made in Docs, Sheets or Slides
+  cloud/         Google Drive, Google Sheets live sync and OneDrive (OAuth + APIs)
   settings.js    settings + encrypted API key
   formats/       .docx, .xlsx/.csv and .pptx conversion
 common/          helpers shared by main and renderer (cell references, CSV)
 src/
   shared/        ribbon, app frame, File screen, Claude pane, icons, styles
-  home/          start screen
+  home/          start screen and the Claude app
   docs/          word processor (TipTap / ProseMirror)
   sheets/        spreadsheet grid and formula engine
   slides/        presentation editor
@@ -96,7 +137,9 @@ The look follows the general layout conventions of desktop office suites (ribbon
 
 - Docs shows pages as one continuous sheet with page markers rather than true pagination; headers, footers, comments and track changes aren't supported yet.
 - Sheets has no charts, merged cells or conditional formatting yet, and the grid starts at 200 rows by 26 columns (it grows as you add data).
-- Slides can't import `.pptx` yet (export works) and has no animations or transitions.
+- Slides can't import `.pptx` yet (export works) and has no animations or transitions, so Google Slides files aren't listed in the cloud browser.
+- Live Google Sheets sync covers values and formulas; formatting, column widths and merged cells don't sync.
+- The Claude app reads PDF, images, .docx, .xlsx, CSV and text attachments (not .pptx yet).
 
 ## License
 
