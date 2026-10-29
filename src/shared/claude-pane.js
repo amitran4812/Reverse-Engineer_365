@@ -244,7 +244,7 @@ export class ClaudePane {
     const files = this.attached;
     this.attached = [];
     this.drawFiles();
-    const context = this.cfg.context?.() || '';
+    const context = (await this.cfg.context?.()) || '';
     const note = files.length ? `\n\n(Attached: ${files.map((f) => f.name).join(', ')})` : '';
     const content = context ? `${context}\n\n<request>\n${prompt}${note}\n</request>` : `${prompt}${note}`;
     const ids = files.map((f) => f.id);

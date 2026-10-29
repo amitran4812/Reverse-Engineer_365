@@ -13,6 +13,7 @@ const attachments = require('./attachments');
 const generated = require('./generated');
 const updates = require('./updates');
 const latex = require('./latex');
+const data = require('./data');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
 const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
@@ -77,6 +78,7 @@ function openWindow(appName, file = null) {
     clearTimeout(shown);
     launches.delete(id);
     dirty.delete(id);
+    data.closeOwner(id);
   });
   win.on('close', (e) => {
     if (!dirty.has(id)) return;
@@ -236,6 +238,7 @@ ipcMain.handle('app:fullscreen', (e, on) => {
 });
 
 ipcMain.handle('app:recent', () => settings.recent());
+
 ipcMain.handle('app:open-external', (e, url) => {
   if (/^https:\/\//.test(url)) shell.openExternal(url);
 });
@@ -248,6 +251,24 @@ const safe = (fn) => async (e, ...args) => {
     return { error: String(err.message || err) };
   }
 };
+// Plot's analysis workspace: data files by handle, exports.
+ipcMain.handle('data:open-dialog', safe((e) => data.openDialog(senderWin(e), e.sender.id)));
+ipcMain.handle('data:launch', safe((e) => {
+  const file = launches.get(e.sender.id)?.file?.analysis?.path;
+  return file ? data.register(e.sender.id, file) : null;
+}));
+ipcMain.handle('data:from-paths', safe((e, paths) => Promise.all((Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string' && p).slice(0, 1).map((p) => data.register(e.sender.id, p)))));
+ipcMain.handle('data:read', (e, handle, offset, length) => data.read(e.sender.id, handle, offset, length));
+ipcMain.handle('data:save-bytes', safe((e, req) => data.saveBytes(senderWin(e), req)));
+ipcMain.handle('data:begin-write', safe((e, req) => data.beginWrite(senderWin(e), e.sender.id, req)));
+ipcMain.handle('data:write', safe((e, id, text) => data.write(e.sender.id, id, String(text))));
+ipcMain.handle('data:end-write', safe((e, id) => data.endWrite(e.sender.id, id)));
+ipcMain.handle('data:save-pdf', safe((e, req) => data.savePdf(senderWin(e), req)));
+ipcMain.handle('data:save-project', safe(async (e, req) => {
+  const saved = await data.saveBytes(senderWin(e), { ...req, filters: [{ name: 'Plot analysis', extensions: ['workplot'] }] });
+  if (saved) settings.addRecent('sheets', saved.path);
+  return saved;
+}));
 ipcMain.handle('cloud:status', () => cloud.status());
 ipcMain.handle('cloud:connect', safe((e, id) => cloud.connect(id)));
 ipcMain.handle('cloud:disconnect', safe((e, id) => cloud.disconnect(id)));
