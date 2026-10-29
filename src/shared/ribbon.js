@@ -85,7 +85,8 @@ export function colorGrid(pick, { allowNone = false } = {}) {
 }
 
 export class Ribbon {
-  constructor(host, { tabs, onFile, accent }) {
+  constructor(host, { tabs, onFile, accent, onSelect }) {
+    this.onSelect = onSelect;
     this.host = host;
     this.tabs = tabs;
     this.controls = [];
@@ -128,6 +129,7 @@ export class Ribbon {
     for (const p of this.panels.children) p.classList.toggle('active', p.dataset.tab === id);
     if (this.host.classList.contains('collapsed')) this.host.classList.add('peek');
     this.refresh();
+    this.onSelect?.(id);
   }
 
   group(g) {

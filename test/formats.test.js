@@ -165,3 +165,36 @@ test('cell reference helpers', () => {
   assert.equal(cellref.mapRefs('=A1+A2', (p) => (p.row === 1 ? null : p)), '=A1+#REF!');
   assert.deepEqual(cellref.parseCsv('a,"b,c"\n"d""e",f\n'), [['a', 'b,c'], ['d"e', 'f']]);
 });
+
+test('imports PowerPoint, OpenDocument and legacy Excel files', async () => {
+  const fx = (f) => path.join(__dirname, 'fixtures', f);
+  for (const f of ['deck.pptx', 'deck.odp']) {
+    const r = await openFile(fx(f));
+    assert.equal(r.app, 'slides');
+    assert.equal(r.path, null);
+    const [first, second, third] = r.data.deckSpec.slides;
+    assert.deepEqual([first.layout, first.title, first.subtitle, first.notes], ['title', 'Launch plan', 'Q3 review', 'Welcome everyone.']);
+    assert.deepEqual([second.layout, second.bullets, second.notes], ['content', ['Grow revenue', 'Hire two engineers'], 'Focus on revenue first.']);
+    assert.deepEqual([third.layout, third.bullets, third.right_bullets], ['two', ['Slow'], ['Fast']]);
+  }
+  const odt = await openFile(fx('notes.odt'));
+  assert.equal(odt.app, 'docs');
+  assert.match(odt.data.html, /<h1>Report<\/h1><p>Hello world.<\/p><ul><li><p>First<\/p><\/li><\/ul><table>/);
+  for (const f of ['budget.xls', 'budget.ods']) {
+    const r = await openFile(fx(f));
+    assert.equal(r.app, 'sheets');
+    const c = r.data.sheets[0].cells;
+    assert.equal(r.data.sheets[0].name, 'Budget');
+    assert.deepEqual([c.A2.v, c.B2.v, c.B4.v], ['Rent', '1200', '=SUM(B2:B3)']);
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'work-'));
+  const ods = (await openFile(fx('budget.ods'))).data;
+  await saveFile('sheets', path.join(dir, 'copy.ods'), ods);
+  const back = await openFile(path.join(dir, 'copy.ods'));
+  assert.equal(back.path, path.join(dir, 'copy.ods'));
+  assert.deepEqual(back.data.sheets[0].cells, ods.sheets[0].cells);
+  fs.writeFileSync(path.join(dir, 'New.xlsx'), '');
+  const blank = await openFile(path.join(dir, 'New.xlsx'));
+  assert.equal(blank.path, path.join(dir, 'New.xlsx'));
+  assert.deepEqual(blank.data.sheets[0].cells, {});
+});

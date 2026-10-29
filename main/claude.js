@@ -5,6 +5,8 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const settings = require('./settings');
+const attachments = require('./attachments');
+const ai = require('./ai');
 
 const active = new Map();
 
@@ -17,7 +19,10 @@ function buildRequest({ system, messages, maxTokens, format }) {
     model,
     max_tokens: maxTokens || 32000,
     system,
-    messages,
+    // Attached files ride along with the message they were sent with.
+    messages: messages.map((m) => (m.attachments?.length
+      ? { role: m.role, content: [...attachments.blocks(m.attachments), { type: 'text', text: m.content }] }
+      : { role: m.role, content: m.content })),
     output_config: format ? { effort, format: { type: 'json_schema', schema: format } } : { effort },
   };
   if (FALLBACK_MODELS.has(model)) {
@@ -37,6 +42,8 @@ function errorMessage(err) {
 }
 
 async function start(sender, id, payload) {
+  const provider = settings.readRaw().provider;
+  if (ai.PROVIDERS[provider]) return ai.start(sender, id, payload, provider);
   const apiKey = settings.getApiKey();
   if (!apiKey) {
     sender.send('claude:event', { id, type: 'error', message: 'Add your Anthropic API key first (File > Options, or the Claude pane).' });
@@ -82,6 +89,7 @@ async function verify(key) {
 
 function cancel(id) {
   active.get(id)?.abort();
+  ai.cancel(id);
 }
 
 module.exports = { start, cancel, verify, buildRequest };

@@ -358,7 +358,7 @@ const shell = await createShell({
     intro: 'I can draft, rewrite, summarize or proofread. Select text first to work on just that part.',
     placeholder: 'Ask Claude about this document, or to write something…',
     system: [
-      'You are Claude, built into Rea Docs, a word processor. The user’s document and current selection are provided in tags.',
+      'You are Claude, built into Write, a word processor. The user’s document and current selection are provided in tags.',
       'When asked to write, rewrite or translate, reply with only the resulting content in Markdown (headings, lists, bold, italic and tables are fine), with no preamble or closing remarks, so it can be inserted directly into the document.',
       'When asked a question about the document, answer concisely.',
     ].join('\n'),
@@ -463,4 +463,5 @@ if (shell.info.file?.data) {
 }
 setZoom(100);
 updateStatus();
+if (shell.info.file?.generated) shell.markDirty();
 shell.refresh();

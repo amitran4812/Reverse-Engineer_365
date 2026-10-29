@@ -13,7 +13,8 @@ const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (fastest, cheapest)' },
 ];
 
-const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [] };
+const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [], provider: 'anthropic', aiModels: {} };
+const AI = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini' };
 
 function file() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -45,19 +46,72 @@ function getApiKey() {
   return raw.apiKeyPlain || null;
 }
 
+// Small encrypted values (cloud sign-in tokens) stored next to the settings.
+function getSecret(name) {
+  const v = readRaw().secrets?.[name];
+  if (!v) return null;
+  try {
+    const text = v.enc && safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(v.enc, 'base64')) : v.plain;
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setSecret(name, value) {
+  const raw = readRaw();
+  raw.secrets = { ...(raw.secrets || {}) };
+  if (value == null) delete raw.secrets[name];
+  else {
+    const text = JSON.stringify(value);
+    raw.secrets[name] = safeStorage.isEncryptionAvailable() ? { enc: safeStorage.encryptString(text).toString('base64') } : { plain: text };
+  }
+  writeRaw(raw);
+}
+
 function publicSettings() {
   const raw = readRaw();
+  const others = Object.fromEntries(['openai', 'gemini'].map((id) => [id, { hasKey: Boolean(getSecret(`ai-key:${id}`)), model: raw.aiModels?.[id] || '' }]));
+  const provider = AI[raw.provider] ? raw.provider : 'anthropic';
+  const hasKey = Boolean(getApiKey());
   return {
-    hasKey: Boolean(getApiKey()),
+    provider,
+    providerLabel: AI[provider],
+    ready: provider === 'anthropic' ? hasKey : others[provider].hasKey && Boolean(others[provider].model),
+    ai: others,
+    coach: Boolean(raw.coach),
+    hasKey,
     keyFromEnv: Boolean(process.env.ANTHROPIC_API_KEY),
     model: raw.model,
     effort: raw.effort,
     models: MODELS,
+    cloudClients: Object.fromEntries(Object.entries(raw.cloudClients || {}).map(([id, v]) => [id, { clientId: v.clientId, hasSecret: Boolean(v.clientSecret), org: v.org || '' }])),
   };
 }
 
-function update({ apiKey, model, effort }) {
-  const raw = readRaw();
+function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, coach, autoUpdate }) {
+  let raw = readRaw();
+  if (aiKeys && typeof aiKeys === 'object') {
+    for (const [id, k] of Object.entries(aiKeys)) if (['openai', 'gemini'].includes(id) && typeof k === 'string') setSecret(`ai-key:${id}`, k.trim() || null);
+    raw = readRaw();
+  }
+  if (aiModels && typeof aiModels === 'object') {
+    raw.aiModels = { ...(raw.aiModels || {}) };
+    for (const [id, m] of Object.entries(aiModels)) if (['openai', 'gemini'].includes(id) && typeof m === 'string') raw.aiModels[id] = m.trim().slice(0, 100);
+  }
+  if (provider && AI[provider]) raw.provider = provider;
+  if (typeof coach === 'boolean') raw.coach = coach;
+  if (typeof autoUpdate === 'boolean') raw.autoUpdate = autoUpdate;
+  if (cloudClients && typeof cloudClients === 'object') {
+    raw.cloudClients = { ...(raw.cloudClients || {}) };
+    for (const [id, v] of Object.entries(cloudClients)) {
+      if (!['google', 'onedrive'].includes(id) || !v) continue;
+      const prev = raw.cloudClients[id] || {};
+      const secret = v.clientSecret == null || v.clientSecret === '' ? prev.clientSecret || '' : String(v.clientSecret).trim();
+      const org = String(v.org ?? prev.org ?? '').trim().toLowerCase().replace(/[^a-z0-9.-]/g, '');
+      raw.cloudClients[id] = { clientId: String(v.clientId ?? prev.clientId ?? '').trim(), clientSecret: secret, org };
+    }
+  }
   if (typeof apiKey === 'string') {
     delete raw.apiKeyEnc;
     delete raw.apiKeyPlain;
@@ -80,11 +134,12 @@ function addRecent(appName, filePath) {
   const raw = readRaw();
   raw.recent = [{ app: appName, path: filePath, at: Date.now() }, ...raw.recent.filter((r) => r.path !== filePath)].slice(0, 15);
   writeRaw(raw);
-  app.addRecentDocument?.(filePath);
+  // The OS recent list is shared by every account, so only use it when there's one.
+  if (require('./profiles').active().count === 1) app.addRecentDocument?.(filePath);
 }
 
 function recent() {
   return readRaw().recent.filter((r) => fs.existsSync(r.path));
 }
 
-module.exports = { getApiKey, publicSettings, update, addRecent, recent, readRaw };
+module.exports = { getApiKey, getSecret, setSecret, publicSettings, update, addRecent, recent, readRaw };

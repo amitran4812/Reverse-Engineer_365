@@ -41,7 +41,7 @@ function scalar(v) {
 
 async function exportXlsx(model) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Rea Office';
+  wb.creator = 'Work';
   for (const sheet of model.sheets) {
     const ws = wb.addWorksheet(sheet.name || 'Sheet');
     for (const [col, width] of Object.entries(sheet.cols || {})) {
@@ -159,4 +159,28 @@ function exportCsv(model, sheetIndex = 0) {
   return toCsv(rows);
 }
 
-module.exports = { exportXlsx, importXlsx, importCsv, exportCsv };
+// OpenDocument spreadsheet through SheetJS: values and formulas, no styling.
+function exportOds(model) {
+  const XLSX = require('@e965/xlsx');
+  const wb = XLSX.utils.book_new();
+  for (const sheet of model.sheets) {
+    const ws = {};
+    let maxR = 0;
+    let maxC = 0;
+    for (const [ref, cell] of Object.entries(sheet.cells || {})) {
+      const v = String(cell.v ?? '');
+      if (v === '') continue;
+      const { row: r, col: c } = parseRef(ref);
+      maxR = Math.max(maxR, r);
+      maxC = Math.max(maxC, c);
+      if (v.startsWith('=')) ws[ref] = { t: 'n', v: 0, f: v.slice(1) };
+      else if (/^-?\d+(\.\d+)?$/.test(v)) ws[ref] = { t: 'n', v: Number(v) };
+      else ws[ref] = { t: 's', v };
+    }
+    ws['!ref'] = `A1:${colName(maxC)}${maxR + 1}`;
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
+  }
+  return XLSX.write(wb, { type: 'buffer', bookType: 'ods' });
+}
+
+module.exports = { exportXlsx, importXlsx, importCsv, exportCsv, exportOds };

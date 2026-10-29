@@ -1,16 +1,28 @@
-// Application frame shared by Docs, Sheets and Slides: title bar with quick
+// Application frame shared by Write, Plot and Present: title bar with quick
 // access buttons, ribbon, File backstage, status bar, Claude pane, dialogs and
 // the open/save lifecycle.
 
 import { icon } from './icons.js';
 import { Ribbon } from './ribbon.js';
 import { ClaudePane } from './claude-pane.js';
+import { accountChip, accountsSection } from './accounts.js';
+import { aiSettings } from './ai-settings.js';
+import { updateSettings, watchUpdates } from './updates.js';
+import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
 export const APPS = {
-  docs: { title: 'Rea Docs', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
-  sheets: { title: 'Rea Sheets', accent: '#1b7a4b', kind: 'Workbook', mark: 'appSheets', newLabel: 'Blank workbook' },
-  slides: { title: 'Rea Slides', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
+  docs: { title: 'Write', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
+  sheets: { title: 'Plot', accent: '#1b7a4b', kind: 'Workbook', mark: 'appSheets', newLabel: 'Blank workbook' },
+  slides: { title: 'Present', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
 };
+
+// "New LaTeX project" tile for the start screens: opens Write's LaTeX mode.
+export function latexTile(size = 40, appName = true) {
+  const t = h('button', 'bs-tile bs-tile-docs', `<div class="bs-tile-preview">${icon('texFile', size)}</div><span>LaTeX project</span>${appName ? '<small>Write</small>' : ''}`);
+  t.title = 'Pick a folder for a new LaTeX project, or one that already has .tex files';
+  t.onclick = () => window.office.latex.openFolder({ create: true });
+  return t;
+}
 
 export const h = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -105,6 +117,7 @@ export async function createShell(opts) {
   document.documentElement.dataset.platform = info.platform;
   document.documentElement.style.setProperty('--accent', meta.accent);
   document.title = meta.title;
+  watchUpdates();
 
   const state = {
     path: info.file?.path || null,
@@ -130,7 +143,10 @@ export async function createShell(opts) {
   }
   const titleText = h('div', 'titlebar-title');
   const search = h('div', 'titlebar-search', `${icon('sparkle', 14)}<input placeholder="Ask Claude or search commands" spellcheck="false">`);
-  titlebar.append(mark, qa, titleText, search, h('div', 'titlebar-spacer'));
+  const shareBtn = h('button', 'titlebar-share', `${icon('share', 16)}<span>Share</span>`);
+  shareBtn.title = 'Share with people by email';
+  shareBtn.onclick = () => shareDialog(shell);
+  titlebar.append(...[mark, qa, titleText, search, accountChip(info.account), shareBtn, h('div', 'titlebar-spacer')].filter(Boolean));
 
   const ribbonHost = h('div');
   const tabs = [...opts.tabs, ...(opts.claudeTab ? [opts.claudeTab] : [])];
@@ -175,6 +191,8 @@ export async function createShell(opts) {
       shell.setTitle();
     },
     async save({ saveAs = false, ext } = {}) {
+      if (saveAs && !ext && opts.customSaveAs) return opts.customSaveAs();
+      if (!saveAs && !ext && opts.customSave && (await opts.customSave())) return true;
       const payload = await opts.getSaveData();
       const baseName = state.name.replace(/\.[^.]+$/, '');
       const res = await window.office.save({
@@ -192,10 +210,32 @@ export async function createShell(opts) {
       state.path = res.path;
       state.name = res.name;
       shell.markClean();
-      toast(`Saved ${res.name}`);
+      toast(res.cloud ? `Saved ${res.name} to ${res.cloud}` : `Saved ${res.name}`);
+      return true;
+    },
+    async saveToCloud(provider) {
+      if (!(await ensureConnected(provider))) return false;
+      const picked = await cloudBrowser(provider, { mode: 'save' });
+      if (!picked) return false;
+      const baseName = state.name.replace(/\.[^.]+$/, '');
+      const got = await dialog({ title: 'Save as', fields: [{ name: 'name', label: 'File name', value: `${baseName}.${opts.defaultExt}` }], ok: 'Save' });
+      if (!got?.name?.trim()) return false;
+      let name = got.name.trim();
+      if (!/\.[a-z0-9]+$/i.test(name)) name += `.${opts.defaultExt}`;
+      const payload = await opts.getSaveData();
+      const res = await window.office.cloud.saveNew({ provider, folder: picked.folder, name, app: opts.app, payload });
+      if (res?.error) {
+        toast(res.error, 'error');
+        return false;
+      }
+      state.path = res.path;
+      state.name = res.name;
+      shell.markClean();
+      toast(`Saved ${res.name} to ${res.cloud}`);
       return true;
     },
     async exportPdf() {
+      if (opts.exportPdf) return opts.exportPdf();
       document.body.classList.add('printing');
       opts.beforePrint?.();
       try {
@@ -206,6 +246,7 @@ export async function createShell(opts) {
       }
     },
     async print() {
+      if (opts.print) return opts.print();
       document.body.classList.add('printing');
       opts.beforePrint?.();
       await window.office.print();
@@ -222,7 +263,7 @@ export async function createShell(opts) {
     },
   };
 
-  const ribbon = new Ribbon(ribbonHost, { tabs, accent: meta.accent, onFile: () => shell.openBackstage() });
+  const ribbon = new Ribbon(ribbonHost, { tabs, accent: meta.accent, onFile: () => shell.openBackstage(), onSelect: (id) => opts.onTab?.(id) });
   const backstage = new Backstage(shell, opts, meta);
   root.append(backstage.node);
 
@@ -292,7 +333,7 @@ class Backstage {
       { id: 'open', label: 'Open', icon: 'open' },
       '-',
       { id: 'save', label: 'Save', icon: 'save', run: () => this.close() || shell.save() },
-      { id: 'saveas', label: 'Save As', icon: 'saveAs', run: () => this.close() || shell.save({ saveAs: true }) },
+      { id: 'saveas', label: 'Save As', icon: 'saveAs' },
       { id: 'export', label: 'Export', icon: 'export' },
       { id: 'print', label: 'Print', icon: 'print', run: () => this.close() || shell.print() },
       '-',
@@ -334,6 +375,7 @@ class Backstage {
         };
         row.append(t);
       }
+      row.append(latexTile(40, false));
       return row;
     };
     if (section === 'home' || section === 'new') {
@@ -349,7 +391,28 @@ class Backstage {
         this.close();
         window.office.openDialog(null);
       };
-      c.append(browse, h('h2', '', 'Recent'), await recentList(() => this.close()));
+      const texFolder = h('button', 'bs-browse', `${icon('texFile', 28)}<span>LaTeX project folder…</span>`);
+      texFolder.onclick = () => {
+        this.close();
+        window.office.latex.openFolder();
+      };
+      const places = cloudPlaces((id) => {
+        this.close();
+        openFromCloud(id, null);
+      });
+      places.append(texFolder);
+      c.append(browse, places, h('h2', '', 'Recent'), await recentList(() => this.close()));
+    } else if (section === 'saveas') {
+      c.append(h('h1', '', 'Save As'));
+      const browse = h('button', 'bs-browse', `${icon('saveAs', 28)}<span>This PC: browse…</span>`);
+      browse.onclick = () => {
+        this.close();
+        this.shell.save({ saveAs: true });
+      };
+      c.append(browse, cloudPlaces((id) => {
+        this.close();
+        this.shell.saveToCloud(id);
+      }));
     } else if (section === 'export') {
       c.append(h('h1', '', 'Export'));
       const list = h('div', 'bs-exports');
@@ -371,12 +434,24 @@ class Backstage {
           mount();
           this.shell.claude?.loadSettings?.();
         });
-        c.querySelector('.settings-form')?.remove();
-        c.append(form);
+        const prev = c.querySelector('.settings-form');
+        if (prev) prev.replaceWith(form);
+        else c.append(form);
       };
       await mount();
+      c.append(await aiSettings(() => this.shell.claude?.loadSettings?.()), await cloudSettings(), await accountsSection(), await updateSettings());
     }
   }
+}
+
+function cloudPlaces(run) {
+  const row = h('div', 'bs-places');
+  for (const cl of CLOUDS) {
+    const b = h('button', 'bs-browse', `${icon(cl.icon, 28)}<span>${cl.label}</span>`);
+    b.onclick = () => run(cl.id);
+    row.append(b);
+  }
+  return row;
 }
 
 async function recentList(onOpen) {
