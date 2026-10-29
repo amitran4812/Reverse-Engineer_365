@@ -22,7 +22,7 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 | Write | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document |
 | Plot | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
 | Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
-| Present | Write a whole deck from a topic, improve the current slide, suggest the next slide, write speaker notes for every slide, and **What to say** during a slide show: a button on the bottom bar (or the S key) shows a short script for the slide on screen that follows along as you change slides |
+| Present | Write a whole deck from a topic, improve the current slide, suggest the next slide, write speaker notes for every slide, and **What to say** during a slide show: a short script for the slide on screen, shown at the bottom and different for each slide, that follows along as you change slides. Turn it on or off with the **What to say** button on the slide show bar, the S key, **Slide Show > What to say On/Off**, or **File > Options > AI assistant**; your choice is remembered |
 
 Claude runs through your own Anthropic account: see [Connect Claude](#connect-claude) below.
 

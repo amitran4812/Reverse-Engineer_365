@@ -345,3 +345,5 @@ button { cursor: default; }
 .cp-pick { border: 1px solid var(--line); border-radius: 4px; background: #fff; font-size: 12px; padding: 2px 4px; max-width: 96px; }
 .ai-card .ai-card-body { grid-column: 1 / -1; }
 .ai-settings > .modal-field { max-width: 360px; }
+.ai-toggle { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 14px; max-width: 620px; font-size: 13px; line-height: 1.45; }
+.ai-toggle input { margin-top: 3px; }
