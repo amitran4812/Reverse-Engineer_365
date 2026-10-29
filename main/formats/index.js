@@ -10,7 +10,7 @@ const imports = require('./imports');
 // Which app opens which extension, and what each app can save to.
 const APPS = {
   docs: {
-    open: ['docx', 'odt', 'html', 'htm', 'md', 'txt'],
+    open: ['docx', 'odt', 'html', 'htm', 'md', 'txt', 'tex'],
     save: [
       { name: 'Word document', extensions: ['docx'] },
       { name: 'Web page', extensions: ['html'] },
@@ -60,6 +60,7 @@ async function openFile(file) {
   const ext = extOf(file);
   const app = appForFile(file);
   const name = path.basename(file);
+  if (ext === 'tex') return latexProject(file);
   // Right-click > New makes an empty file; open it as a blank document.
   if (app && (await fs.stat(file)).size === 0) return { app, path: file, name, ext, data: BLANK[app]() };
   let data;
@@ -117,6 +118,18 @@ async function openFile(file) {
   }
   if (IMPORT_ONLY.includes(ext)) return { app, path: null, name, ext, data, generated: true, importedFrom: file };
   return { app, path: file, name, ext, data };
+}
+
+// A .tex file opens its folder as a LaTeX project in Write. A "% !TEX root"
+// comment points at the main file when the opened file is a chapter.
+async function latexProject(file) {
+  const text = await fs.readFile(file, 'utf8').catch(() => '');
+  const rootComment = /^\s*%\s*!\s*TEX\s+root\s*=\s*(.+?)\s*$/im.exec(text.slice(0, 2000));
+  const mainPath = rootComment ? path.resolve(path.dirname(file), rootComment[1]) : file;
+  const root = path.dirname(mainPath);
+  const rel = (f) => path.relative(root, f).split(path.sep).join('/');
+  const isMain = rootComment || /^[^%\n]*\\documentclass/m.test(text);
+  return { app: 'docs', path: file, name: path.basename(root), ext: 'tex', latex: { root, main: isMain ? rel(mainPath) : null, open: rel(file) } };
 }
 
 function htmlPage(title, body) {
