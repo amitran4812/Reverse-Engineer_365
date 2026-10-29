@@ -48,6 +48,8 @@ jobs:
             script: dist:win
             files: |
               release/*.exe
+              release/*.exe.blockmap
+              release/latest.yml
           - os: macos-15
             script: dist:mac
             files: |
@@ -57,8 +59,12 @@ jobs:
             files: |
               release/*.AppImage
               release/*.deb
+              release/latest-linux.yml
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Includes downloading Tectonic and warming its package cache.
+    timeout-minutes: 45
+    env:
+      HAS_CLOUD_IDS: ${{ secrets.REA_GOOGLE_CLIENT_ID != '' || secrets.REA_MICROSOFT_CLIENT_ID != '' }}
     permissions:
       contents: read
     steps:
@@ -70,11 +76,53 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build installer
-        run: npm run ${{ matrix.script }}
+      - name: Add cloud app IDs
+        # Optional repository secrets; without them users enter their own IDs in Options.
+        if: env.HAS_CLOUD_IDS == 'true'
+        shell: bash
         env:
-          # Builds are unsigned; skip looking for signing identities.
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          REA_GOOGLE_CLIENT_ID: ${{ secrets.REA_GOOGLE_CLIENT_ID }}
+          REA_GOOGLE_CLIENT_SECRET: ${{ secrets.REA_GOOGLE_CLIENT_SECRET }}
+          REA_MICROSOFT_CLIENT_ID: ${{ secrets.REA_MICROSOFT_CLIENT_ID }}
+        run: |
+          node -e 'require("fs").writeFileSync("main/cloud-config.json", JSON.stringify({
+            google: { clientId: process.env.REA_GOOGLE_CLIENT_ID || "", clientSecret: process.env.REA_GOOGLE_CLIENT_SECRET || "" },
+            onedrive: { clientId: process.env.REA_MICROSOFT_CLIENT_ID || "" },
+          }))'
+      - name: Build installer
+        # Windows builds are signed when signing secrets are set (see SIGNING.md):
+        # Azure Artifact Signing first, then a certificate file. Otherwise unsigned.
+        shell: bash
+        env:
+          SCRIPT: ${{ matrix.script }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          args=()
+          if [ "$SCRIPT" = dist:win ] && [ -n "$AZURE_CLIENT_SECRET" ] && [ -n "$AZURE_SIGN_PROFILE" ]; then
+            echo "Signing with Azure Artifact Signing as $AZURE_SIGN_PUBLISHER"
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+            args=(
+              "-c.win.azureSignOptions.publisherName=$AZURE_SIGN_PUBLISHER"
+              "-c.win.azureSignOptions.endpoint=$AZURE_SIGN_ENDPOINT"
+              "-c.win.azureSignOptions.codeSigningAccountName=$AZURE_SIGN_ACCOUNT"
+              "-c.win.azureSignOptions.certificateProfileName=$AZURE_SIGN_PROFILE"
+            )
+          elif [ "$SCRIPT" = dist:win ] && [ -n "$WIN_CSC_LINK" ]; then
+            echo "Signing with the certificate in WIN_CSC_LINK"
+          else
+            echo "No signing secrets; building unsigned"
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD AZURE_CLIENT_SECRET
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npm run "$SCRIPT" -- "${args[@]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: rea-office-${{ matrix.os }}
@@ -96,7 +144,9 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-          sparse-checkout: package.json
+          sparse-checkout: |
+            package.json
+            CHANGELOG.md
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -112,8 +162,11 @@ jobs:
         run: |
           if [ "$REF_TYPE" = tag ]; then TAG="$REF_NAME"; else TAG="v$(node -p 'require("./package.json").version')"; fi
           ls -la installers
+          # Release notes come from this version's section of CHANGELOG.md.
+          awk -v v="${TAG#v}" '$0 ~ "^## " v "([^0-9.]|$)" {on=1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
+          printf '\n**Download:** Work-Setup-%s.exe for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. If Windows shows an unknown-publisher warning, choose More info, then Run anyway. Work 0.2.4 and later update themselves.\n' "${TAG#v}" >> notes.md
           gh release create "$TAG" installers/* \
             --repo "$REPO" \
             --target "$SHA" \
-            --title "Rea Office $TAG" \
-            --notes "Download **Rea-Office-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. The builds aren't code-signed yet: on Windows choose More info, then Run anyway. Connect Claude in File > Options."
+            --title "Work $TAG" \
+            --notes-file notes.md

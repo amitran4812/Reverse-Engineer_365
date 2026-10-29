@@ -603,8 +603,10 @@ function presentBtn(iconName, label, run) {
   return b;
 }
 
-function present(from = 0) {
+async function present(from = 0) {
   finishEditing();
+  // The What to say setting is remembered between shows (File > Options).
+  coachOn = Boolean((await window.office.settings.get()).coach);
   presentIndex = from;
   document.body.append(presenter);
   presenter.classList.add('on');
@@ -635,9 +637,9 @@ function showPresented() {
     presentBtn('nextSlide', 'Next', () => presentGo(presentIndex + 1)),
     h('span', 'present-sep'),
   );
-  const coachBtn = presentBtn('sparkle', 'What to say', toggleCoach);
+  const coachBtn = presentBtn('sparkle', `What to say: ${coachOn ? 'On' : 'Off'}`, toggleCoach);
   coachBtn.classList.toggle('on', coachOn);
-  coachBtn.title = 'Claude writes what to say for this slide (S)';
+  coachBtn.title = `${coachOn ? 'Turn off' : 'Turn on'} the script of what to say for each slide (S)`;
   presentBar.append(coachBtn, h('span', 'present-sep'), presentBtn('close', 'End show', endPresent));
   presenter.append(frame);
   if (coachOn) presenter.append(coach);
@@ -661,6 +663,7 @@ presenter.addEventListener('click', () => presentGo(presentIndex + 1));
 
 function toggleCoach() {
   coachOn = !coachOn;
+  window.office.settings.set({ coach: coachOn });
   if (!coachOn) cancelScript();
   showPresented();
 }
@@ -704,8 +707,8 @@ async function showScript() {
   if (scriptRun?.key === key) return paint();
 
   const settings = await window.office.settings.get();
-  if (!settings.hasKey) {
-    body.innerHTML = '<div class="coach-error">Claude isn’t connected yet. End the show and add your Anthropic API key in File &gt; Options.</div>';
+  if (!settings.ready) {
+    body.innerHTML = `<div class="coach-error">${settings.providerLabel} isn’t connected yet. End the show and add your API key in File &gt; Options.</div>`;
     return;
   }
   const st = { text: '', done: false, error: null };
@@ -716,7 +719,7 @@ async function showScript() {
   const outline = deck.slides.map((s, n) => slideOutline(s, n)).join('\n\n');
   window.office.claude.stream(id, {
     system: [
-      'You are Claude, helping someone give a live presentation in Rea Slides.',
+      'You are Claude, helping someone give a live presentation in Present.',
       'Write what the presenter should say out loud for the slide on screen: natural, spoken sentences in the first person, as if talking to the audience.',
       'Explain what is on the slide rather than reading it word for word, and add a smooth handoff to the next slide when there is one.',
       'If the slide has speaker notes, build on them. Keep it under 120 words. Plain Markdown paragraphs; use bold for the key phrase to stress. No headings, no preamble.',
@@ -1105,6 +1108,11 @@ const showTab = {
       { type: 'big', icon: 'playCurrent', label: 'From Current Slide', shortcut: 'Shift+F5', run: () => present(current) },
     ] },
     { label: 'Notes', items: [{ type: 'big', icon: 'notes', label: 'Write Speaker Notes', run: () => shell.claude.runQuick(QUICK.notes) }] },
+    { label: 'Presenter', items: [{ type: 'big', icon: 'sparkle', label: 'What to say On/Off', run: async () => {
+      const on = !(await window.office.settings.get()).coach;
+      await window.office.settings.set({ coach: on });
+      shell.toast(on ? 'What to say is on: each slide gets a script at the bottom during the show' : 'What to say is off');
+    } }] },
   ],
 };
 
@@ -1167,7 +1175,7 @@ const shell = await createShell({
     intro: 'I can write a whole presentation from a topic, improve a slide, suggest what comes next, or write speaker notes.',
     placeholder: 'Ask Claude about this presentation…',
     system: [
-      'You are Claude, built into Rea Slides, a presentation app. The deck outline is provided, with the current slide marked.',
+      'You are Claude, built into Present, a presentation app. The deck outline is provided, with the current slide marked.',
       'Slides should be concise: short titles, a few short bullets, and the detail in speaker notes.',
       'When answering free-form questions, be brief and use Markdown.',
     ].join('\n'),
@@ -1185,9 +1193,15 @@ const playBtn = h('button', 'status-btn', 'Slide Show');
 playBtn.onclick = () => present(current);
 shell.statusRight.append(notesBtn, playBtn);
 
-if (shell.info.file?.data?.slides) {
+if (shell.info.file?.data?.deckSpec) {
+  // Made by Claude in the Claude app.
+  const d = shell.info.file.data;
+  deck = { theme: THEMES[d.theme] ? d.theme : 'paper', slides: d.deckSpec.slides.map(slideFromSpec) };
+  if (!deck.slides.length) deck.slides.push(newSlide('title'));
+} else if (shell.info.file?.data?.slides) {
   const d = shell.info.file.data;
   deck = { theme: THEMES[d.theme] ? d.theme : 'paper', slides: d.slides.map((s) => ({ ...s, elements: (s.elements || []).filter((e) => !(e.type === 'shape' && !e.id)) })) };
   if (!deck.slides.length) deck.slides.push(newSlide('title'));
 }
 renderAll();
+if (shell.info.file?.generated) shell.markDirty();

@@ -2,3 +2,5 @@ node_modules/
 dist/
 release/
 !build/
+main/cloud-config.json
+build/tectonic/

@@ -1,9 +1,12 @@
 import '../shared/ui.css';
 import './sheets.css';
+import './analysis/analysis.css';
 import cellref from '../../common/cellref.js';
 import { computeBook, format, isError } from './engine.js';
 import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { codeBlock } from '../shared/claude-pane.js';
+import { icon } from '../shared/icons.js';
+import { createAnalysis } from './analysis/workspace.js';
 
 const { colName, mapRefs, parseRef, rangeName, rect, refName, shiftFormula } = cellref;
 
@@ -139,6 +142,7 @@ function refreshCells(prevRefs = []) {
   }
   drawSelection();
   updateStatus();
+  if (live && !live.applying) liveSoon(700);
 }
 
 // ---------- selection ----------
@@ -838,6 +842,7 @@ function renderTabs() {
       if (v?.action === 'dup') {
         snapshot();
         const copy = JSON.parse(JSON.stringify(s));
+        delete copy.gid;
         copy.name = uniqueName(`${s.name} (2)`);
         book.sheets.splice(i + 1, 0, copy);
         switchSheet(i + 1);
@@ -845,6 +850,10 @@ function renderTabs() {
     };
     tabsBar.append(t);
   });
+  const an = h('button', `sheet-tab sheet-analysis${analysisOn ? ' active' : ''}`, `${icon('chartScatter', 14)}<span>Analysis</span>`);
+  an.title = 'Plot and analyze large data';
+  an.onclick = () => shell.ribbon.select('analyze');
+  tabsBar.append(an);
   const add = h('button', 'sheet-add', '+');
   add.title = 'New sheet';
   add.onclick = () => {
@@ -888,6 +897,7 @@ function deleteSheet(i) {
 
 function switchSheet(i) {
   if (editing) commitEdit();
+  if (analysisOn) shell.ribbon.select('home');
   book.active = i;
   sel = { a: { row: 0, col: 0 }, f: { row: 0, col: 0 } };
   buildGrid();
@@ -1008,6 +1018,74 @@ const QUICK = {
   clean: { label: 'Clean up the selection', icon: 'wand', prompt: 'Clean up the selected cells: fix inconsistent capitalisation, spelling, spacing, date and number formats. Keep the same number of rows and columns and the same order. Put the cleaned header row (if the first selected row is a header) in "columns" and the rest in "rows"; if there is no header, leave "columns" empty.', format: TABLE_SCHEMA, working: 'Cleaning up', summary: (d) => d.summary, actions: (d) => [{ label: 'Replace selection', icon: 'replace', run: () => { const s = selRect(); sel = { a: { row: s.r0, col: s.c0 }, f: sel.f }; writeMatrix(d.columns.length ? [d.columns, ...d.rows] : d.rows); } }] },
   explain: { label: 'Explain the active cell’s formula', icon: 'help', prompt: 'Explain what the formula in the active cell does, step by step, in plain language. If it has a problem, suggest a fix in a ```excel code block.', actions: formulaActions },
 };
+
+// ---------- analysis workspace ----------
+let analysisOn = false;
+const GRID_TABS = new Set(['home', 'insert', 'formulas', 'data', 'view']);
+
+// The current sheet's values as rows, for analysis.
+function sheetMatrix() {
+  const e = extent();
+  if (!Object.keys(sheet().cells).length) return null;
+  const out = [];
+  for (let r = 0; r <= e.rows; r += 1) {
+    const row = [];
+    for (let c = 0; c <= e.cols; c += 1) {
+      const v = valueAt(r, c);
+      row.push(v == null || v === '' || isError(v) ? null : typeof v === 'object' ? format(v) : v);
+    }
+    out.push(row);
+  }
+  return { matrix: out, name: sheet().name };
+}
+
+function matrixToSheet(matrix, name) {
+  snapshot();
+  const cells = {};
+  matrix.forEach((row, r) => row.forEach((v, c) => {
+    if (v !== '' && v != null) cells[refName(r, c)] = r === 0 ? { v: String(v), s: { b: true } } : { v: String(v) };
+  }));
+  book.sheets.push({ name: uniqueName(name), cells, cols: {} });
+  switchSheet(book.sheets.length - 1);
+  toast(`Added sheet ${book.sheets[book.sheets.length - 1].name}`);
+}
+
+const analysis = createAnalysis({
+  getShell: () => shell,
+  onSheetData: sheetMatrix,
+  onShow: () => shell.ribbon.select('analyze'),
+  sendToSheet: matrixToSheet,
+});
+
+const SHEET_AI = {};
+function setAnalysisMode(on) {
+  if (on === analysisOn) return;
+  if (editing) commitEdit();
+  analysisOn = on;
+  wrap.classList.toggle('analysis-mode', on);
+  analysis.el.hidden = !on;
+  statText.hidden = on;
+  zoomBox.hidden = on;
+  analysis.statusEl.hidden = !on;
+  renderTabs();
+  const cfg = shell.claude?.cfg;
+  if (cfg) {
+    if (!SHEET_AI.system) Object.assign(SHEET_AI, { system: cfg.system, quick: cfg.quick, placeholder: cfg.placeholder, intro: cfg.intro });
+    if (on) {
+      Object.assign(cfg, {
+        system: 'You are the AI built into Plot, a spreadsheet and data analysis app. In the analysis workspace you build plots, filters, calculated columns and curve fits over large datasets by returning a structured plan. Be concise and use the exact column names you are given.',
+        quick: [analysis.aiQuick],
+        defaultQuick: analysis.aiQuick,
+        placeholder: 'Ask for a plot, a filter or a fit…',
+        intro: 'Describe the plots you want, for example “plot temperature over time for site B with a linear fit” or “show only rows from 2024 where pressure is above 2”.',
+      });
+    } else Object.assign(cfg, SHEET_AI, { defaultQuick: null });
+    if (!shell.claude.history.length) shell.claude.reset();
+    shell.claude.input.placeholder = cfg.placeholder;
+  }
+  if (on) analysis.resize();
+  else scroller.focus({ preventScroll: true });
+}
 
 // ---------- ribbon ----------
 const active = (key) => () => !!cellAt(sel.a.row, sel.a.col)?.s?.[key];
@@ -1165,7 +1243,11 @@ const claudeTab = {
 const shell = await createShell({
   app: 'sheets',
   defaultExt: 'xlsx',
-  tabs: [homeTab, insertTab, formulasTab, dataTab, viewTab],
+  tabs: [homeTab, insertTab, formulasTab, dataTab, analysis.ribbonTab, viewTab],
+  onTab: (id) => {
+    if (id === 'analyze') setAnalysisMode(true);
+    else if (GRID_TABS.has(id)) setAnalysisMode(false);
+  },
   claudeTab,
   undo,
   redo,
@@ -1181,17 +1263,25 @@ const shell = await createShell({
     }
     return out;
   },
+  customSave: async () => {
+    if (analysisOn && analysis.hasData()) {
+      await analysis.saveProject();
+      return true;
+    }
+    return liveSave();
+  },
   exports: [{ label: 'CSV (current sheet)', detail: 'Values of the current sheet, comma-separated.', icon: 'grid', ext: 'csv' }],
   pdfOptions: () => ({ landscape: true }),
   claude: {
     intro: 'I can write formulas, analyze your data, build tables and tidy up messy cells. Select a range first to focus on it.',
     placeholder: 'Ask Claude about this sheet…',
     system: [
-      'You are Claude, built into Rea Sheets, a spreadsheet app. The current sheet is given as a Markdown table with column letters and row numbers; formula cells are shown as "=FORMULA → result".',
+      'You are Claude, built into Plot, a spreadsheet app. The current sheet is given as a Markdown table with column letters and row numbers; formula cells are shown as "=FORMULA → result".',
       'Formulas use Excel syntax and A1 references. Supported functions include SUM, AVERAGE, COUNT, COUNTA, COUNTIF(S), SUMIF(S), AVERAGEIF(S), MINIFS, MAXIFS, MIN, MAX, MEDIAN, STDEV, LARGE, SMALL, RANK, IF, IFS, SWITCH, CHOOSE, IFERROR, AND, OR, NOT, VLOOKUP, HLOOKUP, XLOOKUP, INDEX, MATCH, ROUND, ROUNDUP, ROUNDDOWN, ABS, SQRT, POWER, MOD, INT, CONCAT, CONCATENATE, TEXTJOIN, TEXT, VALUE, LEFT, RIGHT, MID, LEN, TRIM, UPPER, LOWER, PROPER, SUBSTITUTE, TODAY, NOW, DATE, YEAR, MONTH, DAY, PMT, FV, PV, NPV.',
       'When you give a formula the user can insert, put the formula alone in a ```excel code block. When you give tabular data, use a Markdown table. Be concise.',
     ].join('\n'),
     context: () => {
+      if (analysisOn) return analysis.aiContext();
       const s = selRect();
       const multi = s.r0 !== s.r1 || s.c0 !== s.c1;
       const sels = multi ? `\n<selection range="${rangeName(trimmedSelection())}">\n${selectionMatrix(true).slice(0, 200).map((r) => r.join('\t')).join('\n')}\n</selection>` : '';
@@ -1203,6 +1293,242 @@ const shell = await createShell({
   },
 });
 
+// ---------- live Google Sheets ----------
+// A Google Sheet opened from Drive stays connected: local edits (yours or
+// Claude's) are written through the Sheets API within a second, and changes
+// made elsewhere are pulled every few seconds. Values and formulas sync;
+// formatting comes from the copy opened at the start.
+let live = null;
+const POLL_MS = 4000;
+
+const liveBadge = h('span', 'live-badge', `${icon('live', 14)}<span>Connecting to Google Sheets…</span>`);
+function liveState(state, text) {
+  liveBadge.className = `live-badge ${state}`;
+  liveBadge.querySelector('span').textContent = text;
+  liveBadge.title = state === 'off' ? text : 'Edits sync with Google Sheets while this workbook is open.';
+}
+
+const cellsOf = (s) => Object.fromEntries(Object.entries(s.cells).filter(([, c]) => c.v !== '' && c.v != null).map(([ref, c]) => [ref, String(c.v)]));
+
+function setCellValue(s, ref, v) {
+  if (v === '' || v == null) {
+    if (s.cells[ref]?.s && Object.keys(s.cells[ref].s).length) s.cells[ref].v = '';
+    else delete s.cells[ref];
+  } else s.cells[ref] = { ...(s.cells[ref] || {}), v };
+}
+
+async function liveCall(op, args) {
+  const r = await window.office.cloud.sheet(shell.state.path, op, args);
+  if (r?.error) throw new Error(r.error);
+  return r;
+}
+
+async function liveStart() {
+  live = { base: new Map(), busy: false, again: false, timer: 0, applying: false, failures: 0 };
+  liveState('busy', 'Connecting to Google Sheets…');
+  try {
+    const remote = await liveCall('read');
+    live.applying = true;
+    // Match local tabs to remote ones by position (the export keeps the order), then take remote values as the truth.
+    remote.forEach((r, i) => {
+      let local = book.sheets[i];
+      if (!local) {
+        local = { name: r.title, cells: {}, cols: {} };
+        book.sheets.push(local);
+      }
+      local.gid = r.gid;
+      local.name = r.title;
+      const lc = cellsOf(local);
+      for (const ref of new Set([...Object.keys(lc), ...Object.keys(r.cells)])) if ((lc[ref] ?? '') !== (r.cells[ref] ?? '')) setCellValue(local, ref, r.cells[ref] ?? '');
+      live.base.set(r.gid, { title: r.title, cells: { ...r.cells } });
+    });
+    book.sheets.splice(remote.length);
+    book.active = Math.min(book.active, book.sheets.length - 1);
+    afterRemote();
+    shell.markClean();
+    liveState('on', 'Live with Google Sheets');
+  } catch (err) {
+    liveState('off', `Not syncing: ${err.message}`);
+  } finally {
+    if (live) live.applying = false;
+  }
+  // Poll while the window is visible; slow down when it's hidden.
+  let tick = 0;
+  setInterval(() => {
+    tick += 1;
+    if (document.visibilityState === 'visible' || tick % 4 === 0) liveSync();
+  }, POLL_MS);
+}
+
+function afterRemote() {
+  buildGrid();
+  renderTabs();
+  refreshCells();
+}
+
+function liveSoon(ms) {
+  clearTimeout(live.timer);
+  live.timer = setTimeout(liveSync, ms);
+}
+
+// Pull remote changes, merge them, then push local ones. Local edits win a conflict.
+async function liveSync() {
+  if (!live || editing) return;
+  if (live.busy) {
+    live.again = true;
+    return;
+  }
+  live.busy = true;
+  try {
+    await livePull();
+    const pushed = await livePush();
+    live.failures = 0;
+    if (pushed) liveState('on', 'Saved to Google Sheets');
+    else if (!liveBadge.classList.contains('on')) liveState('on', 'Live with Google Sheets');
+    if (!livePending()) shell.markClean();
+  } catch (err) {
+    live.failures += 1;
+    liveState('off', `Not syncing: ${err.message}`);
+  } finally {
+    live.busy = false;
+    if (live.again) {
+      live.again = false;
+      liveSoon(200);
+    }
+  }
+}
+
+async function livePull() {
+  const remote = await liveCall('read');
+  const seen = new Set();
+  let changed = false;
+  live.applying = true;
+  try {
+    for (const r of remote) {
+      seen.add(r.gid);
+      const b = live.base.get(r.gid);
+      let local = book.sheets.find((x) => x.gid === r.gid);
+      if (!b) {
+        // A tab added elsewhere.
+        if (!local) {
+          local = { name: r.title, cells: {}, cols: {}, gid: r.gid };
+          for (const [ref, v] of Object.entries(r.cells)) setCellValue(local, ref, v);
+          book.sheets.push(local);
+          changed = true;
+        }
+      } else if (local) {
+        if (r.title !== b.title && local.name === b.title) {
+          local.name = r.title;
+          changed = true;
+        }
+        const lc = cellsOf(local);
+        for (const ref of new Set([...Object.keys(r.cells), ...Object.keys(b.cells)])) {
+          const rv = r.cells[ref] ?? '';
+          const bv = b.cells[ref] ?? '';
+          if (rv !== bv && (lc[ref] ?? '') === bv) {
+            setCellValue(local, ref, rv);
+            changed = true;
+          }
+        }
+      }
+      live.base.set(r.gid, { title: r.title, cells: { ...r.cells } });
+    }
+    // Tabs deleted elsewhere.
+    for (const gid of [...live.base.keys()]) {
+      if (seen.has(gid)) continue;
+      live.base.delete(gid);
+      const i = book.sheets.findIndex((x) => x.gid === gid);
+      if (i >= 0 && book.sheets.length > 1) {
+        book.sheets.splice(i, 1);
+        book.active = Math.min(book.active, book.sheets.length - 1);
+        changed = true;
+      }
+    }
+    if (changed) afterRemote();
+  } finally {
+    live.applying = false;
+  }
+}
+
+function liveDiff() {
+  const ops = [];
+  const adds = [];
+  const owned = new Set();
+  for (const s of book.sheets) {
+    if (s.gid == null || !live.base.has(s.gid) || owned.has(s.gid)) {
+      ops.push({ add: s.name });
+      adds.push(s);
+      continue;
+    }
+    owned.add(s.gid);
+    if (live.base.get(s.gid).title !== s.name) ops.push({ rename: s.gid, title: s.name });
+  }
+  for (const gid of live.base.keys()) if (!owned.has(gid)) ops.push({ remove: gid });
+  return { ops, adds };
+}
+
+function cellChanges() {
+  const out = [];
+  for (const s of book.sheets) {
+    const b = live.base.get(s.gid);
+    if (!b) continue;
+    const lc = cellsOf(s);
+    for (const ref of new Set([...Object.keys(lc), ...Object.keys(b.cells)])) {
+      const v = lc[ref] ?? '';
+      if (v !== (b.cells[ref] ?? '')) out.push({ gid: s.gid, title: s.name, ref, v });
+    }
+  }
+  return out;
+}
+
+function livePending() {
+  return liveDiff().ops.length > 0 || cellChanges().length > 0;
+}
+
+async function livePush() {
+  const { ops, adds } = liveDiff();
+  let pushed = false;
+  if (ops.length) {
+    liveState('busy', 'Saving to Google Sheets…');
+    const ids = await liveCall('structure', ops);
+    let n = 0;
+    ops.forEach((o, i) => {
+      if (o.add != null) {
+        const s = adds[n++];
+        s.gid = ids[i];
+        live.base.set(s.gid, { title: s.name, cells: {} });
+      } else if (o.rename != null) live.base.get(o.rename).title = o.title;
+      else live.base.delete(o.remove);
+    });
+    pushed = true;
+  }
+  const changes = cellChanges();
+  if (changes.length) {
+    liveState('busy', 'Saving to Google Sheets…');
+    await liveCall('write', changes.map(({ title, ref, v }) => ({ title, ref, v })));
+    for (const c of changes) {
+      const b = live.base.get(c.gid);
+      if (c.v === '') delete b.cells[c.ref];
+      else b.cells[c.ref] = c.v;
+    }
+    pushed = true;
+  }
+  return pushed;
+}
+
+// Ctrl+S on a live sheet: push now instead of uploading a file.
+async function liveSave() {
+  if (!live) return false;
+  if (editing) commitEdit();
+  await liveSync();
+  if (liveBadge.classList.contains('off')) toast(liveBadge.title, 'error');
+  else toast('All changes are saved to Google Sheets');
+  return true;
+}
+
+wrap.insertBefore(analysis.el, tabsBar);
+analysis.el.hidden = true;
+analysis.statusEl.hidden = true;
 shell.workspace.append(wrap);
 const zoomBox = h('div', 'zoom', '<button title="Zoom out">−</button><input type="range" min="40" max="250"><button title="Zoom in">+</button><span></span>');
 const zoomRange = zoomBox.querySelector('input');
@@ -1210,7 +1536,7 @@ const zoomLabel = zoomBox.querySelector('span');
 zoomRange.oninput = () => setZoom(Number(zoomRange.value));
 zoomBox.querySelectorAll('button')[0].onclick = () => setZoom(zoom - 10);
 zoomBox.querySelectorAll('button')[1].onclick = () => setZoom(zoom + 10);
-shell.statusLeft.append(statText);
+shell.statusLeft.append(statText, analysis.statusEl);
 shell.statusRight.append(zoomBox);
 
 if (shell.info.file?.data?.sheets) {
@@ -1225,3 +1551,9 @@ renderTabs();
 refreshCells();
 setZoom(100);
 scroller.focus();
+if (shell.info.file?.generated) shell.markDirty();
+if (shell.info.file?.analysis) analysis.startFromLaunch(shell.info.file.analysis);
+if (shell.info.file?.cloud?.live) {
+  shell.statusRight.prepend(liveBadge);
+  liveStart();
+}

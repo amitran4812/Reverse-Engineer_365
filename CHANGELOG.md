@@ -2,6 +2,17 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.6: Large-data analysis in Plot
+
+- Plot has a new **Analysis** tab for data far bigger than a sheet can hold. It opens CSV, TSV, Parquet and Excel files with millions of rows in seconds; big files open there automatically.
+- Plots: scatter, line, bar, histogram, box plot, heat map and two-axis charts. Zoom, pan, hover for values, color by a column, log axes.
+- Drag across any plot to mark rows; the same rows light up in every other plot and in the rows table.
+- A Filters panel with range sliders, value checklists and search, plus filter formulas like `[Temp] > 20`. Keep or remove the marked rows.
+- Calculated columns from formulas (maths, `if`, running totals, moving averages and more).
+- Curve fitting: linear, polynomial, exponential, power, Gaussian, logistic and other models, or your own equation, with R², errors, p-values and confidence intervals. Add fitted values or residuals as columns.
+- Export plots as PNG, SVG or PDF and rows as CSV or a new sheet, and save the whole analysis to reopen later.
+- Ask Claude to build plots, filters, formulas and fits for you, and undo them in one step.
+
 ## 0.2.5: LaTeX in Write
 
 - Write opens `.tex` files and LaTeX project folders in a three-part workspace: a file list with an outline, an editor, and a PDF preview that refreshes as you type.

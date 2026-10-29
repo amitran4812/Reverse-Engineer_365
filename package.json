@@ -1,7 +1,7 @@
 {
   "name": "rea-office",
-  "productName": "Rea Office",
-  "version": "0.1.0",
+  "productName": "Work",
+  "version": "0.2.6",
   "description": "An Office-style desktop suite (documents, spreadsheets, presentations) with Claude built in.",
   "private": true,
   "license": "MIT",
@@ -16,20 +16,34 @@
     "watch": "node build.mjs --watch",
     "start": "node build.mjs && electron .",
     "test": "node --test \"test/*.test.*\"",
-    "dist": "node build.mjs && electron-builder --publish never",
-    "dist:win": "node build.mjs && electron-builder --win --publish never",
-    "dist:mac": "node build.mjs && electron-builder --mac --publish never",
-    "dist:linux": "node build.mjs && electron-builder --linux --publish never"
+    "dist": "node build.mjs && node scripts/fetch-tectonic.mjs --warm && electron-builder --publish never",
+    "dist:win": "node build.mjs && node scripts/fetch-tectonic.mjs --warm --required && electron-builder --win --publish never",
+    "dist:mac": "node build.mjs && node scripts/fetch-tectonic.mjs --warm && electron-builder --mac --publish never",
+    "dist:linux": "node build.mjs && node scripts/fetch-tectonic.mjs --warm && electron-builder --linux --publish never",
+    "tectonic": "node scripts/fetch-tectonic.mjs --warm"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
+    "@e965/xlsx": "0.20.3",
+    "@xmldom/xmldom": "^0.8.15",
     "docx": "^9.15.0",
+    "electron-updater": "^6.8.11",
     "exceljs": "^4.4.0",
+    "jszip": "^3.10.2",
     "mammoth": "^1.13.0",
     "marked": "^18.1.2",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/legacy-modes": "^6.5.5",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
     "@tiptap/core": "^3.32.1",
     "@tiptap/extension-highlight": "^3.32.1",
     "@tiptap/extension-image": "^3.32.1",
@@ -43,11 +57,15 @@
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "fast-formula-parser": "^1.0.19",
-    "jszip": "^3.10.2"
+    "pdfjs-dist": "^6.4.299",
+    "fflate": "^0.8.3",
+    "hyparquet": "^1.32.0",
+    "hyparquet-compressors": "^1.1.2",
+    "hyparquet-writer": "^0.18.0"
   },
   "build": {
     "appId": "tools.rea.office",
-    "productName": "Rea Office",
+    "productName": "Work",
     "copyright": "Copyright © 2026 Amit",
     "directories": {
       "output": "release",
@@ -60,32 +78,6 @@
       "build/icon.png",
       "package.json",
       "!**/*.map"
-    ],
-    "fileAssociations": [
-      {
-        "ext": "docx",
-        "name": "Document",
-        "description": "Document (.docx)",
-        "role": "Editor"
-      },
-      {
-        "ext": "xlsx",
-        "name": "Workbook",
-        "description": "Workbook (.xlsx)",
-        "role": "Editor"
-      },
-      {
-        "ext": "csv",
-        "name": "CSV file",
-        "description": "Comma-separated values",
-        "role": "Editor"
-      },
-      {
-        "ext": "reaslides",
-        "name": "Rea Slides presentation",
-        "description": "Presentation",
-        "role": "Editor"
-      }
     ],
     "win": {
       "target": [
@@ -105,15 +97,46 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Rea Office",
-      "artifactName": "Rea-Office-Setup-${version}.${ext}"
+      "shortcutName": "Work",
+      "artifactName": "Work-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     },
     "mac": {
       "target": [
         "dmg"
       ],
       "category": "public.app-category.productivity",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "fileAssociations": [
+        {
+          "ext": [
+            "docx",
+            "odt"
+          ],
+          "name": "Write document",
+          "role": "Editor"
+        },
+        {
+          "ext": [
+            "xlsx",
+            "xlsm",
+            "xls",
+            "ods",
+            "csv"
+          ],
+          "name": "Plot workbook",
+          "role": "Editor"
+        },
+        {
+          "ext": [
+            "reaslides",
+            "pptx",
+            "odp"
+          ],
+          "name": "Present presentation",
+          "role": "Editor"
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -122,8 +145,64 @@
       ],
       "category": "Office",
       "icon": "build/icon.png",
-      "maintainer": "Amit"
-    }
+      "maintainer": "Amit",
+      "fileAssociations": [
+        {
+          "ext": [
+            "docx",
+            "odt"
+          ],
+          "name": "Write document",
+          "role": "Editor"
+        },
+        {
+          "ext": [
+            "xlsx",
+            "xlsm",
+            "xls",
+            "ods",
+            "csv"
+          ],
+          "name": "Plot workbook",
+          "role": "Editor"
+        },
+        {
+          "ext": [
+            "reaslides",
+            "pptx",
+            "odp"
+          ],
+          "name": "Present presentation",
+          "role": "Editor"
+        }
+      ]
+    },
+    "extraResources": [
+      {
+        "from": "build/apps",
+        "to": "icons",
+        "filter": [
+          "*.ico"
+        ]
+      },
+      {
+        "from": "build/tectonic",
+        "to": "tectonic",
+        "filter": [
+          "**/*",
+          "!VERSION",
+          "!WARM"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "amitran4812",
+        "repo": "Reverse-Engineer_365",
+        "releaseType": "release"
+      }
+    ]
   },
   "homepage": "https://github.com/amitran4812/Reverse-Engineer_365#readme"
 }

@@ -212,7 +212,7 @@ async function exportDocx({ json, title, page = {} }) {
   const children = new Converter().blocks(json?.content);
   const doc = new Document({
     title: title || 'Document',
-    creator: 'Rea Office',
+    creator: 'Work',
     styles: {
       default: { document: { run: { font: 'Calibri', size: 22 } } },
     },
