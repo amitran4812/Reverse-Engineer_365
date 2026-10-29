@@ -13,11 +13,30 @@ const attachments = require('./attachments');
 const generated = require('./generated');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
-const TITLES = { home: 'Rea Office', docs: 'Rea Write', sheets: 'Rea Plot', slides: 'Rea Present' };
+const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
 const DIST = path.join(__dirname, '..', 'dist');
 
 const launches = new Map(); // webContents id -> { app, file }
 const dirty = new Set(); // webContents ids with unsaved changes
+
+const ICON = { home: 'work', docs: 'write', sheets: 'plot', slides: 'present' };
+const iconFile = (appName) => path.join(app.isPackaged ? path.join(process.resourcesPath, 'icons') : path.join(__dirname, '..', 'build', 'apps'), `${ICON[appName]}.ico`);
+const aumid = (appName) => ['tools.rea.office', appName === 'home' ? null : appName, account.id === 'default' ? null : account.id].filter(Boolean).join('.');
+const relaunchArgs = (appName) => [...(app.isPackaged ? [] : [`"${app.getAppPath()}"`]), `--rea-account=${account.id}`, ...(appName === 'home' ? [] : [`--rea-new=${appName}`])].join(' ');
+
+// On Windows each app gets its own taskbar group and icon, matching the
+// Write, Plot and Present shortcuts the installer makes.
+function windowsIdentity(win, appName) {
+  if (process.platform !== 'win32') return;
+  win.setAppDetails({
+    appId: aumid(appName),
+    appIconPath: iconFile(appName),
+    appIconIndex: 0,
+    relaunchCommand: `"${process.execPath}" ${relaunchArgs(appName)}`,
+    relaunchDisplayName: TITLES[appName],
+  });
+  win.setIcon(iconFile(appName));
+}
 
 function openWindow(appName, file = null) {
   const win = new BrowserWindow({
@@ -39,6 +58,7 @@ function openWindow(appName, file = null) {
       spellcheck: true,
     },
   });
+  windowsIdentity(win, appName);
   launches.set(win.webContents.id, { app: appName, file });
   const id = win.webContents.id;
   win.once('ready-to-show', () => win.show());
@@ -81,7 +101,7 @@ function openWindow(appName, file = null) {
 async function openPath(file, fromWin) {
   const appName = formats.appForFile(file);
   if (!appName) {
-    dialog.showErrorBox('Can’t open file', `Rea Office doesn't know how to open ${path.basename(file)}.`);
+    dialog.showErrorBox('Can’t open file', `Work doesn't know how to open ${path.basename(file)}.`);
     return;
   }
   try {
@@ -223,7 +243,7 @@ ipcMain.handle('cloud:list', safe((e, id, opts) => cloud.list(id, opts || {})));
 ipcMain.handle('cloud:open', safe(async (e, id, file) => {
   const got = await cloud.download(id, file);
   const appName = formats.appForFile(got.path);
-  if (!appName) throw new Error(`Rea Office can't open ${file.name}.`);
+  if (!appName) throw new Error(`Work can't open ${file.name}.`);
   const info = await formats.openFile(got.path);
   info.cloud = { provider: id, label: got.label, native: got.native, live: got.native === 'Google Sheets' };
   const from = senderWin(e);
@@ -264,17 +284,17 @@ ipcMain.handle('app:new-with', safe(async (e, spec) => {
   return { ok: true };
 }));
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
+ipcMain.handle('ai:models', (e, provider, key) => require('./ai').models(provider, key));
 
 // --rea-new=docs|sheets|slides comes from the taskbar jump list.
 const newFromArgv = (argv) => TITLES[argv.find((a) => a.startsWith('--rea-new='))?.slice(10)] ? argv.find((a) => a.startsWith('--rea-new=')).slice(10) : null;
 
 function jumpList() {
   if (process.platform !== 'win32') return;
-  const args = (x) => [...(app.isPackaged ? [] : [`"${app.getAppPath()}"`]), `--rea-account=${account.id}`, `--rea-new=${x}`].join(' ');
   app.setUserTasks(['docs', 'sheets', 'slides'].map((x) => ({
     program: process.execPath,
-    arguments: args(x),
-    iconPath: process.execPath,
+    arguments: relaunchArgs(x),
+    iconPath: iconFile(x),
     iconIndex: 0,
     title: `New in ${TITLES[x]}`,
     description: `Open a blank ${TITLES[x]} window`,
@@ -325,7 +345,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    app.setAppUserModelId?.(account.id === 'default' ? 'tools.rea.office' : `tools.rea.office.${account.id}`);
+    app.setAppUserModelId?.(aumid('home'));
     buildMenu();
     const files = [...pending, ...filesFromArgv(process.argv)];
     jumpList();

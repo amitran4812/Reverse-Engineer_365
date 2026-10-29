@@ -41,7 +41,7 @@ function textRuns(el) {
 async function exportPptx(model) {
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_16x9';
-  pptx.author = 'Rea Office';
+  pptx.author = 'Work';
   pptx.title = model.title || 'Presentation';
   const theme = model.theme || {};
   for (const s of model.slides || []) {

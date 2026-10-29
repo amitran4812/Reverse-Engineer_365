@@ -7,6 +7,7 @@ import { CLOUDS, cloudSettings, openFromCloud } from '../shared/cloud.js';
 import { ClaudePane } from '../shared/claude-pane.js';
 import { MAKE, SYSTEM } from './make.js';
 import { accountSwitcher, accountsSection } from '../shared/accounts.js';
+import { aiSettings } from '../shared/ai-settings.js';
 
 const info = await window.office.launchInfo();
 document.documentElement.dataset.platform = info.platform;
@@ -14,7 +15,7 @@ document.documentElement.style.setProperty('--accent', '#3b4a6b');
 
 const root = h('div', 'home');
 root.innerHTML = `
-  <header class="titlebar"><div class="titlebar-mark">${icon('appSuite', 20)}</div><div class="titlebar-title">Rea Office${info.account.count > 1 ? ` · ${escapeHtml(info.account.name)}` : ''}</div></header>
+  <header class="titlebar"><div class="titlebar-mark">${icon('appSuite', 20)}</div><div class="titlebar-title">Work${info.account.count > 1 ? ` · ${escapeHtml(info.account.name)}` : ''}</div></header>
   <div class="home-body">
     <nav class="home-nav">
       <button data-view="start" class="active">${icon('home', 18)}<span>Home</span></button>
@@ -109,7 +110,7 @@ async function show(view) {
     main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md and .txt in Write, .xlsx and .csv in Plot, and .reaslides in Present. From Google Drive, Google Sheets and Docs open too.'));
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'options') {
-    main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await cloudSettings(), await accountsSection());
+    main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await aiSettings(() => pane?.loadSettings()), await cloudSettings(), await accountsSection());
   }
 }
 

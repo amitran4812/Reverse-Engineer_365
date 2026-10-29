@@ -83,7 +83,7 @@ export function cloudBrowser(provider, { mode = 'open', app = null, title } = {}
       }
       const items = res.filter((f) => f.folder || (mode === 'open' && f.app && (!app || f.app === app)));
       listEl.innerHTML = '';
-      if (!items.length) listEl.append(h('div', 'cb-empty', query ? 'Nothing matches that search.' : mode === 'save' ? 'No folders here. Save here, or pick another folder.' : 'No documents Rea Office can open here.'));
+      if (!items.length) listEl.append(h('div', 'cb-empty', query ? 'Nothing matches that search.' : mode === 'save' ? 'No folders here. Save here, or pick another folder.' : 'No documents Work can open here.'));
       for (const f of items) {
         const row = h('button', `cb-row${f.folder ? ' folder' : ''}`, `${icon(f.folder ? 'folder' : APP_ICON[f.app] || 'newFile', 20)}<b>${escapeHtml(f.title || f.name)}</b><span>${escapeHtml(f.native || (f.folder ? 'Folder' : (f.name.split('.').pop() || '').toUpperCase()))}</span><time>${fmtDate(f.modified)}</time>`);
         row.onclick = async () => {

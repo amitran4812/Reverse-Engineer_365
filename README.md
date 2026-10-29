@@ -1,14 +1,16 @@
-# Rea Office
+# Work
 
-An installable desktop office suite with Claude built in:
+An installable desktop office suite with AI built in (Claude by default, or OpenAI or Gemini with your own key):
 
-- **Rea Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text.
-- **Rea Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting and `.xlsx`/`.csv` support.
-- **Rea Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides` and exports `.pptx`.
+- **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`.
+- **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open.
+- **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides`, exports `.pptx`, and opens `.pptx` and OpenDocument `.odp`.
 
 - **Claude app**: on the start screen, type what you need ("a 10-slide pitch deck for…", "a monthly budget…") and attach PDFs, images, Word, Excel, CSV or text files. Claude makes the presentation, spreadsheet or document and opens it in the right app.
-- **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Rea Plot.
+- **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Plot.
 - **Share**: the Share button in every app invites people by email with edit or view access, through Google Drive or OneDrive.
+- **Other AIs**: connect OpenAI (ChatGPT models) or Gemini with your own API key and every AI feature works the same way. Claude stays the default.
+- **Windows integration**: Write, Plot and Present each get their own Start menu and desktop shortcut, icon and taskbar group. Right-click a file for **Open in Write / Plot / Present**, or use **Open with**, and **New > Write document / Plot workbook / Present presentation** in Explorer.
 - **Accounts**: keep personal, college and work apart. Add as many accounts as you like; each has its own Claude key, cloud sign-ins, recent files, history and cache.
 
 Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export, Print, Options), a status bar and a **Claude** tab and side pane.
@@ -32,21 +34,37 @@ Go to [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases/la
 
 | System | File |
 | --- | --- |
-| Windows 10/11 | `Rea-Office-Setup-<version>.exe` (works on x64 and ARM) |
+| Windows 10/11 | `Work-Setup-<version>.exe` (works on x64 and ARM) |
 | macOS | `.dmg` |
 | Linux | `.AppImage` or `.deb` |
 
 The builds aren't code-signed yet, so Windows SmartScreen warns the first time: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open**.
 
+## Opening files
+
+| App | Opens and saves | Opens (save as a supported format) |
+| --- | --- | --- |
+| Write | `.docx`, `.html`, `.md`, `.txt` | `.odt` |
+| Plot | `.xlsx`, `.csv`, `.ods` | `.xls`, `.xlsm` (macros are dropped), `.xltx` |
+| Present | `.reaslides` (export `.pptx`) | `.pptx`, `.odp` |
+
+Imported presentations keep slide titles, text, two-column layouts and speaker notes; images, charts, animations and exact positions don't come across yet. Legacy Word `.doc` and PowerPoint `.ppt` files don't open yet: save them as `.docx` or `.pptx` first.
+
+On Windows the installer registers these types, so **Open with** lists Write, Plot and Present, and the right-click menu has **Open in Write / Plot / Present** (on Windows 11 it's under **Show more options**). It only becomes the default app for a type that has no other app, and `.reaslides`. Pick defaults yourself in **Settings > Apps > Default apps > Work**. **New > Write document** (and Plot, Present) appears in Explorer when no other app already provides a new-file entry for that type.
+
 ## Connect Claude
 
 1. Open any app and go to **File > Options** (or press Ctrl+J to open the Claude pane).
 2. Click **Sign in and create a key**. This opens the Anthropic Console in your browser, where you sign in with your Anthropic account and create an API key.
-3. Paste the key and click **Connect**. Rea Office checks the key with Anthropic before saving it.
+3. Paste the key and click **Connect**. Work checks the key with Anthropic before saving it.
 
 The key is encrypted with your operating system's keychain (Electron `safeStorage`) and is only sent to Anthropic. **Sign out** removes it. You can also set the `ANTHROPIC_API_KEY` environment variable instead.
 
-Why an API key and not a Claude.ai login? Anthropic doesn't allow third-party apps to offer Claude.ai (Pro/Max) login, so Rea Office uses the official API-key sign-in from the Anthropic Console. API usage is billed to your Console account.
+### Use OpenAI or Gemini instead
+
+In **File > Options > AI assistant**, paste an OpenAI key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)) or a Gemini key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)), click **Check key and list models**, pick a model and **Save**. Then choose it under **Use for AI features**, or switch from the menu at the top of any AI pane. The Claude app, every side pane, What to say and file attachments (PDF, images, Office files, text) work with each provider; structured results use each provider's JSON schema output. Keys are encrypted and kept per account, and each is only sent to its own provider.
+
+Why an API key and not a Claude.ai login? Anthropic doesn't allow third-party apps to offer Claude.ai (Pro/Max) login, so Work uses the official API-key sign-in from the Anthropic Console. API usage is billed to your Console account.
 
 ## Google Drive and OneDrive
 
@@ -58,17 +76,17 @@ Open from the cloud with **File > Open > Google Drive / OneDrive** (or **Open** 
 | Google Docs | Opened as .docx; saving converts it back into the same Google Doc |
 | Google Sheets | Opened live: cell values and formulas sync both ways every few seconds while the workbook is open, including tabs you add, rename or delete. Formatting changes stay local. |
 
-Sign-in uses each provider's official OAuth flow for desktop apps (your browser opens, you approve, and Rea Office keeps an encrypted token). Rea Office only talks to Google and Microsoft directly; nothing goes through a third-party server.
+Sign-in uses each provider's official OAuth flow for desktop apps (your browser opens, you approve, and Work keeps an encrypted token). Work only talks to Google and Microsoft directly; nothing goes through a third-party server.
 
 ### Share with people
 
-Click **Share** in the title bar. Type one or more email addresses, choose **Can edit** or **Can view**, add a message if you like, and click **Send invite**. Google or Microsoft emails the people you invite, and they open the file with their own account. The same box lists everyone who has access, lets you remove someone, and copies the file's link. A file that isn't in the cloud yet is saved to Google Drive or OneDrive first. Rea Office uses the Drive permissions API and the Microsoft Graph invite API, so there's no server of its own, and your organization's sharing rules still apply.
+Click **Share** in the title bar. Type one or more email addresses, choose **Can edit** or **Can view**, add a message if you like, and click **Send invite**. Google or Microsoft emails the people you invite, and they open the file with their own account. The same box lists everyone who has access, lets you remove someone, and copies the file's link. A file that isn't in the cloud yet is saved to Google Drive or OneDrive first. Work uses the Drive permissions API and the Microsoft Graph invite API, so there's no server of its own, and your organization's sharing rules still apply.
 
-When the shared file is a Google Sheet, everyone with it open in Rea Plot or Google Sheets sees edits live.
+When the shared file is a Google Sheet, everyone with it open in Plot or Google Sheets sees edits live.
 
 ## Accounts (personal, college, work)
 
-Click your name at the bottom left of the start screen to switch accounts, add one, or manage them (also under **File > Options > Accounts**). Each account is fully separate on this computer: its own Claude API key, Google and Microsoft sign-ins, recent files, downloaded copies, browser storage and settings live in their own folder, and nothing is copied or suggested across accounts. Each account opens in its own windows, so you can have Personal and Work open side by side, and every window shows which account it belongs to. On Windows, each account gets its own taskbar group with **New in Rea Write / Plot / Present** in the jump list.
+Click your name at the bottom left of the start screen to switch accounts, add one, or manage them (also under **File > Options > Accounts**). Each account is fully separate on this computer: its own Claude API key, Google and Microsoft sign-ins, recent files, downloaded copies, browser storage and settings live in their own folder, and nothing is copied or suggested across accounts. Each account opens in its own windows, so you can have Personal and Work open side by side, and every window shows which account it belongs to. On Windows, each account gets its own taskbar group with **New in Write / Plot / Present** in the jump list.
 
 For a work or school account, open **File > Options > Cloud storage > Organization and app registration** in that account and enter:
 
@@ -79,7 +97,7 @@ Removing an account deletes its data from this computer (key, sign-ins, recent l
 
 ### Register the app with Google and Microsoft
 
-Each copy of Rea Office needs an OAuth client ID from Google and from Microsoft. Enter them in **File > Options > Cloud storage > App registration**. To ship them inside the installers instead, add them as repository secrets (`REA_GOOGLE_CLIENT_ID`, `REA_GOOGLE_CLIENT_SECRET`, `REA_MICROSOFT_CLIENT_ID`); the Build workflow bakes them into `main/cloud-config.json`. You can also set the same names as environment variables.
+Each copy of Work needs an OAuth client ID from Google and from Microsoft. Enter them in **File > Options > Cloud storage > App registration**. To ship them inside the installers instead, add them as repository secrets (`REA_GOOGLE_CLIENT_ID`, `REA_GOOGLE_CLIENT_SECRET`, `REA_MICROSOFT_CLIENT_ID`); the Build workflow bakes them into `main/cloud-config.json`. You can also set the same names as environment variables.
 
 **Google (Drive and Sheets)**
 
@@ -134,6 +152,8 @@ main/            Electron main process
   cloud/         Google Drive, Google Sheets live sync and OneDrive (OAuth + APIs)
   settings.js    settings + encrypted API key
   profiles.js    accounts: one data folder and process per account
+  ai.js          OpenAI and Gemini (same streaming contract as claude.js)
+  formats/imports.js  reads .pptx, .odp, .odt, .xls, .ods
   formats/       .docx, .xlsx/.csv and .pptx conversion
 common/          helpers shared by main and renderer (cell references, CSV)
 src/
@@ -151,15 +171,17 @@ build/icon.*     app icon
 
 Open-source components only: [Electron](https://www.electronjs.org/), [TipTap](https://tiptap.dev/)/ProseMirror, [fast-formula-parser](https://github.com/LesterLyu/fast-formula-parser), [docx](https://github.com/dolanmiu/docx), [mammoth](https://github.com/mwilliamson/mammoth.js), [ExcelJS](https://github.com/exceljs/exceljs), [PptxGenJS](https://github.com/gitbrent/PptxGenJS), [marked](https://marked.js.org/) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
 
-The look follows the general layout conventions of desktop office suites (ribbon tabs, a File screen, a status bar). All icons, the app icon, colours and code are original; nothing is taken from Microsoft Office or any other proprietary product. Microsoft, Word, Excel and PowerPoint are trademarks of Microsoft Corporation; Rea Office is not affiliated with Microsoft. File formats are handled through the open libraries above.
+The look follows the general layout conventions of desktop office suites (ribbon tabs, a File screen, a status bar). All icons, the app icon, colours and code are original; nothing is taken from Microsoft Office or any other proprietary product. Microsoft, Word, Excel and PowerPoint are trademarks of Microsoft Corporation; Work is not affiliated with Microsoft. File formats are handled through the open libraries above.
 
-## Known limits (first version)
+## Known limits
 
 - Write shows pages as one continuous sheet with page markers rather than true pagination; headers, footers, comments and track changes aren't supported yet.
 - Plot has no charts, merged cells or conditional formatting yet, and the grid starts at 200 rows by 26 columns (it grows as you add data).
-- Slides can't import `.pptx` yet (export works) and has no animations or transitions, so Google Slides files aren't listed in the cloud browser.
+- Present has no animations or transitions, and Google Slides files aren't listed in the cloud browser.
 - Live Google Sheets sync covers values and formulas; formatting, column widths and merged cells don't sync.
 - The Claude app reads PDF, images, .docx, .xlsx, CSV and text attachments (not .pptx yet).
+- `.xls` is read with SheetJS (the `@e965/xlsx` npm build of SheetJS 0.20.3); formulas and values come across, formatting doesn't.
+- The Windows integration (shortcuts, Open with, New menu) is built into the installer but hasn't been tried on every Windows version yet.
 
 ## License
 

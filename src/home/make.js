@@ -43,7 +43,7 @@ const MAKE_SCHEMA = {
 };
 
 export const SYSTEM = [
-  'You are Claude, built into Rea Office, a desktop suite with Rea Write (documents), Rea Plot (spreadsheets) and Rea Present (presentations).',
+  'You are Claude, built into Work, a desktop suite with Write (documents), Plot (spreadsheets) and Present (presentations).',
   'The user asks you to make something, often from attached files. Decide what to make and fill the matching fields; leave the other fields empty ("" or []).',
   '- kind "presentation": fill slides. Start with a "title" slide, use "section" slides between major parts, "content" slides with 3–5 bullets under 12 words, "two" for comparisons. Speaker notes of 2–4 sentences on every slide. Pick a fitting theme.',
   '- kind "spreadsheet": fill sheets. columns is the header row (row 1), rows start at row 2. Cells are strings; use Excel formulas starting with "=" and A1 references for totals and calculations (for example "=SUM(B2:B13)"), and plain numbers without currency symbols or thousands separators.',
@@ -73,7 +73,7 @@ function make(label, icon, ask, input) {
     summary: (d) => {
       if (d.kind === 'answer') return d.markdown || d.summary;
       const what = d.kind === 'presentation' ? `${d.slides.length} slides` : d.kind === 'spreadsheet' ? `${d.sheets.length} sheet${d.sheets.length === 1 ? '' : 's'}` : 'document';
-      return `${d.summary}\n\n**${d.title}** (${what}) is open in Rea ${KIND[d.kind].app}. Save it from there.`;
+      return `${d.summary}\n\n**${d.title}** (${what}) is open in ${KIND[d.kind].app}. Save it from there.`;
     },
     actions: (d) => (KIND[d.kind]
       ? [{ label: `Open in ${KIND[d.kind].app} again`, icon: KIND[d.kind].icon, once: false, run: async () => {

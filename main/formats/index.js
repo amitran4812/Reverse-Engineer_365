@@ -5,11 +5,12 @@ const path = require('path');
 const docx = require('./docx');
 const xlsx = require('./xlsx');
 const { exportPptx } = require('./pptx');
+const imports = require('./imports');
 
 // Which app opens which extension, and what each app can save to.
 const APPS = {
   docs: {
-    open: ['docx', 'html', 'htm', 'md', 'txt'],
+    open: ['docx', 'odt', 'html', 'htm', 'md', 'txt'],
     save: [
       { name: 'Word document', extensions: ['docx'] },
       { name: 'Web page', extensions: ['html'] },
@@ -17,19 +18,29 @@ const APPS = {
     ],
   },
   sheets: {
-    open: ['xlsx', 'csv'],
+    open: ['xlsx', 'xlsm', 'xltx', 'xls', 'ods', 'csv'],
     save: [
       { name: 'Excel workbook', extensions: ['xlsx'] },
       { name: 'CSV (current sheet)', extensions: ['csv'] },
+      { name: 'OpenDocument spreadsheet', extensions: ['ods'] },
     ],
   },
   slides: {
-    open: ['reaslides'],
+    open: ['reaslides', 'pptx', 'odp'],
     save: [
-      { name: 'Rea Present presentation', extensions: ['reaslides'] },
+      { name: 'Present presentation', extensions: ['reaslides'] },
       { name: 'PowerPoint presentation (export)', extensions: ['pptx'] },
     ],
   },
+};
+
+// Formats Work reads but can't write back: they open as an unsaved copy.
+const IMPORT_ONLY = ['odt', 'xlsm', 'xltx', 'xls', 'pptx', 'odp'];
+
+const BLANK = {
+  docs: () => ({ html: '' }),
+  sheets: () => ({ sheets: [{ name: 'Sheet1', cells: {}, cols: {} }] }),
+  slides: () => ({ deckSpec: { slides: [] }, theme: 'paper' }),
 };
 
 function extOf(file) {
@@ -49,8 +60,29 @@ async function openFile(file) {
   const ext = extOf(file);
   const app = appForFile(file);
   const name = path.basename(file);
+  // Right-click > New makes an empty file; open it as a blank document.
+  if (app && (await fs.stat(file)).size === 0) return { app, path: file, name, ext, data: BLANK[app]() };
   let data;
   switch (ext) {
+    case 'odt':
+      data = await imports.importOdt(await fs.readFile(file));
+      break;
+    case 'xlsm':
+    case 'xltx': {
+      const buf = await fs.readFile(file);
+      data = await xlsx.importXlsx(buf).catch(() => imports.importSheetJs(buf));
+      break;
+    }
+    case 'xls':
+    case 'ods':
+      data = imports.importSheetJs(await fs.readFile(file));
+      break;
+    case 'pptx':
+      data = { deckSpec: await imports.importPptx(await fs.readFile(file)), theme: 'paper' };
+      break;
+    case 'odp':
+      data = { deckSpec: await imports.importOdp(await fs.readFile(file)), theme: 'paper' };
+      break;
     case 'docx':
       data = await docx.importDocx(await fs.readFile(file));
       break;
@@ -83,6 +115,7 @@ async function openFile(file) {
     default:
       throw new Error(`Unsupported file type: .${ext}`);
   }
+  if (IMPORT_ONLY.includes(ext)) return { app, path: null, name, ext, data, generated: true, importedFrom: file };
   return { app, path: file, name, ext, data };
 }
 
@@ -108,6 +141,7 @@ async function saveFile(appName, file, payload) {
   } else if (appName === 'sheets') {
     if (ext === 'xlsx') out = await xlsx.exportXlsx(payload);
     else if (ext === 'csv') out = `﻿${xlsx.exportCsv(payload, payload.active || 0)}`;
+    else if (ext === 'ods') out = xlsx.exportOds(payload);
   } else if (appName === 'slides') {
     const { export: resolved, ...native } = payload;
     if (ext === 'reaslides') out = JSON.stringify(native);
@@ -118,4 +152,4 @@ async function saveFile(appName, file, payload) {
   return { path: file, name: path.basename(file), ext };
 }
 
-module.exports = { APPS, appForFile, openFile, saveFile, extOf };
+module.exports = { APPS, IMPORT_ONLY, appForFile, openFile, saveFile, extOf };

@@ -13,7 +13,8 @@ const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (fastest, cheapest)' },
 ];
 
-const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [] };
+const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [], provider: 'anthropic', aiModels: {} };
+const AI = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini' };
 
 function file() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -70,8 +71,15 @@ function setSecret(name, value) {
 
 function publicSettings() {
   const raw = readRaw();
+  const others = Object.fromEntries(['openai', 'gemini'].map((id) => [id, { hasKey: Boolean(getSecret(`ai-key:${id}`)), model: raw.aiModels?.[id] || '' }]));
+  const provider = AI[raw.provider] ? raw.provider : 'anthropic';
+  const hasKey = Boolean(getApiKey());
   return {
-    hasKey: Boolean(getApiKey()),
+    provider,
+    providerLabel: AI[provider],
+    ready: provider === 'anthropic' ? hasKey : others[provider].hasKey && Boolean(others[provider].model),
+    ai: others,
+    hasKey,
     keyFromEnv: Boolean(process.env.ANTHROPIC_API_KEY),
     model: raw.model,
     effort: raw.effort,
@@ -80,8 +88,17 @@ function publicSettings() {
   };
 }
 
-function update({ apiKey, model, effort, cloudClients }) {
-  const raw = readRaw();
+function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels }) {
+  let raw = readRaw();
+  if (aiKeys && typeof aiKeys === 'object') {
+    for (const [id, k] of Object.entries(aiKeys)) if (['openai', 'gemini'].includes(id) && typeof k === 'string') setSecret(`ai-key:${id}`, k.trim() || null);
+    raw = readRaw();
+  }
+  if (aiModels && typeof aiModels === 'object') {
+    raw.aiModels = { ...(raw.aiModels || {}) };
+    for (const [id, m] of Object.entries(aiModels)) if (['openai', 'gemini'].includes(id) && typeof m === 'string') raw.aiModels[id] = m.trim().slice(0, 100);
+  }
+  if (provider && AI[provider]) raw.provider = provider;
   if (cloudClients && typeof cloudClients === 'object') {
     raw.cloudClients = { ...(raw.cloudClients || {}) };
     for (const [id, v] of Object.entries(cloudClients)) {

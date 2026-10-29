@@ -44,7 +44,8 @@ function argProfile(argv) {
 
 // Must run before app ready and before the single-instance lock.
 function init() {
-  base = app.getPath('userData');
+  // The suite was called Rea Office; keep its data folder so existing settings carry over.
+  base = path.join(app.getPath('appData'), 'Rea Office');
   const data = read();
   const wanted = argProfile(process.argv) || process.env.REA_ACCOUNT || data.last;
   current = data.accounts.find((p) => p.id === wanted) || data.accounts[0];

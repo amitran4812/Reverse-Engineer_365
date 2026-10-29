@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('office', {
     },
     cancel: (id) => ipcRenderer.send('claude:cancel', id),
     verify: (key) => ipcRenderer.invoke('claude:verify', key),
+    models: (provider, key) => ipcRenderer.invoke('ai:models', provider, key),
     attach: () => ipcRenderer.invoke('claude:attach-dialog'),
     // Dropped File objects: the path is only readable here in the preload.
     attachFiles: (files) => ipcRenderer.invoke('claude:attach-paths', [...files].map((f) => webUtils.getPathForFile(f))),

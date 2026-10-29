@@ -1,6 +1,6 @@
-# Rea Office
+# Work
 
-An Electron desktop suite: Rea Write (word processor), Rea Plot (spreadsheet) and Rea Present (presentations), each with Claude built in through the Anthropic API.
+An Electron desktop suite: Write (word processor), Plot (spreadsheet) and Present (presentations), each with Claude built in through the Anthropic API.
 
 ## Commands
 
@@ -19,8 +19,9 @@ An Electron desktop suite: Rea Write (word processor), Rea Plot (spreadsheet) an
 
 - Clean-room only. Never copy or decompile Microsoft Office code, icons, logos, fonts or other assets, and don't use Microsoft product names in the UI. A similar layout (ribbon, tabs, File screen) is fine; draw new icons in `src/shared/icons.js`.
 - The renderer is sandboxed (contextIsolation, CSP). Anything that needs Node or the network goes through an IPC handler in `main/` and the `window.office` bridge.
-- Claude calls go through `main/claude.js` with the official `@anthropic-ai/sdk`. Default model `claude-opus-5-5`. Users sign in with an Anthropic Console API key; don't add Claude.ai login (Anthropic doesn't allow it for third-party apps).
+- Claude calls go through `main/claude.js` with the official `@anthropic-ai/sdk`. OpenAI and Gemini (optional, user's own key) live in `main/ai.js` and keep the same contract: stream text, honour the JSON schema, accept attachments. Default model `claude-opus-5-5`. Users sign in with an Anthropic Console API key; don't add Claude.ai login (Anthropic doesn't allow it for third-party apps).
 - Cloud tokens and API calls stay in the main process (`main/cloud/`). Use the providers' official OAuth for installed apps; never ship a client secret that isn't meant for desktop apps.
-- The apps are named Rea Write, Rea Plot and Rea Present in the UI; the code keeps the ids `docs`, `sheets` and `slides`.
+- The apps are named Write, Plot and Present in the UI; the code keeps the ids `docs`, `sheets` and `slides`.
+- Windows shortcuts, file associations and the New menu are in `build/installer.nsh`; per-app icons are in `build/apps/`. The installer and window ids use `tools.rea.office.*`, the data folder stays `Rea Office`, and the suite is called Work in the UI.
 - Accounts never share data: anything stored goes under `app.getPath('userData')`, never a fixed path.
 - Match the surrounding code style: plain ES modules, small helpers, few comments.
