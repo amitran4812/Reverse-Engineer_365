@@ -38,7 +38,9 @@ Go to [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases/la
 | macOS | `.dmg` |
 | Linux | `.AppImage` or `.deb` |
 
-The builds aren't code-signed yet, so Windows SmartScreen warns the first time: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open**.
+The builds aren't code-signed yet, so Windows SmartScreen warns the first time: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open**. [SIGNING.md](SIGNING.md) explains how to sign the Windows installer.
+
+To uninstall, use Settings > Apps > Installed apps > Work. The installer and uninstaller close any running copy of Work first. If an old version won't uninstall, end every `Work.exe` in Task Manager (or run `taskkill /F /T /IM Work.exe`), then run `%LOCALAPPDATA%\Programs\Work\Uninstall Work.exe`. Your accounts and settings stay in `%APPDATA%\Rea Office` unless you delete that folder.
 
 ## Opening files
 
