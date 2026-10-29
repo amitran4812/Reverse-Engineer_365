@@ -159,7 +159,7 @@ export async function cloudSettings() {
       const cfg = s.cloudClients?.[meta.id] || {};
       const card = h('div', 'cloud-card');
       const who = st.account ? escapeHtml(st.account.email || st.account.name) : '';
-      card.innerHTML = `<div class="cloud-card-head">${icon(meta.icon, 22)}<div><b>${meta.label}</b><span class="muted">${st.connected ? `Connected${who ? ` as ${who}` : ''}` : st.configured ? 'Not connected' : 'Needs an app client ID (see README)'}</span></div></div>`;
+      card.innerHTML = `<div class="cloud-card-head">${icon(meta.icon, 22)}<div><b>${meta.label}</b><span class="muted">${st.connected ? `Connected${who ? ` as ${who}` : ''}${cfg.org ? ` through ${escapeHtml(cfg.org)}` : ''}` : st.configured ? 'Not connected' : 'Needs an app client ID (see README)'}</span></div></div>`;
       const actions = h('div', 'cloud-card-actions');
       const btn = h('button', `btn${st.connected ? '' : ' primary'}`, st.connected ? 'Disconnect' : 'Connect');
       btn.type = 'button';
@@ -173,14 +173,15 @@ export async function cloudSettings() {
         draw();
       };
       const setup = h('details', 'cloud-setup');
-      setup.innerHTML = `<summary>App registration</summary>
+      setup.innerHTML = `<summary>Organization and app registration</summary>
+        <label class="modal-field"><span>${meta.id === 'google' ? 'Google Workspace domain for a work or school account (optional)' : 'Work or school domain or tenant ID (optional)'}</span><input name="org" value="${escapeHtml(cfg.org || '')}" placeholder="${meta.id === 'google' ? 'college.edu' : 'contoso.com'}"></label>
         <label class="modal-field"><span>${meta.id === 'google' ? 'Google OAuth client ID (Desktop app)' : 'Microsoft application (client) ID'}</span><input name="clientId" value="${escapeHtml(cfg.clientId || '')}" placeholder="${meta.id === 'google' ? '…apps.googleusercontent.com' : '00000000-0000-0000-0000-000000000000'}"></label>
         ${meta.id === 'google' ? `<label class="modal-field"><span>Client secret</span><input name="clientSecret" type="password" placeholder="${cfg.hasSecret ? '•••••••• (saved)' : 'GOCSPX-…'}"></label>` : ''}
         <button class="btn" type="button" data-save>Save</button>`;
       setup.querySelector('[data-save]').onclick = async () => {
-        const v = { clientId: setup.querySelector('[name=clientId]').value, clientSecret: setup.querySelector('[name=clientSecret]')?.value || '' };
+        const v = { org: setup.querySelector('[name=org]').value, clientId: setup.querySelector('[name=clientId]').value, clientSecret: setup.querySelector('[name=clientSecret]')?.value || '' };
         await window.office.settings.set({ cloudClients: { [meta.id]: v } });
-        toast(`${meta.label} app ID saved`);
+        toast(`${meta.label} settings saved. Connect again if you changed the organization.`);
         draw();
       };
       if (!st.configured) setup.open = true;
@@ -191,4 +192,109 @@ export async function cloudSettings() {
   };
   await draw();
   return wrap;
+}
+
+const ROLE_LABEL = { owner: 'Owner', edit: 'Can edit', view: 'Can view' };
+
+// Share the open file with people by email. Files that aren't in a cloud yet
+// are saved to Google Drive or OneDrive first.
+export async function shareDialog(shell) {
+  const path = shell.state.path;
+  const first = path ? await window.office.cloud.share(path, 'people') : { notInCloud: true };
+  if (first?.error) return toast(first.error, 'error');
+
+  const back = h('div', 'modal-back');
+  const box = h('div', 'modal share-box');
+  back.append(box);
+  document.body.append(back);
+  const done = () => back.remove();
+  back.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') done();
+    e.stopPropagation();
+  });
+  back.onclick = (e) => {
+    if (e.target === back) done();
+  };
+
+  if (first.notInCloud) {
+    box.innerHTML = `<div class="modal-title">${icon('share', 18)} Share “${escapeHtml(shell.state.name)}”</div><p class="modal-body">To share, the file needs to live in Google Drive or OneDrive. Save a copy there, and people you invite can open it with their own account.</p>`;
+    const actions = h('div', 'modal-actions');
+    for (const c of CLOUDS) {
+      const b = h('button', 'btn primary', `${icon(c.icon, 16)} Save to ${c.label}`);
+      b.onclick = async () => {
+        done();
+        if (await shell.saveToCloud(c.id)) shareDialog(shell);
+      };
+      actions.append(b);
+    }
+    const cancel = h('button', 'btn', 'Cancel');
+    cancel.onclick = done;
+    actions.append(cancel);
+    box.append(actions);
+    return;
+  }
+
+  const draw = (info) => {
+    box.innerHTML = `<div class="modal-title">${icon('share', 18)} Share “${escapeHtml(shell.state.name)}”</div>`;
+    const form = h('form', 'share-invite');
+    form.innerHTML = `<input name="emails" placeholder="Add people by email (separate with commas)" autocomplete="off" required>
+      <select name="role"><option value="edit">Can edit</option><option value="view">Can view</option></select>
+      <textarea name="message" rows="2" placeholder="Message (optional)"></textarea>
+      <button class="btn primary" type="submit">Send invite</button>`;
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const send = form.querySelector('[type=submit]');
+      send.disabled = true;
+      send.textContent = 'Sending…';
+      const r = await window.office.cloud.share(path, 'invite', { emails: form.emails.value, role: form.role.value, message: form.message.value });
+      if (r?.error) {
+        toast(r.error, 'error');
+        send.disabled = false;
+        send.textContent = 'Send invite';
+        return;
+      }
+      toast(`Invited ${r.invited.join(', ')}`);
+      reload();
+    };
+    const list = h('div', 'share-people');
+    list.append(h('div', 'share-head', `People with access <span class="muted">on ${escapeHtml(info.label)}</span>`));
+    for (const p of info.people) {
+      const row = h('div', 'share-person', `<span class="share-avatar">${escapeHtml((p.name || p.email || '?')[0].toUpperCase())}</span><div><b>${escapeHtml(p.name || p.email || 'Anyone with the link')}</b>${p.name && p.email ? `<span class="muted">${escapeHtml(p.email)}</span>` : ''}</div><span class="share-role">${ROLE_LABEL[p.role] || p.role}</span>`);
+      if (p.role !== 'owner' && !p.inherited) {
+        const x = h('button', 'cb-icon', icon('close', 14));
+        x.title = 'Remove access';
+        x.onclick = async () => {
+          x.disabled = true;
+          const r = await window.office.cloud.share(path, 'remove', { id: p.id });
+          if (r?.error) toast(r.error, 'error');
+          reload();
+        };
+        row.append(x);
+      }
+      list.append(row);
+    }
+    const note = h('p', 'muted share-note', shell.info.file?.cloud?.live
+      ? 'Everyone with edit access sees changes live while the sheet is open.'
+      : `People you invite get an email and open the file with their own ${escapeHtml(info.label)} account.`);
+    const actions = h('div', 'modal-actions');
+    if (info.link) {
+      const copy = h('button', 'btn', `${icon('link', 16)} Copy link`);
+      copy.onclick = async () => {
+        await navigator.clipboard.writeText(info.link);
+        toast('Link copied. Only people with access can open it.');
+      };
+      actions.append(copy);
+    }
+    const close = h('button', 'btn', 'Done');
+    close.onclick = done;
+    actions.append(close);
+    box.append(form, list, note, actions);
+    form.emails.focus();
+  };
+  const reload = async () => {
+    const r = await window.office.cloud.share(path, 'people');
+    if (r?.error) toast(r.error, 'error');
+    else draw(r);
+  };
+  draw(first);
 }

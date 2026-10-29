@@ -2,12 +2,14 @@
 
 An installable desktop office suite with Claude built in:
 
-- **Rea Docs**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text.
-- **Rea Sheets**: a spreadsheet with formulas, multiple sheets, fill handle, sorting and `.xlsx`/`.csv` support.
-- **Rea Slides**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides` and exports `.pptx`.
+- **Rea Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text.
+- **Rea Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting and `.xlsx`/`.csv` support.
+- **Rea Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides` and exports `.pptx`.
 
 - **Claude app**: on the start screen, type what you need ("a 10-slide pitch deck for…", "a monthly budget…") and attach PDFs, images, Word, Excel, CSV or text files. Claude makes the presentation, spreadsheet or document and opens it in the right app.
-- **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Rea Sheets.
+- **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Rea Plot.
+- **Share**: the Share button in every app invites people by email with edit or view access, through Google Drive or OneDrive.
+- **Accounts**: keep personal, college and work apart. Add as many accounts as you like; each has its own Claude key, cloud sign-ins, recent files, history and cache.
 
 Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export, Print, Options), a status bar and a **Claude** tab and side pane.
 
@@ -15,10 +17,10 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 
 | App | Claude features |
 | --- | --- |
-| Docs | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document |
-| Sheets | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
+| Write | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document |
+| Plot | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
 | Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
-| Slides | Write a whole deck from a topic, improve the current slide, suggest the next slide, write speaker notes for every slide, and **What to say** during a slide show: a button on the bottom bar (or the S key) shows a short script for the slide on screen that follows along as you change slides |
+| Present | Write a whole deck from a topic, improve the current slide, suggest the next slide, write speaker notes for every slide, and **What to say** during a slide show: a button on the bottom bar (or the S key) shows a short script for the slide on screen that follows along as you change slides |
 
 Claude runs through your own Anthropic account: see [Connect Claude](#connect-claude) below.
 
@@ -57,6 +59,23 @@ Open from the cloud with **File > Open > Google Drive / OneDrive** (or **Open** 
 | Google Sheets | Opened live: cell values and formulas sync both ways every few seconds while the workbook is open, including tabs you add, rename or delete. Formatting changes stay local. |
 
 Sign-in uses each provider's official OAuth flow for desktop apps (your browser opens, you approve, and Rea Office keeps an encrypted token). Rea Office only talks to Google and Microsoft directly; nothing goes through a third-party server.
+
+### Share with people
+
+Click **Share** in the title bar. Type one or more email addresses, choose **Can edit** or **Can view**, add a message if you like, and click **Send invite**. Google or Microsoft emails the people you invite, and they open the file with their own account. The same box lists everyone who has access, lets you remove someone, and copies the file's link. A file that isn't in the cloud yet is saved to Google Drive or OneDrive first. Rea Office uses the Drive permissions API and the Microsoft Graph invite API, so there's no server of its own, and your organization's sharing rules still apply.
+
+When the shared file is a Google Sheet, everyone with it open in Rea Plot or Google Sheets sees edits live.
+
+## Accounts (personal, college, work)
+
+Click your name at the bottom left of the start screen to switch accounts, add one, or manage them (also under **File > Options > Accounts**). Each account is fully separate on this computer: its own Claude API key, Google and Microsoft sign-ins, recent files, downloaded copies, browser storage and settings live in their own folder, and nothing is copied or suggested across accounts. Each account opens in its own windows, so you can have Personal and Work open side by side, and every window shows which account it belongs to. On Windows, each account gets its own taskbar group with **New in Rea Write / Plot / Present** in the jump list.
+
+For a work or school account, open **File > Options > Cloud storage > Organization and app registration** in that account and enter:
+
+- **OneDrive**: your organization's domain (for example `contoso.com`) or tenant ID. You then sign in through your organization's own Microsoft 365 sign-in, so its conditional access, sharing and data policies apply. Your IT admin may need to approve the app, or register their own app ID (enter it in the same place).
+- **Google Drive**: your Google Workspace domain (for example `college.edu`). Sign-in only accepts accounts from that domain.
+
+Removing an account deletes its data from this computer (key, sign-ins, recent list and cached copies). Files in your folders, Google Drive or OneDrive aren't touched. The first account keeps the app's original settings and can be renamed but not removed.
 
 ### Register the app with Google and Microsoft
 
@@ -111,9 +130,10 @@ main/            Electron main process
   preload.js     the window.office bridge exposed to the renderer
   claude.js      streams Claude responses (the API key stays in this process)
   attachments.js files attached to Claude messages (PDF, images, Office files, text)
-  generated.js   opens what the Claude app made in Docs, Sheets or Slides
+  generated.js   opens what the Claude app made in Write, Plot or Present
   cloud/         Google Drive, Google Sheets live sync and OneDrive (OAuth + APIs)
   settings.js    settings + encrypted API key
+  profiles.js    accounts: one data folder and process per account
   formats/       .docx, .xlsx/.csv and .pptx conversion
 common/          helpers shared by main and renderer (cell references, CSV)
 src/
@@ -135,8 +155,8 @@ The look follows the general layout conventions of desktop office suites (ribbon
 
 ## Known limits (first version)
 
-- Docs shows pages as one continuous sheet with page markers rather than true pagination; headers, footers, comments and track changes aren't supported yet.
-- Sheets has no charts, merged cells or conditional formatting yet, and the grid starts at 200 rows by 26 columns (it grows as you add data).
+- Write shows pages as one continuous sheet with page markers rather than true pagination; headers, footers, comments and track changes aren't supported yet.
+- Plot has no charts, merged cells or conditional formatting yet, and the grid starts at 200 rows by 26 columns (it grows as you add data).
 - Slides can't import `.pptx` yet (export works) and has no animations or transitions, so Google Slides files aren't listed in the cloud browser.
 - Live Google Sheets sync covers values and formulas; formatting, column widths and merged cells don't sync.
 - The Claude app reads PDF, images, .docx, .xlsx, CSV and text attachments (not .pptx yet).

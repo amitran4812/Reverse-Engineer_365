@@ -26,7 +26,7 @@ const APPS = {
   slides: {
     open: ['reaslides'],
     save: [
-      { name: 'Rea Slides presentation', extensions: ['reaslides'] },
+      { name: 'Rea Present presentation', extensions: ['reaslides'] },
       { name: 'PowerPoint presentation (export)', extensions: ['pptx'] },
     ],
   },

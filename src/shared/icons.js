@@ -95,6 +95,8 @@ const P = {
   folder: '<path d="M2.5 5.5a1 1 0 011-1h4l1.5 1.5h7.5a1 1 0 011 1v8.5a1 1 0 01-1 1h-13a1 1 0 01-1-1z"/>',
   refresh: '<path d="M16 6.5A6.5 6.5 0 104.2 13"/><path d="M16 2.5v4h-4"/>',
   live: '<circle class="a" cx="10" cy="10" r="3"/><path d="M5.5 5.5a6.4 6.4 0 000 9M14.5 5.5a6.4 6.4 0 010 9"/>',
+  share: '<circle cx="7" cy="7" r="3"/><path d="M2 17a5 5 0 0110 0"/><path class="a-s" d="M15 6v6M12 9h6"/>',
+  profile: '<circle cx="10" cy="7" r="3.5"/><path d="M3 18a7 7 0 0114 0"/>',
   attach: '<path d="M15.5 9.5l-5.8 5.8a3.5 3.5 0 01-5-5l6.4-6.4a2.3 2.3 0 013.3 3.3l-6.3 6.3a1.1 1.1 0 01-1.6-1.6L12 6.4"/>',
   chevronDown: '<path d="M5 8l5 5 5-5"/>',
   plus: '<path d="M10 4v12M4 10h12"/>',

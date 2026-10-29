@@ -1,7 +1,7 @@
 'use strict';
 
-// Turns what Claude made in the Claude app into the file info a Docs, Sheets
-// or Slides window opens with (an unsaved new file).
+// Turns what Claude made in the Claude app into the file info a Write, Plot
+// or Present window opens with (an unsaved new file).
 
 const { refName, colName } = require('../common/cellref');
 

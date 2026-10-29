@@ -76,7 +76,7 @@ function publicSettings() {
     model: raw.model,
     effort: raw.effort,
     models: MODELS,
-    cloudClients: Object.fromEntries(Object.entries(raw.cloudClients || {}).map(([id, v]) => [id, { clientId: v.clientId, hasSecret: Boolean(v.clientSecret) }])),
+    cloudClients: Object.fromEntries(Object.entries(raw.cloudClients || {}).map(([id, v]) => [id, { clientId: v.clientId, hasSecret: Boolean(v.clientSecret), org: v.org || '' }])),
   };
 }
 
@@ -88,7 +88,8 @@ function update({ apiKey, model, effort, cloudClients }) {
       if (!['google', 'onedrive'].includes(id) || !v) continue;
       const prev = raw.cloudClients[id] || {};
       const secret = v.clientSecret == null || v.clientSecret === '' ? prev.clientSecret || '' : String(v.clientSecret).trim();
-      raw.cloudClients[id] = { clientId: String(v.clientId ?? prev.clientId ?? '').trim(), clientSecret: secret };
+      const org = String(v.org ?? prev.org ?? '').trim().toLowerCase().replace(/[^a-z0-9.-]/g, '');
+      raw.cloudClients[id] = { clientId: String(v.clientId ?? prev.clientId ?? '').trim(), clientSecret: secret, org };
     }
   }
   if (typeof apiKey === 'string') {
@@ -113,7 +114,8 @@ function addRecent(appName, filePath) {
   const raw = readRaw();
   raw.recent = [{ app: appName, path: filePath, at: Date.now() }, ...raw.recent.filter((r) => r.path !== filePath)].slice(0, 15);
   writeRaw(raw);
-  app.addRecentDocument?.(filePath);
+  // The OS recent list is shared by every account, so only use it when there's one.
+  if (require('./profiles').active().count === 1) app.addRecentDocument?.(filePath);
 }
 
 function recent() {

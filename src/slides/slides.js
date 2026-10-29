@@ -716,7 +716,7 @@ async function showScript() {
   const outline = deck.slides.map((s, n) => slideOutline(s, n)).join('\n\n');
   window.office.claude.stream(id, {
     system: [
-      'You are Claude, helping someone give a live presentation in Rea Slides.',
+      'You are Claude, helping someone give a live presentation in Rea Present.',
       'Write what the presenter should say out loud for the slide on screen: natural, spoken sentences in the first person, as if talking to the audience.',
       'Explain what is on the slide rather than reading it word for word, and add a smooth handoff to the next slide when there is one.',
       'If the slide has speaker notes, build on them. Keep it under 120 words. Plain Markdown paragraphs; use bold for the key phrase to stress. No headings, no preamble.',
@@ -1167,7 +1167,7 @@ const shell = await createShell({
     intro: 'I can write a whole presentation from a topic, improve a slide, suggest what comes next, or write speaker notes.',
     placeholder: 'Ask Claude about this presentation…',
     system: [
-      'You are Claude, built into Rea Slides, a presentation app. The deck outline is provided, with the current slide marked.',
+      'You are Claude, built into Rea Present, a presentation app. The deck outline is provided, with the current slide marked.',
       'Slides should be concise: short titles, a few short bullets, and the detail in speaker notes.',
       'When answering free-form questions, be brief and use Markdown.',
     ].join('\n'),

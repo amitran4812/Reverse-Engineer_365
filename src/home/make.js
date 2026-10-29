@@ -43,7 +43,7 @@ const MAKE_SCHEMA = {
 };
 
 export const SYSTEM = [
-  'You are Claude, built into Rea Office, a desktop suite with Rea Docs (documents), Rea Sheets (spreadsheets) and Rea Slides (presentations).',
+  'You are Claude, built into Rea Office, a desktop suite with Rea Write (documents), Rea Plot (spreadsheets) and Rea Present (presentations).',
   'The user asks you to make something, often from attached files. Decide what to make and fill the matching fields; leave the other fields empty ("" or []).',
   '- kind "presentation": fill slides. Start with a "title" slide, use "section" slides between major parts, "content" slides with 3–5 bullets under 12 words, "two" for comparisons. Speaker notes of 2–4 sentences on every slide. Pick a fitting theme.',
   '- kind "spreadsheet": fill sheets. columns is the header row (row 1), rows start at row 2. Cells are strings; use Excel formulas starting with "=" and A1 references for totals and calculations (for example "=SUM(B2:B13)"), and plain numbers without currency symbols or thousands separators.',
@@ -53,9 +53,9 @@ export const SYSTEM = [
 ].join('\n');
 
 const KIND = {
-  document: { app: 'Docs', icon: 'appDocs' },
-  spreadsheet: { app: 'Sheets', icon: 'appSheets' },
-  presentation: { app: 'Slides', icon: 'appSlides' },
+  document: { app: 'Write', icon: 'appDocs' },
+  spreadsheet: { app: 'Plot', icon: 'appSheets' },
+  presentation: { app: 'Present', icon: 'appSlides' },
 };
 
 function make(label, icon, ask, input) {

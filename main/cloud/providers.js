@@ -108,6 +108,36 @@ const google = {
     return { bytes, file: this.toFile(meta) };
   },
 
+  // Sharing: people with access, invites by email (Google sends the email), removal.
+  async people(token, id) {
+    const f = encodeURIComponent(id);
+    const [meta, r] = await Promise.all([
+      call(token, `${this.api}/files/${f}?fields=webViewLink&supportsAllDrives=true`),
+      call(token, `${this.api}/files/${f}/permissions?fields=permissions(id,type,role,emailAddress,displayName)&supportsAllDrives=true`),
+    ]);
+    const role = { owner: 'owner', organizer: 'owner', fileOrganizer: 'edit', writer: 'edit', commenter: 'view', reader: 'view' };
+    return {
+      link: meta.webViewLink || null,
+      people: (r.permissions || []).map((p) => ({ id: p.id, email: p.emailAddress || (p.type === 'anyone' ? 'Anyone with the link' : p.type), name: p.displayName || '', role: role[p.role] || p.role })),
+    };
+  },
+
+  async invite(token, id, { emails, role, message }) {
+    for (const email of emails) {
+      const params = new URLSearchParams({ sendNotificationEmail: 'true', supportsAllDrives: 'true' });
+      if (message) params.set('emailMessage', message);
+      await call(token, `${this.api}/files/${encodeURIComponent(id)}/permissions?${params}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'user', role: role === 'edit' ? 'writer' : 'reader', emailAddress: email }),
+      });
+    }
+  },
+
+  async remove(token, id, permissionId) {
+    await call(token, `${this.api}/files/${encodeURIComponent(id)}/permissions/${encodeURIComponent(permissionId)}?supportsAllDrives=true`, { method: 'DELETE' });
+  },
+
   // Updates an existing file, or creates one in `parent` when no id is given.
   // Uploading .xlsx/.docx onto a Google Sheet/Doc converts it back in place.
   async upload(token, { id, parent, name, bytes }) {
@@ -247,6 +277,31 @@ const onedrive = {
     const f = this.toFile(meta);
     if (String(file.id).includes('|')) f.id = file.id;
     return { bytes, file: f };
+  },
+
+  async people(token, id) {
+    const [meta, r] = await Promise.all([
+      call(token, `${this.api}${itemPath(id)}?$select=webUrl`),
+      call(token, `${this.api}${itemPath(id)}/permissions`),
+    ]);
+    const people = (r.value || []).map((p) => {
+      const user = p.grantedToV2?.user || p.grantedTo?.user || p.grantedToIdentitiesV2?.[0]?.user || {};
+      const email = user.email || p.invitation?.email || (p.link ? `Anyone with the ${p.link.scope === 'organization' ? 'organization ' : ''}link` : '');
+      return { id: p.id, email, name: user.displayName || '', role: (p.roles || []).includes('owner') ? 'owner' : (p.roles || []).includes('write') ? 'edit' : 'view', inherited: Boolean(p.inheritedFrom) };
+    }).filter((p) => p.email);
+    return { link: meta.webUrl || null, people };
+  },
+
+  async invite(token, id, { emails, role, message }) {
+    await call(token, `${this.api}${itemPath(id)}/invite`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ recipients: emails.map((email) => ({ email })), message: message || undefined, requireSignIn: true, sendInvitation: true, roles: [role === 'edit' ? 'write' : 'read'] }),
+    });
+  },
+
+  async remove(token, id, permissionId) {
+    await call(token, `${this.api}${itemPath(id)}/permissions/${encodeURIComponent(permissionId)}`, { method: 'DELETE' });
   },
 
   async upload(token, { id, parent, name, bytes }) {
