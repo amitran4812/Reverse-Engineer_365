@@ -79,6 +79,7 @@ function publicSettings() {
     providerLabel: AI[provider],
     ready: provider === 'anthropic' ? hasKey : others[provider].hasKey && Boolean(others[provider].model),
     ai: others,
+    coach: Boolean(raw.coach),
     hasKey,
     keyFromEnv: Boolean(process.env.ANTHROPIC_API_KEY),
     model: raw.model,
@@ -88,7 +89,7 @@ function publicSettings() {
   };
 }
 
-function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels }) {
+function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, coach }) {
   let raw = readRaw();
   if (aiKeys && typeof aiKeys === 'object') {
     for (const [id, k] of Object.entries(aiKeys)) if (['openai', 'gemini'].includes(id) && typeof k === 'string') setSecret(`ai-key:${id}`, k.trim() || null);
@@ -99,6 +100,7 @@ function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModel
     for (const [id, m] of Object.entries(aiModels)) if (['openai', 'gemini'].includes(id) && typeof m === 'string') raw.aiModels[id] = m.trim().slice(0, 100);
   }
   if (provider && AI[provider]) raw.provider = provider;
+  if (typeof coach === 'boolean') raw.coach = coach;
   if (cloudClients && typeof cloudClients === 'object') {
     raw.cloudClients = { ...(raw.cloudClients || {}) };
     for (const [id, v] of Object.entries(cloudClients)) {

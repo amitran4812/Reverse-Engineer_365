@@ -31,7 +31,12 @@ export async function aiSettings(onSaved) {
       onSaved?.();
       draw();
     };
-    wrap.append(pick);
+    const coach = h('label', 'ai-toggle', `<input type="checkbox" ${s.coach ? 'checked' : ''}><span><b>What to say</b> in Present slide shows: a script for each slide at the bottom of the screen, following along as you change slides. You can also turn it on or off during a show with the What to say button or the S key.</span>`);
+    coach.querySelector('input').onchange = async (e) => {
+      await window.office.settings.set({ coach: e.target.checked });
+      toast(`What to say is ${e.target.checked ? 'on' : 'off'} for slide shows`);
+    };
+    wrap.append(pick, coach);
     for (const p of AI_PROVIDERS.slice(1)) {
       const st = s.ai[p.id];
       const card = h('form', 'cloud-card ai-card');

@@ -603,8 +603,10 @@ function presentBtn(iconName, label, run) {
   return b;
 }
 
-function present(from = 0) {
+async function present(from = 0) {
   finishEditing();
+  // The What to say setting is remembered between shows (File > Options).
+  coachOn = Boolean((await window.office.settings.get()).coach);
   presentIndex = from;
   document.body.append(presenter);
   presenter.classList.add('on');
@@ -635,9 +637,9 @@ function showPresented() {
     presentBtn('nextSlide', 'Next', () => presentGo(presentIndex + 1)),
     h('span', 'present-sep'),
   );
-  const coachBtn = presentBtn('sparkle', 'What to say', toggleCoach);
+  const coachBtn = presentBtn('sparkle', `What to say: ${coachOn ? 'On' : 'Off'}`, toggleCoach);
   coachBtn.classList.toggle('on', coachOn);
-  coachBtn.title = 'Claude writes what to say for this slide (S)';
+  coachBtn.title = `${coachOn ? 'Turn off' : 'Turn on'} the script of what to say for each slide (S)`;
   presentBar.append(coachBtn, h('span', 'present-sep'), presentBtn('close', 'End show', endPresent));
   presenter.append(frame);
   if (coachOn) presenter.append(coach);
@@ -661,6 +663,7 @@ presenter.addEventListener('click', () => presentGo(presentIndex + 1));
 
 function toggleCoach() {
   coachOn = !coachOn;
+  window.office.settings.set({ coach: coachOn });
   if (!coachOn) cancelScript();
   showPresented();
 }
@@ -1105,6 +1108,11 @@ const showTab = {
       { type: 'big', icon: 'playCurrent', label: 'From Current Slide', shortcut: 'Shift+F5', run: () => present(current) },
     ] },
     { label: 'Notes', items: [{ type: 'big', icon: 'notes', label: 'Write Speaker Notes', run: () => shell.claude.runQuick(QUICK.notes) }] },
+    { label: 'Presenter', items: [{ type: 'big', icon: 'sparkle', label: 'What to say On/Off', run: async () => {
+      const on = !(await window.office.settings.get()).coach;
+      await window.office.settings.set({ coach: on });
+      shell.toast(on ? 'What to say is on: each slide gets a script at the bottom during the show' : 'What to say is off');
+    } }] },
   ],
 };
 
