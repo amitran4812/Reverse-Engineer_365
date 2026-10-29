@@ -40,6 +40,8 @@ Go to [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases/la
 
 The builds aren't code-signed yet, so Windows SmartScreen warns the first time: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open**. [SIGNING.md](SIGNING.md) explains how to sign the Windows installer.
 
+Work updates itself from this repository's [releases](https://github.com/amitran4812/Reverse-Engineer_365/releases): it checks when it starts and every few hours, downloads the new version in the background, and offers **Restart and update**. Turn automatic checks off, or check by hand, in File > Options > Updates. In-place updates work with the Windows installer and the Linux AppImage; on macOS and with the .deb, Work tells you about the new version and opens the releases page.
+
 To uninstall, use Settings > Apps > Installed apps > Work. The installer and uninstaller close any running copy of Work first. If an old version won't uninstall, end every `Work.exe` in Task Manager (or run `taskkill /F /T /IM Work.exe`), then run `%LOCALAPPDATA%\Programs\Work\Uninstall Work.exe`. Your accounts and settings stay in `%APPDATA%\Rea Office` unless you delete that folder.
 
 ## Opening files
