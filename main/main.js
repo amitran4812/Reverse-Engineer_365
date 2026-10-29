@@ -11,6 +11,7 @@ const formats = require('./formats');
 const cloud = require('./cloud');
 const attachments = require('./attachments');
 const generated = require('./generated');
+const updates = require('./updates');
 const latex = require('./latex');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
@@ -273,7 +274,14 @@ ipcMain.handle('accounts:open', safe((e, id) => profiles.open(id)));
 ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
 
 ipcMain.handle('settings:get', () => settings.publicSettings());
-ipcMain.handle('settings:set', (e, patch) => settings.update(patch || {}));
+ipcMain.handle('settings:set', (e, patch) => {
+  const out = settings.update(patch || {});
+  if (typeof patch?.autoUpdate === 'boolean') updates.schedule();
+  return out;
+});
+ipcMain.handle('updates:status', () => updates.status());
+ipcMain.handle('updates:check', () => updates.check());
+ipcMain.handle('updates:install', () => updates.install());
 
 ipcMain.on('claude:start', (e, { id, payload }) => {
   claude.start(e.sender, id, payload);
@@ -428,6 +436,7 @@ if (!app.requestSingleInstanceLock()) {
     buildMenu();
     const files = [...pending, ...filesFromArgv(process.argv)];
     jumpList();
+    updates.schedule();
     const startApp = newFromArgv(process.argv) || process.env.REA_OFFICE_START;
     if (files.length) files.forEach((f) => openPath(f));
     else openWindow(TITLES[startApp] ? startApp : 'home');

@@ -1,7 +1,7 @@
 {
   "name": "rea-office",
   "productName": "Work",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "An Office-style desktop suite (documents, spreadsheets, presentations) with Claude built in.",
   "private": true,
   "license": "MIT",
@@ -27,6 +27,7 @@
     "@e965/xlsx": "0.20.3",
     "@xmldom/xmldom": "^0.8.15",
     "docx": "^9.15.0",
+    "electron-updater": "^6.8.11",
     "exceljs": "^4.4.0",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0",
@@ -61,7 +62,7 @@
   "build": {
     "appId": "tools.rea.office",
     "productName": "Work",
-    "copyright": "Copyright © 2026 Amit",
+    "copyright": "Copyright \u00a9 2026 Amit",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -188,6 +189,14 @@
           "!VERSION",
           "!WARM"
         ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "amitran4812",
+        "repo": "Reverse-Engineer_365",
+        "releaseType": "release"
       }
     ]
   },

@@ -8,8 +8,10 @@ import { ClaudePane } from '../shared/claude-pane.js';
 import { MAKE, SYSTEM } from './make.js';
 import { accountSwitcher, accountsSection } from '../shared/accounts.js';
 import { aiSettings } from '../shared/ai-settings.js';
+import { updateSettings, watchUpdates } from '../shared/updates.js';
 
 const info = await window.office.launchInfo();
+watchUpdates();
 document.documentElement.dataset.platform = info.platform;
 document.documentElement.style.setProperty('--accent', '#3b4a6b');
 
@@ -114,7 +116,7 @@ async function show(view) {
     main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md, .txt and .tex in Write, .xlsx and .csv in Plot, and .reaslides in Present. From Google Drive, Google Sheets and Docs open too.'));
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'options') {
-    main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await aiSettings(() => pane?.loadSettings()), await cloudSettings(), await accountsSection());
+    main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await aiSettings(() => pane?.loadSettings()), await cloudSettings(), await accountsSection(), await updateSettings());
   }
 }
 
