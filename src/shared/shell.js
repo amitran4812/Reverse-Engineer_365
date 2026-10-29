@@ -7,6 +7,7 @@ import { Ribbon } from './ribbon.js';
 import { ClaudePane } from './claude-pane.js';
 import { accountChip, accountsSection } from './accounts.js';
 import { aiSettings } from './ai-settings.js';
+import { updateSettings, watchUpdates } from './updates.js';
 import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
 export const APPS = {
@@ -116,6 +117,7 @@ export async function createShell(opts) {
   document.documentElement.dataset.platform = info.platform;
   document.documentElement.style.setProperty('--accent', meta.accent);
   document.title = meta.title;
+  watchUpdates();
 
   const state = {
     path: info.file?.path || null,
@@ -437,7 +439,7 @@ class Backstage {
         else c.append(form);
       };
       await mount();
-      c.append(await aiSettings(() => this.shell.claude?.loadSettings?.()), await cloudSettings(), await accountsSection());
+      c.append(await aiSettings(() => this.shell.claude?.loadSettings?.()), await cloudSettings(), await accountsSection(), await updateSettings());
     }
   }
 }

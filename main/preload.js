@@ -37,6 +37,12 @@ contextBridge.exposeInMainWorld('office', {
   onSaveAndClose: (fn) => {
     saveAndClose = fn;
   },
+  updates: {
+    status: () => ipcRenderer.invoke('updates:status'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onChange: (fn) => ipcRenderer.on('updates:event', (e, s) => fn(s)),
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch) => ipcRenderer.invoke('settings:set', patch),

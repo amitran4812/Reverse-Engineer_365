@@ -48,6 +48,8 @@ jobs:
             script: dist:win
             files: |
               release/*.exe
+              release/*.exe.blockmap
+              release/latest.yml
           - os: macos-15
             script: dist:mac
             files: |
@@ -57,6 +59,7 @@ jobs:
             files: |
               release/*.AppImage
               release/*.deb
+              release/latest-linux.yml
     runs-on: ${{ matrix.os }}
     # Includes downloading Tectonic and warming its package cache.
     timeout-minutes: 45
