@@ -144,7 +144,9 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-          sparse-checkout: package.json
+          sparse-checkout: |
+            package.json
+            CHANGELOG.md
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -160,8 +162,11 @@ jobs:
         run: |
           if [ "$REF_TYPE" = tag ]; then TAG="$REF_NAME"; else TAG="v$(node -p 'require("./package.json").version')"; fi
           ls -la installers
+          # Release notes come from this version's section of CHANGELOG.md.
+          awk -v v="${TAG#v}" '$0 ~ "^## " v "([^0-9.]|$)" {on=1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
+          printf '\n**Download:** Work-Setup-%s.exe for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. If Windows shows an unknown-publisher warning, choose More info, then Run anyway. Work 0.2.4 and later update themselves.\n' "${TAG#v}" >> notes.md
           gh release create "$TAG" installers/* \
             --repo "$REPO" \
             --target "$SHA" \
             --title "Work $TAG" \
-            --notes "Download **Work-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. If Windows shows an unknown-publisher warning, choose More info, then Run anyway. Connect Claude in File > Options."
+            --notes-file notes.md
