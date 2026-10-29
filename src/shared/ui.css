@@ -1,4 +1,4 @@
-/* Rea Office shared UI. Light theme, Office-style layout, original styling. */
+/* Work shared UI. Light theme, Office-style layout, original styling. */
 
 :root {
   color-scheme: light;
@@ -342,3 +342,6 @@ button { cursor: default; }
 .acct-add { margin-top: 12px; }
 .acct-add .btn { display: inline-flex; align-items: center; gap: 6px; }
 .cloud-card-actions { display: flex; gap: 6px; }
+.cp-pick { border: 1px solid var(--line); border-radius: 4px; background: #fff; font-size: 12px; padding: 2px 4px; max-width: 96px; }
+.ai-card .ai-card-body { grid-column: 1 / -1; }
+.ai-settings > .modal-field { max-width: 360px; }

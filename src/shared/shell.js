@@ -6,12 +6,13 @@ import { icon } from './icons.js';
 import { Ribbon } from './ribbon.js';
 import { ClaudePane } from './claude-pane.js';
 import { accountChip, accountsSection } from './accounts.js';
+import { aiSettings } from './ai-settings.js';
 import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
 export const APPS = {
-  docs: { title: 'Rea Write', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
-  sheets: { title: 'Rea Plot', accent: '#1b7a4b', kind: 'Workbook', mark: 'appSheets', newLabel: 'Blank workbook' },
-  slides: { title: 'Rea Present', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
+  docs: { title: 'Write', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
+  sheets: { title: 'Plot', accent: '#1b7a4b', kind: 'Workbook', mark: 'appSheets', newLabel: 'Blank workbook' },
+  slides: { title: 'Present', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
 };
 
 export const h = (tag, cls, html) => {
@@ -417,7 +418,7 @@ class Backstage {
         else c.append(form);
       };
       await mount();
-      c.append(await cloudSettings(), await accountsSection());
+      c.append(await aiSettings(() => this.shell.claude?.loadSettings?.()), await cloudSettings(), await accountsSection());
     }
   }
 }

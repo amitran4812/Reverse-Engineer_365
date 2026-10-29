@@ -1,4 +1,4 @@
-// Original line icons drawn for Rea Office (20x20 grid). Strokes use
+// Original line icons drawn for Work (20x20 grid). Strokes use
 // currentColor; parts marked with the `a` class pick up the app accent.
 
 const P = {

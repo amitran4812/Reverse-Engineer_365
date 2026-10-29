@@ -9,7 +9,7 @@ const { shell } = require('electron');
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-const DONE_PAGE = (ok, msg) => `<!doctype html><meta charset="utf-8"><title>Rea Office</title>
+const DONE_PAGE = (ok, msg) => `<!doctype html><meta charset="utf-8"><title>Work</title>
 <body style="font-family:system-ui,sans-serif;display:grid;place-items:center;height:90vh;color:#1f2328">
 <div style="text-align:center"><h2>${ok ? 'You’re signed in' : 'Sign-in didn’t finish'}</h2><p>${msg}</p></div></body>`;
 
@@ -39,7 +39,7 @@ async function authorize({ authUrl, tokenUrl, clientId, clientSecret, scope, red
     }
     const ok = code && url.searchParams.get('state') === state;
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(DONE_PAGE(ok, ok ? 'You can close this tab and go back to Rea Office.' : 'Close this tab and try again from Rea Office.'));
+    res.end(DONE_PAGE(ok, ok ? 'You can close this tab and go back to Work.' : 'Close this tab and try again from Work.'));
     if (ok) finish.resolve(code);
     else finish.reject(new Error(error || 'Sign-in was cancelled.'));
   };

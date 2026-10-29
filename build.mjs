@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const APPS = { home: 'Rea Office', docs: 'Rea Write', sheets: 'Rea Plot', slides: 'Rea Present' };
+const APPS = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
 const watch = process.argv.includes('--watch');
 
 await mkdir(join(here, 'dist'), { recursive: true });

@@ -130,5 +130,5 @@ jobs:
           gh release create "$TAG" installers/* \
             --repo "$REPO" \
             --target "$SHA" \
-            --title "Rea Office $TAG" \
-            --notes "Download **Rea-Office-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. The builds aren't code-signed yet: on Windows choose More info, then Run anyway. Connect Claude in File > Options."
+            --title "Work $TAG" \
+            --notes "Download **Work-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. The builds aren't code-signed yet: on Windows choose More info, then Run anyway. Connect Claude in File > Options."

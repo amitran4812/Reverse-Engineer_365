@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Plot app icon: original artwork. -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="#1b7a4b"/>
+  <rect x="104" y="104" width="304" height="304" rx="36" fill="#fff"/>
+  <path d="M104 196h304M104 300h304M212 196v212" stroke="#1b7a4b" stroke-width="18"/>
+  <path d="M260 372l40-48 32 24 44-64" stroke="#1b7a4b" stroke-width="16" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>
+</svg>

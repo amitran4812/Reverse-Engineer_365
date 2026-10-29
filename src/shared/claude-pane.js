@@ -12,6 +12,7 @@
 import { marked } from 'marked';
 import { icon } from './icons.js';
 import { escapeHtml, h, settingsForm, toast } from './shell.js';
+import { AI_PROVIDERS, activeModelLabel, aiSettings } from './ai-settings.js';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -50,7 +51,14 @@ export class ClaudePane {
     this.busy = null;
     host.classList.add('claude-pane');
     host.innerHTML = '';
-    const head = h('div', 'cp-head', `${icon('sparkle', 18)}<b>Claude</b><span class="cp-model"></span>`);
+    const head = h('div', 'cp-head', `${icon('sparkle', 18)}<b class="cp-provider">Claude</b><span class="cp-model"></span>`);
+    this.providerPick = h('select', 'cp-pick');
+    this.providerPick.title = 'Choose the AI';
+    this.providerPick.onchange = async () => {
+      await window.office.settings.set({ provider: this.providerPick.value });
+      this.loadSettings();
+    };
+    head.append(this.providerPick);
     const newChat = h('button', 'cp-icon', icon('newFile', 16));
     newChat.title = 'New conversation';
     newChat.onclick = () => this.reset();
@@ -59,6 +67,7 @@ export class ClaudePane {
     close.onclick = () => this.hide();
     head.append(newChat, close);
     this.modelLabel = head.querySelector('.cp-model');
+    this.providerLabel = head.querySelector('.cp-provider');
     this.body = h('div', 'cp-body');
     this.setup = h('div', 'cp-setup');
     this.log = h('div', 'cp-log');
@@ -137,14 +146,29 @@ export class ClaudePane {
     }
   }
 
+  placeholder() {
+    const p = this.cfg.placeholder || 'Ask Claude…';
+    return this.settings && this.settings.provider !== 'anthropic' ? p.replace(/Claude/g, this.settings.providerLabel) : p;
+  }
+
   async loadSettings() {
-    this.settings = await window.office.settings.get();
-    const m = this.settings.models.find((x) => x.id === this.settings.model);
-    this.modelLabel.textContent = m ? m.label.replace(/\s*\(.*\)/, '') : '';
+    const s = (this.settings = await window.office.settings.get());
+    this.providerLabel.textContent = s.providerLabel;
+    this.modelLabel.textContent = activeModelLabel(s);
+    if (!this.pendingQuick) this.input.placeholder = this.placeholder();
+    // Switch between the AIs that are connected for this account.
+    const usable = AI_PROVIDERS.filter((p) => p.id === s.provider || (p.id === 'anthropic' ? s.hasKey : s.ai[p.id].hasKey && s.ai[p.id].model));
+    this.providerPick.innerHTML = usable.map((p) => `<option value="${p.id}" ${p.id === s.provider ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('');
+    this.providerPick.hidden = usable.length < 2;
     this.setup.innerHTML = '';
-    if (!this.settings.hasKey) {
-      this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect Claude</b><p>Sign in with your Anthropic account and paste a key to turn on Claude in Write, Plot and Present.</p></div>`));
-      this.setup.append(await settingsForm(() => this.loadSettings()));
+    if (!s.ready) {
+      if (s.provider === 'anthropic') {
+        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect Claude</b><p>Sign in with your Anthropic account and paste a key to turn on Claude in Write, Plot and Present. You can use OpenAI or Gemini instead in File > Options.</p></div>`));
+        this.setup.append(await settingsForm(() => this.loadSettings()));
+      } else {
+        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect ${escapeHtml(s.providerLabel)}</b><p>Add your ${escapeHtml(s.providerLabel)} API key and pick a model.</p></div>`));
+        this.setup.append(await aiSettings(() => this.loadSettings()));
+      }
     }
   }
 
@@ -197,7 +221,7 @@ export class ClaudePane {
   }
 
   // Ask Claude. quick may carry a structured-output format and custom actions.
-  ask(prompt, quick = null, label = null) {
+  async ask(prompt, quick = null, label = null) {
     if (!quick && this.pendingQuick) {
       quick = this.pendingQuick;
       label = `${quick.label}: ${prompt}`;
@@ -208,9 +232,10 @@ export class ClaudePane {
       prompt = `${quick.prompt}\n\n${prompt}`;
     }
     this.pendingQuick = null;
-    this.input.placeholder = this.cfg.placeholder || 'Ask Claude…';
+    this.input.placeholder = this.placeholder();
     if (this.busy) return;
-    if (!this.settings?.hasKey) {
+    if (!this.settings) await this.loadSettings();
+    if (!this.settings.ready) {
       this.loadSettings();
       this.show();
       return;
