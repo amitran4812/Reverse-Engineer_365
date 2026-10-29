@@ -124,6 +124,12 @@ Each copy of Work needs an OAuth client ID from Google and from Microsoft. Enter
 
 While the app is in "Testing", only the test users you add can sign in, and Google asks them to sign in again every 7 days. Opening it to everyone needs Google's verification for the Drive scope.
 
+If Google only lets college or work accounts sign in:
+
+- **"Error 403: org_internal"** or **"can only be used within its organization"**: the consent screen's user type is **Internal**. This happens when the Cloud project belongs to a college or company Google Workspace. Open **Google Auth Platform > Audience** and choose **Make external**. If that isn't allowed, create the project while signed in to the console with your personal Gmail account, and use that project's client ID.
+- **"has not completed the Google verification process"** or **"Access blocked"**: add the Gmail address under **Audience > Test users**.
+- **The account chooser only accepts one domain**: clear the college or work domain in **File > Options > Cloud storage**, or click **Use any Google account**. Each Work account has its own setting, so a College account can keep its domain while Personal accepts any Gmail address.
+
 **Microsoft (OneDrive)**
 
 1. In the [Microsoft Entra admin center](https://entra.microsoft.com/), open **App registrations > New registration**.
