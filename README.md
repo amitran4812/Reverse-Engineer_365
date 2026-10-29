@@ -59,13 +59,7 @@ npm run dist:win   # build the Windows installer into release/
 
 ### Releases
 
-The **Build** workflow (`.github/workflows/build.yml`) tests every push and pull request and builds installers for Windows, macOS and Linux as workflow artifacts. Pushing a version tag publishes them as a GitHub Release:
-
-```bash
-git tag v0.2.0 && git push origin v0.2.0
-```
-
-Bump `version` in `package.json` first so the installer name matches.
+The **Build** workflow (`.github/workflows/build.yml`) tests every push and pull request and builds installers for Windows, macOS and Linux as workflow artifacts. To publish them as a GitHub Release, bump `version` in `package.json`, then either push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`) or open **Actions > Build > Run workflow** and tick **release**.
 
 ### Working on it with Claude Code
 

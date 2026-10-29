@@ -6,6 +6,11 @@ on:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: Publish the installers as a GitHub Release (tag v<package.json version>)
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -79,14 +84,20 @@ jobs:
 
   release:
     name: Publish release
-    # Pushing a tag such as v0.1.0 publishes the installers as a GitHub Release.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Pushing a tag such as v0.1.0, or running the workflow by hand with
+    # "release" ticked, publishes the installers as a GitHub Release.
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release
     needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: installers
@@ -94,11 +105,15 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
+          if [ "$REF_TYPE" = tag ]; then TAG="$REF_NAME"; else TAG="v$(node -p 'require("./package.json").version')"; fi
           ls -la installers
           gh release create "$TAG" installers/* \
             --repo "$REPO" \
+            --target "$SHA" \
             --title "Rea Office $TAG" \
             --notes "Download **Rea-Office-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. The builds aren't code-signed yet: on Windows choose More info, then Run anyway. Connect Claude in File > Options."
