@@ -1,0 +1,104 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  package:
+    name: Installer (${{ matrix.os }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            script: dist:win
+            files: |
+              release/*.exe
+          - os: macos-15
+            script: dist:mac
+            files: |
+              release/*.dmg
+          - os: ubuntu-24.04
+            script: dist:linux
+            files: |
+              release/*.AppImage
+              release/*.deb
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build installer
+        run: npm run ${{ matrix.script }}
+        env:
+          # Builds are unsigned; skip looking for signing identities.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rea-office-${{ matrix.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish release
+    # Pushing a tag such as v0.1.0 publishes the installers as a GitHub Release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: installers
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          ls -la installers
+          gh release create "$TAG" installers/* \
+            --repo "$REPO" \
+            --title "Rea Office $TAG" \
+            --notes "Download **Rea-Office-Setup-${TAG#v}.exe** for Windows, the .dmg for macOS, or the .AppImage / .deb for Linux. The builds aren't code-signed yet: on Windows choose More info, then Run anyway. Connect Claude in File > Options."
