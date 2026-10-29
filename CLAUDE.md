@@ -6,14 +6,14 @@ An Electron desktop suite: Write (word processor), Plot (spreadsheet) and Presen
 
 - `npm install` then `npm start` builds the renderer bundles with esbuild (`build.mjs`) and launches Electron.
 - `npm test` runs the node:test suites in `test/` (file formats and the formula engine). Run it before every commit.
-- `npm run build` must pass with no errors; `npm run dist:win` builds the Windows installer into `release/`.
+- `npm run build` must pass with no errors; `npm run dist:win` builds the Windows installer into `release/` (it first runs `scripts/fetch-tectonic.mjs`, which bundles the Tectonic LaTeX engine and a warmed package cache from `build/tectonic/`).
 
 ## Layout
 
-- `main/`: Electron main process. `main.js` (windows, IPC, dialogs), `preload.js` (the `window.office` bridge), `claude.js` (streams from the Anthropic SDK; the API key never leaves this process), `settings.js` (settings, the encrypted key and cloud tokens), `formats/` (.docx, .xlsx/.csv, .pptx conversion), `attachments.js` (files attached to Claude messages), `generated.js` (opens what the Claude app made), `cloud/` (OAuth loopback + PKCE, Google Drive/Sheets and OneDrive via Graph, sharing), `profiles.js` (accounts: each has its own userData folder and runs as its own process, set before app ready).
-- `common/`: code shared by main and renderer (cell references, CSV).
+- `main/`: Electron main process. `main.js` (windows, IPC, dialogs), `preload.js` (the `window.office` bridge), `claude.js` (streams from the Anthropic SDK; the API key never leaves this process), `settings.js` (settings, the encrypted key and cloud tokens), `formats/` (.docx, .xlsx/.csv, .pptx conversion), `attachments.js` (files attached to Claude messages), `generated.js` (opens what the Claude app made), `cloud/` (OAuth loopback + PKCE, Google Drive/Sheets and OneDrive via Graph, sharing), `profiles.js` (accounts: each has its own userData folder and runs as its own process, set before app ready), `latex.js` (LaTeX projects: file access limited to the project folder, compiles in a mirror under userData with the bundled Tectonic or a TeX install).
+- `common/`: code shared by main and renderer (cell references, CSV, `latex.js` for completion context, labels, .bib keys, logs and SyncTeX).
 - `src/shared/`: ribbon, app shell and File screen, Claude pane, original SVG icons, shared CSS.
-- `src/docs/`, `src/sheets/`, `src/slides/`, `src/home/`: one folder per app. `src/home/make.js` is the Claude app; `src/shared/cloud.js` is the cloud browser, Share dialog and Options section; `src/shared/accounts.js` is the account switcher; live Google Sheets sync lives at the end of `src/sheets/sheets.js`.
+- `src/docs/`, `src/sheets/`, `src/slides/`, `src/home/`: one folder per app. `src/home/make.js` is the Claude app; `src/shared/cloud.js` is the cloud browser, Share dialog and Options section; `src/shared/accounts.js` is the account switcher; live Google Sheets sync lives at the end of `src/sheets/sheets.js`. `src/latex/` is Write's LaTeX mode (its own `latex.html` page, opened for `.tex` projects): CodeMirror editor and suggestions, pdf.js preview.
 
 ## Rules
 
