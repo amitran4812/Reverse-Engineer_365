@@ -2,6 +2,11 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.17: Delete sheets from their tab
+
+- Right-click a sheet tab in Plot for **Rename**, **Duplicate**, **Move left**, **Move right** and **Delete**. Before, you got a small dialog where Delete was easy to miss.
+- **Delete sheet** is also on the Home tab (Cells) and the Insert tab (Sheets). A sheet with data asks first, and Undo (Ctrl+Z) brings it back.
+
 ## 0.2.16: Google Drive sign-in fix
 
 - **Connect Google Drive** works with one click: Work's built-in Google sign-in now carries the right app ID, so you just pick your Google account instead of seeing "OAuth client was not found".
