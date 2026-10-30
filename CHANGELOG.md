@@ -2,6 +2,11 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.10: One-click AI sign-in
+
+- The first time you open the AI pane, **Sign in with ChatGPT** is right there. One click signs you in with your ChatGPT Plus or Pro account and picks a model, so the AI is ready without a key.
+- Connecting Claude still needs a key, because Anthropic doesn't let other apps use Claude.ai login. Click the button, copy the key, and come back: Work fills it in.
+
 ## 0.2.9: Combine files and a new look for Plot analysis
 
 - **Add rows**: stack another CSV, Parquet or Excel file under your data. Columns are matched by name, and you can map the rest yourself. A Source column records which file each row came from.
