@@ -121,6 +121,19 @@ test('sigma, limits and grouped stats', () => {
   assert.equal(evaluateColumn('count([x]) over [g]', ctx)[3], 500);
 });
 
+test('normal inverse and cdf', () => {
+  const ctx = sample().exprContext();
+  const near = (f, want, tol = 1e-6) => assert.ok(Math.abs(evaluateColumn(f, ctx)[0] - want) < tol, f);
+  near('normsinv(0.975)', 1.959963985);
+  near('normsinv(0.0013498980316301)', -3, 1e-9);
+  near('normsinv(1e-9)', -5.997807015, 1e-8);
+  near('norminv(0.5, 10, 2)', 10);
+  near('norminv(0.8413447, 10, 2)', 12, 1e-5);
+  near('normsdist(1.96)', 0.9750021);
+  near('normdist(13, 10, 1)', 0.9986501);
+  near('normsinv(normsdist(4.5))', 4.5, 1e-5);
+});
+
 test('split and text functions', () => {
   const dict = ['LOT1_W03_SITE7', 'LOT2_W11_SITE2', 'X'];
   const d = new Dataset({ name: 't', columns: [{ name: 'Tag', type: 'string', data: Int32Array.from([0, 1, 2, -1]), dict }] });
@@ -131,6 +144,80 @@ test('split and text functions', () => {
   assert.deepEqual(text(evaluateColumn('lower(left([Tag], 4))', ctx)), ['lot1', 'lot2', 'x', null]);
   assert.deepEqual(Array.from(evaluateColumn('number(mid(split([Tag], "_", 2), 2))', ctx)).slice(0, 2), [3, 11]);
   assert.deepEqual(text(evaluateColumn('concat(split([Tag], "_", 1), "-", 9)', ctx)).slice(0, 2), ['LOT1-9', 'LOT2-9']);
+});
+
+test('spotfire statistics, ranking and OVER navigation', () => {
+  const lot = ['A', 'B'];
+  const d = new Dataset({ name: 't', columns: [
+    { name: 'Lot', type: 'string', data: Int32Array.from([0, 0, 0, 1, 1, 1]), dict: lot },
+    { name: 'Day', type: 'number', data: Float64Array.from([1, 2, 3, 1, 2, 2]) },
+    { name: 'V', type: 'number', data: Float64Array.from([1, 2, 3, 10, 20, 40]) },
+  ] });
+  const ctx = d.exprContext();
+  const col = (f) => Array.from(evaluateColumn(f, ctx));
+  const one = (f) => evaluateColumn(f, ctx)[0];
+  assert.equal(one('median([V])'), 6.5);
+  assert.equal(one('percentile([V], 50)'), 6.5);
+  assert.equal(one('q1([V])'), 2.25);
+  assert.equal(one('iqr([V])'), 17.5 - 2.25);
+  assert.equal(one('uniquecount([Lot])'), 2);
+  assert.equal(one('Count()'), 6);
+  assert.equal(one('var([V])'), evaluateColumn('sigma([V])', ctx)[0] ** 2);
+  assert.deepEqual(col('Sum([V]) OVER AllPrevious([Day])'), [11, 73, 76, 11, 73, 73]);
+  assert.deepEqual(col('Sum([V]) OVER Intersect([Lot], AllPrevious([Day]))'), [1, 3, 6, 10, 70, 70]);
+  assert.deepEqual(col('Sum([V]) OVER Intersect([Lot], Previous([Day]))').map((x) => (Number.isNaN(x) ? null : x)), [null, 1, 2, null, 10, 10]);
+  assert.deepEqual(col('Avg([V]) OVER Intersect([Lot], Next([Day]))').map((x) => (Number.isNaN(x) ? null : x)), [2, 3, null, 30, null, null]);
+  assert.deepEqual(col('rank([V])'), [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(col('rank([V], "desc", [Lot])'), [3, 2, 1, 3, 2, 1]);
+  assert.deepEqual(col('denserank([Day])'), [1, 2, 3, 1, 2, 2]);
+  assert.deepEqual(col('rank([Day])'), [1, 3, 6, 1, 3, 3]);
+  assert.deepEqual(col('rankreal([Day])'), [1.5, 4, 6, 1.5, 4, 4]);
+  const firsts = evaluateColumn('first([Lot]) over [Day]', ctx);
+  assert.deepEqual(Array.from(firsts.codes, (c) => firsts.dict[c]), ['A', 'A', 'A', 'A', 'A', 'A']);
+  assert.throws(() => evaluateColumn('median([V]) OVER AllPrevious([Day])', ctx), /AllPrevious/);
+});
+
+test('spotfire text, logic, conversion and date functions', () => {
+  const dict = ['LOT1_W03', 'lot2_w11', ' x '];
+  const day = Date.UTC(2024, 0, 31);
+  const d = new Dataset({ name: 't', columns: [
+    { name: 'Tag', type: 'string', data: Int32Array.from([0, 1, 2]), dict },
+    { name: 'When', type: 'date', data: Float64Array.from([day, Date.UTC(2024, 1, 29, 13, 45), NaN]) },
+    { name: 'N', type: 'number', data: Float64Array.from([1, 2, NaN]) },
+  ] });
+  const ctx = d.exprContext();
+  const text = (f) => { const v = evaluateColumn(f, ctx); return Array.from(v.codes, (c) => (c < 0 ? null : v.dict[c])); };
+  const nums = (f) => Array.from(evaluateColumn(f, ctx), (x) => (Number.isNaN(x) ? null : x));
+  assert.deepEqual(nums('find("_", [Tag])'), [5, 5, 0]);
+  assert.deepEqual(text('substitute([Tag], "_", "-")'), ['LOT1-W03', 'lot2-w11', ' x ']);
+  assert.deepEqual(text('rxextract([Tag], "W(\\d+)", 1, "i")'), ['03', '11', null]);
+  assert.deepEqual(text('rxreplace([Tag], "\\d", "#")'), ['LOT#_W##', 'lot#_w##', ' x ']);
+  assert.deepEqual(text('replace([Tag], 1, 3, "Run")'), ['Run1_W03', 'Run2_w11', 'Run']);
+  assert.deepEqual(text('[Tag] & "/" & [N]'), ['LOT1_W03/1', 'lot2_w11/2', ' x /']);
+  assert.deepEqual(text('case when [N] = 1 then "one" when [N] = 2 then "two" else "none" end'), ['one', 'two', 'none']);
+  assert.deepEqual(text('case [N] when 1 then "a" else "b" end'), ['a', 'b', 'b']);
+  assert.deepEqual(nums('[N] in (2, 3)'), [0, 1, null]);
+  assert.deepEqual(nums('[N] is null'), [0, 0, 1]);
+  assert.deepEqual(nums('[N] is not null'), [1, 1, 0]);
+  assert.deepEqual(nums('sn([N], 0)'), [1, 2, 0]);
+  assert.deepEqual(nums('integer("42.9")'), [42, 42, 42]);
+  assert.deepEqual(text('string([N])'), ['1', '2', null]);
+  assert.deepEqual(nums('year([When])'), [2024, 2024, null]);
+  assert.deepEqual(nums('month([When])'), [1, 2, null]);
+  assert.deepEqual(nums('quarter([When])'), [1, 1, null]);
+  assert.deepEqual(nums('hour([When])'), [0, 13, null]);
+  assert.deepEqual(nums('dayofweek([When])'), [3, 4, null]);
+  assert.deepEqual(nums('week([When])'), [5, 9, null]);
+  assert.deepEqual(nums('datepart("dy", [When])'), [31, 60, null]);
+  assert.deepEqual(nums('datediff("day", [When], date("2024-03-01"))'), [30, 0, null]);
+  assert.deepEqual(nums('datediff("month", date(2023, 12, 31), [When])'), [1, 2, null]);
+  assert.equal(evaluateColumn('dateadd("month", 1, [When])', ctx)[0], Date.UTC(2024, 1, 29));
+  d.addCalculated('Next', 'dateadd("day", 7, [When])');
+  assert.equal(d.info().columns.find((c) => c.name === 'Next').type, 'date');
+  d.addCalculated('Day', 'date([When])');
+  assert.equal(d.column('Day').data[1], Date.UTC(2024, 1, 29));
+  assert.deepEqual(nums('log(8, 2)'), [3, 3, 3]);
+  assert.deepEqual(nums('divint(7, 2) + ceiling(1.2) + degrees(pi())'), [185, 185, 185]);
 });
 
 test('filters, calculated columns and marking work together', () => {

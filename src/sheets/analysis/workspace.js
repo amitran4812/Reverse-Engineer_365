@@ -8,7 +8,7 @@ import { popup, closePopup } from '../../shared/ribbon.js';
 import { DataClient } from './client.js';
 import { AGGS, PLOT_TYPES, PlotView, autoTitle, fitText } from './plot.js';
 import { MODELS, fitExpression } from './fit.js';
-import { FUNCTIONS } from './expr.js';
+import { FUNCTION_GROUPS } from './expr.js';
 import { formatValue } from './axes.js';
 import { sendToPresent } from './to-present.js';
 
@@ -781,7 +781,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   async function calculatedColumn(existing = null) {
     if (!st.info) return toast('Open a data file first');
     const help = h('div', 'an-calc-help');
-    help.innerHTML = `<p class="muted">Write a formula over whole columns. Refer to columns as <code>[Column name]</code> or <code>col(A)</code>. Example: <code>[Voltage] * [Current] / 1000</code> or <code>if([Temp] &gt; 30, "hot", "ok")</code>. Stats work per group with <code>OVER</code>: <code>sigma([Vth]) OVER [Lot]</code>, <code>ucl([Vth], 3)</code> for mean + 3 sigma. Pull part of a tag with <code>split([Tag], "_", 2)</code> (-1 is the last part).</p>`;
+    help.innerHTML = `<p class="muted">Write a formula over whole columns. Refer to columns as <code>[Column name]</code> or <code>col(A)</code>. Example: <code>[Voltage] * [Current] / 1000</code> or <code>if([Temp] &gt; 30, "hot", "ok")</code>. Stats work per group with <code>OVER</code>: <code>sigma([Vth]) OVER [Lot]</code>, <code>ucl([Vth], 3)</code> for mean + 3 sigma. Pull part of a tag with <code>split([Tag], "_", 2)</code> (-1 is the last part). Running totals: <code>sum([Qty]) OVER AllPrevious([Date])</code>. Function names aren't case-sensitive, so Spotfire formulas like <code>StdDev([x]) OVER ([Lot])</code> work as written.</p>`;
     const colsBox = h('div', 'an-calc-cols');
     for (const c of st.info.columns) {
       const b = h('button', 'an-chip', `${icon(TYPE_ICON[c.type], 12)} ${escapeHtml(c.name)}`);
@@ -790,11 +790,15 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       colsBox.append(b);
     }
     const fnBox = h('div', 'an-calc-fns');
-    for (const f of FUNCTIONS) {
-      const b = h('button', 'an-chip an-fn', escapeHtml(f));
-      b.type = 'button';
-      b.onclick = () => insertAtCursor(`${f.replace(/\(.*$/, '')}(`);
-      fnBox.append(b);
+    for (const [group, list] of Object.entries(FUNCTION_GROUPS)) {
+      fnBox.append(h('div', 'an-fn-group', escapeHtml(group)));
+      for (const f of list) {
+        const b = h('button', 'an-chip an-fn', escapeHtml(f));
+        b.type = 'button';
+        // Plain functions insert "name(", anything else (OVER, case, in) as written.
+        b.onclick = () => insertAtCursor(/^\w+\(/.test(f) && !/\bOVER\b/.test(f) ? `${f.replace(/\(.*$/, '')}(` : ` ${f} `);
+        fnBox.append(b);
+      }
     }
     help.append(h('b', '', 'Columns'), colsBox, h('b', '', 'Functions'), fnBox);
     const insertAtCursor = (text) => {
