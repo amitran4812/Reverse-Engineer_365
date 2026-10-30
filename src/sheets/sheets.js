@@ -874,9 +874,7 @@ function sheetMenu(i, anchor) {
   item('Move right', 'nextSlide', () => moveSheet(i, 1), i < n - 1);
   m.append(h('div', 'rb-menu-sep'));
   item('Delete', 'trash', () => deleteSheet(i), n > 1);
-  // The tabs sit at the bottom of the window, so open the menu above them.
-  const p = popup(anchor, m);
-  p.style.top = `${Math.max(6, anchor.getBoundingClientRect().top - p.offsetHeight - 2)}px`;
+  popup(anchor, m);
 }
 
 function duplicateSheet(i) {
