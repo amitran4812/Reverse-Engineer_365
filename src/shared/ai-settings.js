@@ -6,6 +6,7 @@ import { escapeHtml, h, toast } from './shell.js';
 
 export const AI_PROVIDERS = [
   { id: 'anthropic', label: 'Claude', by: 'Anthropic' },
+  { id: 'chatgpt', label: 'ChatGPT', by: 'your ChatGPT Plus or Pro plan', signIn: true },
   { id: 'openai', label: 'OpenAI', by: 'ChatGPT models', keys: 'https://platform.openai.com/api-keys', placeholder: 'sk-…' },
   { id: 'gemini', label: 'Gemini', by: 'Google', keys: 'https://aistudio.google.com/apikey', placeholder: 'AIza…' },
 ];
@@ -16,11 +17,77 @@ export function activeModelLabel(s) {
   return s.ai[s.provider]?.model || '';
 }
 
+// After "Get a key" opens the provider's page, fill in a key the person copies there.
+export function pasteCopiedKey(provider, input, onFound) {
+  const look = async () => {
+    window.removeEventListener('focus', look);
+    if (input.value) return;
+    const key = await window.office.claude.clipboardKey(provider);
+    if (key) {
+      input.value = key;
+      onFound?.();
+    }
+  };
+  window.addEventListener('focus', look);
+}
+
+function chatgptCard(s, onSaved, draw) {
+  const st = s.ai.chatgpt;
+  const card = h('form', 'cloud-card ai-card');
+  card.innerHTML = `<div class="cloud-card-head">${icon('sparkle', 20)}<div><b>ChatGPT</b><span class="muted">${st.hasKey ? `Signed in${st.email ? ` as ${escapeHtml(st.email)}` : ''}${st.model ? `, using ${escapeHtml(st.model)}` : ', pick a model'}` : 'Sign in with your ChatGPT account. No API key needed; it uses your Plus or Pro plan.'}</span></div></div>
+    <div class="cloud-card-actions"><button class="btn${st.hasKey ? '' : ' primary'}" type="button" data-sign>${st.hasKey ? 'Sign out' : 'Sign in with ChatGPT'}</button></div>
+    ${st.hasKey ? `<div class="ai-card-body">
+      <label class="modal-field"><span>Model</span><select name="model">${st.model ? `<option>${escapeHtml(st.model)}</option>` : '<option value="">Loading models…</option>'}</select></label>
+      <p class="settings-status" data-status></p>
+      <div class="modal-actions"><button class="btn primary" type="submit">Save</button></div>
+    </div>` : '<p class="settings-status" data-status></p>'}`;
+  const status = card.querySelector('[data-status]');
+  const bad = (m) => {
+    status.textContent = m;
+    status.className = 'settings-status bad';
+  };
+  card.querySelector('[data-sign]').onclick = async (e) => {
+    e.target.disabled = true;
+    if (st.hasKey) {
+      await window.office.claude.chatgptSignOut();
+      toast('Signed out of ChatGPT');
+      onSaved?.();
+      return draw();
+    }
+    status.textContent = 'Finish signing in in your browser…';
+    status.className = 'settings-status';
+    const r = await window.office.claude.chatgptSignIn();
+    if (!r.ok) {
+      e.target.disabled = false;
+      return bad(r.message);
+    }
+    toast(`Signed in to ChatGPT${r.email ? ` as ${r.email}` : ''}`);
+    draw();
+  };
+  const select = card.querySelector('[name=model]');
+  if (select) {
+    window.office.claude.models('chatgpt').then((r) => {
+      if (!r.ok) return bad(r.message);
+      const keep = select.value;
+      select.innerHTML = r.models.map((m) => `<option ${m === keep ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('') || '<option value="">No models available on this plan</option>';
+    });
+    card.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!select.value) return bad('Pick a model first.');
+      await window.office.settings.set({ aiModels: { chatgpt: select.value }, provider: 'chatgpt' });
+      toast('AI features now use ChatGPT');
+      onSaved?.();
+      draw();
+    };
+  }
+  return card;
+}
+
 export async function aiSettings(onSaved) {
   const wrap = h('div', 'cloud-settings ai-settings');
   const draw = async () => {
     const s = await window.office.settings.get();
-    wrap.innerHTML = `<h2>${icon('sparkle', 18)} AI assistant</h2><p class="muted">Claude runs every AI feature by default. You can connect OpenAI or Gemini with your own API key instead, and every feature works the same way: the Claude app, the side pane, What to say, and attached files. Keys are stored encrypted for this account only.</p>`;
+    wrap.innerHTML = `<h2>${icon('sparkle', 18)} AI assistant</h2><p class="muted">Claude runs every AI feature by default. You can sign in with ChatGPT, or connect OpenAI or Gemini with an API key, instead, and every feature works the same way: the Claude app, the side pane, What to say, and attached files. Keys are stored encrypted for this account only.</p>`;
     const pick = h('label', 'modal-field', `<span>Use for AI features</span><select name="provider">${AI_PROVIDERS.map((p) => {
       const ready = p.id === 'anthropic' ? s.hasKey : s.ai[p.id].hasKey && s.ai[p.id].model;
       return `<option value="${p.id}" ${p.id === s.provider ? 'selected' : ''} ${ready || p.id === s.provider ? '' : 'disabled'}>${escapeHtml(p.label)}${ready ? '' : ' (connect below first)'}</option>`;
@@ -37,7 +104,8 @@ export async function aiSettings(onSaved) {
       toast(`What to say is ${e.target.checked ? 'on' : 'off'} for slide shows`);
     };
     wrap.append(pick, coach);
-    for (const p of AI_PROVIDERS.slice(1)) {
+    wrap.append(chatgptCard(s, onSaved, draw));
+    for (const p of AI_PROVIDERS.filter((x) => x.keys)) {
       const st = s.ai[p.id];
       const card = h('form', 'cloud-card ai-card');
       card.innerHTML = `<div class="cloud-card-head">${icon('key', 20)}<div><b>${p.label}</b><span class="muted">${st.hasKey ? `Connected${st.model ? `, using ${escapeHtml(st.model)}` : ', pick a model'}` : 'Not connected'}</span></div></div>
@@ -50,7 +118,13 @@ export async function aiSettings(onSaved) {
         </div>`;
       const status = card.querySelector('[data-status]');
       const select = card.querySelector('[name=model]');
-      card.querySelector('[data-link]').onclick = () => window.office.openExternal(p.keys);
+      card.querySelector('[data-link]').onclick = () => {
+        pasteCopiedKey(p.id, card.key, () => {
+          status.textContent = 'Found the key you copied. Checking it…';
+          check();
+        });
+        window.office.openExternal(p.keys);
+      };
       const check = async () => {
         status.textContent = 'Checking…';
         status.className = 'settings-status';

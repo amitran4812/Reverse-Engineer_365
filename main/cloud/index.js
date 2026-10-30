@@ -58,7 +58,9 @@ function provider(id) {
 function status() {
   return Object.values(providers).map((p) => {
     const t = settings.getSecret(`cloud:${p.id}`);
-    return { id: p.id, label: p.label, configured: Boolean(client(p.id).clientId), connected: Boolean(t?.refresh_token || t?.access_token), account: t?.account || null };
+    const builtIn = Boolean(bakedConfig()[p.id]?.clientId);
+    const custom = Boolean(settings.readRaw().cloudClients?.[p.id]?.clientId);
+    return { id: p.id, label: p.label, builtIn, custom, configured: Boolean(client(p.id).clientId), connected: Boolean(t?.refresh_token || t?.access_token), account: t?.account || null };
   });
 }
 
