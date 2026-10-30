@@ -1,7 +1,7 @@
 'use strict';
 
-// Turns what Claude made in the Claude app into the file info a Write, Plot
-// or Present window opens with (an unsaved new file).
+// Turns what Claude made in the Claude app, or a slide Plot made, into the
+// file info a Write, Plot or Present window opens with (an unsaved new file).
 
 const { refName, colName } = require('../common/cellref');
 
@@ -37,6 +37,15 @@ async function toFileInfo(spec) {
   }
   if (spec.kind === 'presentation') {
     return { app: 'slides', path: null, name: title, generated: true, data: { deckSpec: { title, slides: spec.slides || [] }, theme: THEMES.includes(spec.theme) ? spec.theme : 'paper' } };
+  }
+  if (spec.kind === 'deck') {
+    const slides = (spec.slides || []).map((sl, i) => ({
+      id: String(sl.id || `s${i}`),
+      layout: sl.layout || 'blank',
+      notes: String(sl.notes || ''),
+      elements: (sl.elements || []).filter((el) => ['text', 'image', 'table'].includes(el?.type) && el.id),
+    }));
+    return { app: 'slides', path: null, name: title, generated: true, data: { slides, theme: THEMES.includes(spec.theme) ? spec.theme : 'paper' } };
   }
   throw new Error('Nothing to open: Claude answered in the chat.');
 }

@@ -44,3 +44,17 @@ test('attachments: PDFs go as documents, spreadsheets and text as text, unknown 
   assert.match(blocks[1].text, /<attachment name="b.csv">\nx,y/);
   assert.match(blocks[2].text, /Sheet "S"[\s\S]*=A2\*2/);
 });
+
+test('a slide made in Plot opens as a new presentation in Present', async () => {
+  const info = await toFileInfo({ kind: 'deck', title: 'Sales', theme: 'midnight', slides: [{ id: 's1', layout: 'blank', elements: [
+    { id: 'a', type: 'text', role: 'title', x: 36, y: 18, w: 888, h: 56, html: 'Sales' },
+    { id: 'b', type: 'image', x: 36, y: 100, w: 400, h: 300, src: 'data:image/png;base64,AA' },
+    { id: 'c', type: 'table', x: 500, y: 100, w: 300, h: 80, rows: [['Year'], ['2021']] },
+    { type: 'image', src: 'x' },
+    { id: 'd', type: 'script' },
+  ] }] });
+  assert.equal(info.app, 'slides');
+  assert.equal(info.generated, true);
+  assert.equal(info.data.theme, 'midnight');
+  assert.deepEqual(info.data.slides[0].elements.map((e) => e.id), ['a', 'b', 'c']);
+});

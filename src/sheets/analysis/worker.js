@@ -160,6 +160,7 @@ const ops = {
   fit: (spec, fitSpec) => ds.fit(spec, fitSpec),
   rows: (start, count, source) => ds.rows(start, count, source),
   row: (i) => ds.row(i),
+  tableRows: (opts) => ds.tableRows(opts),
   csv: (source, start, count) => ds.csv(source, start, count),
   summary: () => ds.summary(),
 };

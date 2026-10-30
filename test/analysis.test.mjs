@@ -8,6 +8,7 @@ import { parseParquet } from '../src/sheets/analysis/parquet.js';
 import { evaluateColumn } from '../src/sheets/analysis/expr.js';
 import { fit, polyFit } from '../src/sheets/analysis/fit.js';
 import { Dataset, m4 } from '../src/sheets/analysis/engine.js';
+import { SLIDE_H, SLIDE_W, buildSlide, gridFor, planSlide } from '../src/sheets/analysis/slide.js';
 import { cellText } from '../src/sheets/analysis/columns.js';
 
 const reader = (bytes, chunk = 1 << 20) => ({
@@ -196,4 +197,46 @@ test('Add Columns joins on keys with each join type', async () => {
   const right = joinColumns(a.columns, a.rows, b.columns, b.rows, { keys, how: 'right' });
   assert.equal(right.rows, 4);
   assert.ok(!byName(right).key);
+});
+
+test('slide tables take filtered, marked or all rows narrowed by a formula', () => {
+  const d = sample();
+  d.setFilter('x', { kind: 'range', min: 0, max: 99 });
+  const some = d.tableRows({ columns: ['x', 'g'], where: '[x] >= 10 and [x] <= 12', limit: 20 });
+  assert.equal(some.total, 3);
+  assert.deepEqual(some.columns, ['x', 'g']);
+  assert.deepEqual(some.rows.map((r) => r[0]), ['10', '11', '12']);
+  const all = d.tableRows({ source: 'all', columns: ['x'], where: '[x] > 990', limit: 5 });
+  assert.equal(all.total, 9);
+  assert.equal(all.rows.length, 5);
+  assert.equal(d.tableRows({ columns: ['x'], limit: 3 }).total, 100);
+  assert.throws(() => d.tableRows({ where: '[nope] > 1' }));
+});
+
+test('a slide fits the charts in a grid and the table beside or under them', () => {
+  const inside = (b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= SLIDE_W && b.y + b.h <= SLIDE_H;
+  const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const table = { columns: ['Year', 'Sales'], rows: [['2021', '5'], ['2022', '7']] };
+  for (const count of [1, 2, 3, 4, 5, 7, 12]) {
+    for (const t of [null, table, { columns: ['a', 'b', 'c', 'd', 'e', 'f'], rows: Array.from({ length: 30 }, () => ['1', '2', '3', '4', '5', '6']) }]) {
+      const plan = planSlide({ count, table: t });
+      assert.equal(plan.cells.length, count);
+      for (const c of plan.cells) {
+        assert.ok(inside(c), `cell inside slide for ${count}`);
+        assert.ok(!overlap(c, plan.title));
+        if (plan.table) assert.ok(!overlap(c, plan.table), `chart and table overlap for ${count}`);
+      }
+      plan.cells.forEach((a, i) => plan.cells.slice(i + 1).forEach((b) => assert.ok(!overlap(a, b))));
+      if (t) assert.ok(inside(plan.table));
+    }
+  }
+  assert.deepEqual(gridFor(4, 880, 430), { cols: 2, rows: 2 });
+  const plan = planSlide({ count: 2, table });
+  const slide = buildSlide({ title: 'Sales <2022>', plan, charts: [{ src: 'data:image/png;base64,AA', caption: 'A' }, { src: 'data:image/png;base64,AA', caption: 'B' }], table });
+  assert.equal(slide.elements.filter((e) => e.type === 'image').length, 2);
+  assert.equal(slide.elements[0].html, 'Sales &lt;2022&gt;');
+  const tbl = slide.elements.find((e) => e.type === 'table');
+  assert.deepEqual(tbl.rows[0], ['Year', 'Sales']);
+  assert.equal(new Set(slide.elements.map((e) => e.id)).size, slide.elements.length);
+  assert.equal(planSlide({ count: 0, table }).table.w, SLIDE_W - 72);
 });

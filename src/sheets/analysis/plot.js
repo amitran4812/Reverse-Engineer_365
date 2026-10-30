@@ -1440,8 +1440,10 @@ export class PlotView {
     return p.toString();
   }
 
-  toPng(scale = 2) {
-    const { w, h: ht } = this.size();
+  toPng(scale = 2, width = 0, height = 0) {
+    const size = this.size();
+    const w = width || size.w;
+    const ht = height || size.h;
     const L = this.layout(w, ht);
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(w * scale);

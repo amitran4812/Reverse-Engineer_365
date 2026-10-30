@@ -793,6 +793,29 @@ export class Dataset {
     return { total: list.length, start, rows: out, ids, marked, columns: cols.map((c) => c.name) };
   }
 
+  // Rows for a slide table: filtered, marked or all rows, narrowed by an
+  // optional formula such as [Year] >= 2020 and [Year] <= 2022.
+  tableRows({ source = 'filtered', columns = null, where = '', limit = 20 } = {}) {
+    const list = source === 'marked' ? this.marked() : source === 'all' ? null : this.index;
+    let keep = null;
+    if (String(where).trim()) {
+      const v = evaluateColumn(where, this.exprContext());
+      if (!(v instanceof Float64Array)) throw new Error('The row formula must be true or false for each row');
+      keep = v;
+    }
+    const cols = (columns?.length ? columns : this.cols.map((c) => c.name)).map((n) => this.need(n));
+    const rows = [];
+    let total = 0;
+    const len = list ? list.length : this.n;
+    for (let k = 0; k < len; k += 1) {
+      const i = list ? list[k] : k;
+      if (keep && !(keep[i] && !Number.isNaN(keep[i]))) continue;
+      total += 1;
+      if (rows.length < limit) rows.push(cols.map((c) => cellText(c, i)));
+    }
+    return { total, rows, columns: cols.map((c) => c.name) };
+  }
+
   row(i) {
     return Object.fromEntries(this.cols.map((c) => [c.name, cellText(c, i)]));
   }

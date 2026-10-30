@@ -10,6 +10,7 @@ import { AGGS, PLOT_TYPES, PlotView, autoTitle, fitText } from './plot.js';
 import { MODELS, fitExpression } from './fit.js';
 import { FUNCTIONS } from './expr.js';
 import { formatValue } from './axes.js';
+import { sendToPresent } from './to-present.js';
 
 const TYPE_ICON = { number: 'colNumber', string: 'colText', date: 'colDate' };
 const AGGED = ['bar', 'pie', 'table'];
@@ -2083,6 +2084,7 @@ ${plots}
           { type: 'small', icon: 'export', label: 'Plot as SVG', run: () => exportPlot('svg'), enabled: hasPlot },
           { type: 'small', icon: 'pdf', label: 'Plot as PDF', run: () => exportPlot('pdf'), enabled: hasPlot },
         ] },
+        { type: 'big', icon: 'toPresent', label: 'Send to Present', title: 'Put the plots you pick, and a table of rows if you like, on a slide in a new presentation', run: () => sendToPresent({ st, client, showPage, refreshPlots, setLoading }), enabled: needData },
         { type: 'big', icon: 'save', label: 'Save Analysis', title: 'Save plots, filters and formulas as a .workplot file', run: () => saveProject(), enabled: needData },
       ] },
       { label: 'Show', items: [

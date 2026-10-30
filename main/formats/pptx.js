@@ -38,6 +38,14 @@ function textRuns(el) {
   return runs;
 }
 
+function tableRows(el) {
+  const accent = hex(el.style?.fill) || '444444';
+  return el.rows.map((row, r) => row.map((v) => {
+    const head = r === 0 && el.header !== false;
+    return { text: String(v ?? ''), options: head ? { bold: true, color: 'FFFFFF', fill: { color: accent } } : {} };
+  }));
+}
+
 async function exportPptx(model) {
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_16x9';
@@ -74,6 +82,17 @@ async function exportPptx(model) {
         }
       } else if (el.type === 'image' && el.src?.startsWith('data:')) {
         slide.addImage({ ...box, data: el.src });
+      } else if (el.type === 'table' && el.rows?.length) {
+        slide.addTable(tableRows(el), {
+          ...box,
+          rowH: Number((box.h / el.rows.length).toFixed(3)),
+          fontFace: el.style?.fontFamily || theme.font || 'Calibri',
+          fontSize: Math.round((el.style?.fontSize || 14) * 0.75),
+          color: hex(el.style?.color) || hex(theme.text) || '222222',
+          border: { type: 'solid', pt: 0.5, color: 'C8CCD2' },
+          margin: 0.04,
+          valign: 'middle',
+        });
       }
     }
   }

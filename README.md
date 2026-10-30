@@ -3,7 +3,7 @@
 An installable desktop office suite with AI built in (Claude by default, or OpenAI or Gemini with your own key):
 
 - **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)).
-- **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open.
+- **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open. Its **Analysis** tab plots large data files, and **Send to Present** puts the plots you pick, with a table of rows if you like, on a slide in a new presentation.
 - **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides`, exports `.pptx`, and opens `.pptx` and OpenDocument `.odp`.
 
 - **Claude app**: on the start screen, type what you need ("a 10-slide pitch deck for…", "a monthly budget…") and attach PDFs, images, Word, Excel, CSV or text files. Claude makes the presentation, spreadsheet or document and opens it in the right app.
@@ -176,7 +176,7 @@ main/            Electron main process
   preload.js     the window.office bridge exposed to the renderer
   claude.js      streams Claude responses (the API key stays in this process)
   attachments.js files attached to Claude messages (PDF, images, Office files, text)
-  generated.js   opens what the Claude app made in Write, Plot or Present
+  generated.js   opens what the Claude app made in Write, Plot or Present, and slides Plot sends to Present
   cloud/         Google Drive, Google Sheets live sync and OneDrive (OAuth + APIs)
   settings.js    settings + encrypted API key
   profiles.js    accounts: one data folder and process per account

@@ -2,6 +2,13 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.13: Send plots to Present
+
+- **Send to Present** on Plot's Analyze tab puts your plots on a slide. A list shows every plot in the analysis, page by page, so tick the ones you want and untick the rest.
+- Pick a Present template (Paper, Slate, Midnight, Sunrise, Forest or Berry) and give the slide a title. The plots are arranged in a grid, each with its name above it.
+- Tick **Add a table of rows** to put data on the same slide. Choose the columns, take filtered, marked or all rows, and narrow them with a formula such as `[Year] == 2021 or [Year] == 2023`.
+- The slide opens as a new presentation in Present, ready to edit, show or save. Saving as .pptx keeps the table as a real table.
+
 ## 0.2.12: Combine tables in any sheet
 
 - **Add Rows** on the Data tab stacks another table under the one you're in. Take it from another sheet in the workbook or from a file (Excel, OpenDocument, CSV or TSV). Columns are matched by name, and you can map the rest yourself or leave them out. Optionally add a column that says where each row came from.
