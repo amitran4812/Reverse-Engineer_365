@@ -781,7 +781,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   async function calculatedColumn(existing = null) {
     if (!st.info) return toast('Open a data file first');
     const help = h('div', 'an-calc-help');
-    help.innerHTML = `<p class="muted">Write a formula over whole columns. Refer to columns as <code>[Column name]</code> or <code>col(A)</code>. Example: <code>[Voltage] * [Current] / 1000</code> or <code>if([Temp] &gt; 30, "hot", "ok")</code>.</p>`;
+    help.innerHTML = `<p class="muted">Write a formula over whole columns. Refer to columns as <code>[Column name]</code> or <code>col(A)</code>. Example: <code>[Voltage] * [Current] / 1000</code> or <code>if([Temp] &gt; 30, "hot", "ok")</code>. Stats work per group with <code>OVER</code>: <code>sigma([Vth]) OVER [Lot]</code>, <code>ucl([Vth], 3)</code> for mean + 3 sigma. Pull part of a tag with <code>split([Tag], "_", 2)</code> (-1 is the last part).</p>`;
     const colsBox = h('div', 'an-calc-cols');
     for (const c of st.info.columns) {
       const b = h('button', 'an-chip', `${icon(TYPE_ICON[c.type], 12)} ${escapeHtml(c.name)}`);

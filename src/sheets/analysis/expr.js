@@ -165,7 +165,22 @@ export function parse(src) {
           if (args.length !== 1 || args[0].k !== 'str') throw new Error('col() takes a column letter or name');
           return { k: 'col', name: args[0].v, letter: true };
         }
-        return { k: 'call', fn: t.v.toLowerCase(), args };
+        const node = { k: 'call', fn: t.v.toLowerCase(), args };
+        // Spotfire style grouping: StdDev([x]) OVER [Lot] or OVER ([Lot], [Wafer]).
+        if (isWord('over')) {
+          p += 1;
+          const over = [];
+          if (isOp('(')) {
+            p += 1;
+            do {
+              if (over.length) p += 1;
+              over.push(ternary());
+            } while (isOp(','));
+            expect(')');
+          } else over.push(primary());
+          node.over = over;
+        }
+        return node;
       }
       return { k: 'id', name: t.v };
     }
@@ -182,7 +197,7 @@ export function references(ast, out = { cols: new Set(), ids: new Set() }) {
   if (ast.k === 'col') out.cols.add(ast.name);
   if (ast.k === 'id') out.ids.add(ast.name);
   for (const key of ['l', 'r', 'a']) if (ast[key]) references(ast[key], out);
-  for (const a of ast.args || []) references(a, out);
+  for (const a of [...(ast.args || []), ...(ast.over || [])]) references(a, out);
   return out;
 }
 
@@ -293,6 +308,104 @@ function columnStat(v, kind) {
   return { sum, mean, count: n, min: n ? lo : NaN, max: n ? hi : NaN }[kind];
 }
 
+// Per-row group ids from one or more columns, for stat(...) OVER [group].
+function groupIds(groups, n) {
+  const ids = new Int32Array(n);
+  const index = new Map();
+  const keys = groups.map((g) => (isCat(g) ? (i) => g.codes[i] : isVec(g) ? (i) => g[i] : () => g));
+  for (let i = 0; i < n; i += 1) {
+    const key = keys.length === 1 ? keys[0](i) : keys.map((k) => k(i)).join('\u0001');
+    let id = index.get(key);
+    if (id === undefined) {
+      id = index.size;
+      index.set(key, id);
+    }
+    ids[i] = id;
+  }
+  return { ids, count: index.size };
+}
+
+// A column statistic, either over the whole column or per group (broadcast
+// back to every row of that group).
+function stat(v, kind, groups, n) {
+  if (!groups?.length) return isCat(v) && kind === 'count' ? v.codes.reduce((s, c) => s + (c >= 0 ? 1 : 0), 0) : columnStat(v, kind);
+  const { ids, count } = groupIds(groups, n);
+  const a = isCat(v) ? Float64Array.from(v.codes, (c) => (c < 0 ? NaN : 0)) : numeric(v, n);
+  const at = typeof a === 'number' ? () => a : (i) => a[i];
+  const out = new Float64Array(n);
+  if (kind === 'median') {
+    const lists = Array.from({ length: count }, () => []);
+    for (let i = 0; i < n; i += 1) if (!Number.isNaN(at(i))) lists[ids[i]].push(at(i));
+    const med = lists.map((l) => (l.length ? columnStat(Float64Array.from(l), 'median') : NaN));
+    for (let i = 0; i < n; i += 1) out[i] = med[ids[i]];
+    return out;
+  }
+  const cnt = new Float64Array(count);
+  const sum = new Float64Array(count);
+  const lo = new Float64Array(count).fill(Infinity);
+  const hi = new Float64Array(count).fill(-Infinity);
+  for (let i = 0; i < n; i += 1) {
+    const x = at(i);
+    if (Number.isNaN(x)) continue;
+    const g = ids[i];
+    cnt[g] += 1;
+    sum[g] += x;
+    if (x < lo[g]) lo[g] = x;
+    if (x > hi[g]) hi[g] = x;
+  }
+  let res;
+  if (kind === 'std') {
+    const sq = new Float64Array(count);
+    for (let i = 0; i < n; i += 1) {
+      const x = at(i);
+      if (!Number.isNaN(x)) sq[ids[i]] += (x - sum[ids[i]] / cnt[ids[i]]) ** 2;
+    }
+    res = Float64Array.from(sq, (q, g) => (cnt[g] > 1 ? Math.sqrt(q / (cnt[g] - 1)) : NaN));
+  } else {
+    res = Float64Array.from(cnt, (c, g) => ({ sum: sum[g], mean: c ? sum[g] / c : NaN, count: c, min: c ? lo[g] : NaN, max: c ? hi[g] : NaN }[kind]));
+  }
+  for (let i = 0; i < n; i += 1) out[i] = res[ids[i]];
+  return out;
+}
+
+// Applies a string function to every row of a text value. Text columns only
+// touch their dictionary, so this stays fast on millions of rows.
+function textMap(v, n, f) {
+  if (typeof v === 'string') return f(v) ?? NaN;
+  if (typeof v === 'number') return Number.isNaN(v) ? NaN : f(String(v)) ?? NaN;
+  const dict = [];
+  const index = new Map();
+  const intern = (s) => {
+    if (s == null) return -1;
+    let code = index.get(s);
+    if (code === undefined) {
+      code = dict.length;
+      dict.push(s);
+      index.set(s, code);
+    }
+    return code;
+  };
+  if (isCat(v)) {
+    const remap = v.dict.map((s) => intern(f(s)));
+    return { codes: Int32Array.from(v.codes, (c) => (c < 0 ? -1 : remap[c])), dict };
+  }
+  const get = strAt(v);
+  const codes = new Int32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const s = get(i);
+    codes[i] = s == null ? -1 : intern(f(s));
+  }
+  return { codes, dict };
+}
+
+// Splits text on a separator and keeps one part. index counts from 1;
+// negative counts from the end (-1 is the last part).
+export function splitPart(s, sep, index) {
+  const parts = sep === '' ? [...s] : s.split(sep);
+  const k = index < 0 ? parts.length + index : index - 1;
+  return k >= 0 && k < parts.length ? parts[k] : null;
+}
+
 const MATH1 = {
   abs: Math.abs, sqrt: Math.sqrt, exp: Math.exp, ln: Math.log, log: Math.log, log10: Math.log10, log2: Math.log2,
   sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan,
@@ -302,10 +415,11 @@ const MATH1 = {
 export const FUNCTIONS = [
   ...Object.keys(MATH1), 'round(x, digits)', 'pow(x, y)', 'mod(x, y)', 'atan2(y, x)', 'hypot(x, y)', 'min(...)', 'max(...)',
   'if(cond, a, b)', 'isnull(x)', 'ifnull(x, value)', 'contains(text, part)', 'startswith(text, part)', 'len(text)',
-  'mean(col)', 'sum(col)', 'count(col)', 'std(col)', 'median(col)', 'cumsum(col)', 'diff(col)', 'lag(col, k)', 'movavg(col, k)', 'rownum()',
+  'split(text, separator, index)', 'left(text, n)', 'right(text, n)', 'mid(text, start, n)', 'upper(text)', 'lower(text)', 'trim(text)', 'concat(...)', 'number(text)',
+  'mean(col)', 'sum(col)', 'count(col)', 'std(col)', 'sigma(col)', 'zscore(col)', 'ucl(col, k)', 'lcl(col, k)', 'median(col)', 'cumsum(col)', 'diff(col)', 'lag(col, k)', 'movavg(col, k)', 'rownum()',
 ];
 
-function call(fn, args, n, ctx) {
+function call(fn, args, n, ctx, over) {
   const a = args;
   if (MATH1[fn] && a.length === 1) return map1(a[0], n, MATH1[fn]);
   switch (fn) {
@@ -322,17 +436,72 @@ function call(fn, args, n, ctx) {
     case 'hypot': return map2(a[0], a[1], n, Math.hypot);
     case 'min':
     case 'max': {
-      if (a.length === 1) return columnStat(a[0], fn);
+      if (a.length === 1) return over ? stat(a[0], fn, over, n) : columnStat(a[0], fn);
       const f = fn === 'min' ? (x, y) => (Number.isNaN(x) ? y : Number.isNaN(y) ? x : Math.min(x, y)) : (x, y) => (Number.isNaN(x) ? y : Number.isNaN(y) ? x : Math.max(x, y));
       return a.slice(1).reduce((acc, v) => map2(acc, v, n, f), a[0]);
     }
     case 'mean':
     case 'avg':
-    case 'average': return columnStat(a[0], 'mean');
+    case 'average': return stat(a[0], 'mean', over, n);
     case 'sum':
     case 'count':
+    case 'median': return stat(a[0], fn, over, n);
     case 'std':
-    case 'median': return isCat(a[0]) && fn === 'count' ? a[0].codes.reduce((s, c) => s + (c >= 0 ? 1 : 0), 0) : columnStat(a[0], fn);
+    case 'stdev':
+    case 'stddev':
+    case 'sigma': return stat(a[0], 'std', over, n);
+    case 'zscore':
+    case 'ucl':
+    case 'lcl': {
+      // zscore: how many sigmas each row is from the mean. ucl/lcl: the
+      // mean plus or minus k sigma (k defaults to 3).
+      const mean = stat(a[0], 'mean', over, n);
+      const sd = stat(a[0], 'std', over, n);
+      if (fn === 'zscore') return map2(map2(a[0], mean, n, (x, m) => x - m), sd, n, (d, s) => d / s);
+      const k = a.length > 1 ? numeric(a[1], n) : 3;
+      const ks = map2(sd, k, n, (s, kk) => s * kk);
+      return map2(mean, ks, n, fn === 'ucl' ? (m, d) => m + d : (m, d) => m - d);
+    }
+    case 'split': {
+      const sep = String(a[1] ?? ',');
+      const idx = Math.trunc(numeric(a[2] ?? 1, 0));
+      if (Number.isNaN(idx) || idx === 0) throw new Error('split() index counts from 1 (or -1 for the last part)');
+      return textMap(a[0], n, (s) => splitPart(s, sep, idx));
+    }
+    case 'left':
+    case 'right': {
+      const k = Math.max(0, Math.trunc(numeric(a[1] ?? 1, 0)));
+      return textMap(a[0], n, fn === 'left' ? (s) => s.slice(0, k) : (s) => (k ? s.slice(-k) : ''));
+    }
+    case 'mid':
+    case 'substring': {
+      const start = Math.max(1, Math.trunc(numeric(a[1] ?? 1, 0)));
+      const k = a.length > 2 ? Math.max(0, Math.trunc(numeric(a[2], 0))) : Infinity;
+      return textMap(a[0], n, (s) => s.slice(start - 1, start - 1 + k));
+    }
+    case 'upper': return textMap(a[0], n, (s) => s.toUpperCase());
+    case 'lower': return textMap(a[0], n, (s) => s.toLowerCase());
+    case 'trim': return textMap(a[0], n, (s) => s.trim());
+    case 'concat':
+    case 'concatenate': {
+      const parts = a.map(strAt);
+      if (a.every((v) => typeof v === 'string' || typeof v === 'number')) return parts.map((f) => f(0) ?? '').join('');
+      return textMap(Float64Array.from({ length: n }, (_, i) => i), n, (i) => parts.map((f) => f(Number(i)) ?? '').join(''));
+    }
+    case 'number':
+    case 'real':
+    case 'value': {
+      const parse = (s) => {
+        const x = Number(String(s).trim());
+        return String(s).trim() && !Number.isNaN(x) ? x : NaN;
+      };
+      if (typeof a[0] === 'string') return parse(a[0]);
+      if (isCat(a[0])) {
+        const nums = a[0].dict.map(parse);
+        return Float64Array.from(a[0].codes, (c) => (c < 0 ? NaN : nums[c]));
+      }
+      return numeric(a[0], n);
+    }
     case 'if': {
       const c = numeric(a[0], n);
       if (isTextish(a[1]) || isTextish(a[2])) {
@@ -481,7 +650,7 @@ export function evaluate(ast, ctx) {
       }
       case 'neg': return map1(ev(node.a), n, (x) => -x);
       case 'not': return map1(ev(node.a), n, (x) => (Number.isNaN(x) ? NaN : x ? 0 : 1));
-      case 'call': return call(node.fn, node.args.map(ev), n, ctx);
+      case 'call': return call(node.fn, node.args.map(ev), n, ctx, node.over?.map(ev));
       case 'bin': {
         const l = ev(node.l);
         const r = ev(node.r);

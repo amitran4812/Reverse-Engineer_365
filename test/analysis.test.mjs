@@ -104,6 +104,35 @@ test('formulas evaluate whole columns', () => {
   assert.throws(() => evaluateColumn('[nope] + 1', ctx));
 });
 
+test('sigma, limits and grouped stats', () => {
+  const d = sample();
+  const ctx = d.exprContext();
+  const sd = evaluateColumn('sigma([x])', ctx)[0];
+  assert.ok(Math.abs(sd - 288.8194) < 1e-3);
+  assert.equal(evaluateColumn('stddev([x])', ctx)[0], sd);
+  assert.ok(Math.abs(evaluateColumn('ucl([x])', ctx)[0] - (499.5 + 3 * sd)) < 1e-9);
+  assert.ok(Math.abs(evaluateColumn('lcl([x], 2)', ctx)[0] - (499.5 - 2 * sd)) < 1e-9);
+  assert.ok(Math.abs(evaluateColumn('zscore([x])', ctx)[0] + 499.5 / sd) < 1e-9);
+  const byG = evaluateColumn('avg([x]) over [g]', ctx);
+  assert.equal(byG[0], 499);
+  assert.equal(byG[1], 500);
+  const sdG = evaluateColumn('StdDev([x]) OVER ([g])', ctx);
+  assert.ok(Math.abs(sdG[0] - sdG[1]) < 1e-9 && sdG[0] > sd);
+  assert.equal(evaluateColumn('count([x]) over [g]', ctx)[3], 500);
+});
+
+test('split and text functions', () => {
+  const dict = ['LOT1_W03_SITE7', 'LOT2_W11_SITE2', 'X'];
+  const d = new Dataset({ name: 't', columns: [{ name: 'Tag', type: 'string', data: Int32Array.from([0, 1, 2, -1]), dict }] });
+  const ctx = d.exprContext();
+  const text = (v) => Array.from(v.codes, (c) => (c < 0 ? null : v.dict[c]));
+  assert.deepEqual(text(evaluateColumn('split([Tag], "_", 2)', ctx)), ['W03', 'W11', null, null]);
+  assert.deepEqual(text(evaluateColumn('split([Tag], "_", -1)', ctx)), ['SITE7', 'SITE2', 'X', null]);
+  assert.deepEqual(text(evaluateColumn('lower(left([Tag], 4))', ctx)), ['lot1', 'lot2', 'x', null]);
+  assert.deepEqual(Array.from(evaluateColumn('number(mid(split([Tag], "_", 2), 2))', ctx)).slice(0, 2), [3, 11]);
+  assert.deepEqual(text(evaluateColumn('concat(split([Tag], "_", 1), "-", 9)', ctx)).slice(0, 2), ['LOT1-9', 'LOT2-9']);
+});
+
 test('filters, calculated columns and marking work together', () => {
   const d = sample();
   d.addCalculated('z', '[x] * 2');

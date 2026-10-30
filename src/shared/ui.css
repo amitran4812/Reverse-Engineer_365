@@ -109,7 +109,7 @@ button { cursor: default; }
 .rb-tile { flex-direction: column; justify-content: center; width: 76px; padding: 2px 4px; overflow: hidden; border-color: var(--line-soft); background: #fff; }
 .rb-tile.on { border-color: var(--accent); }
 
-.rb-popup { position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgba(15, 23, 42, .18); padding: 6px; }
+.rb-popup { position: fixed; display: flex; flex-direction: column; overflow: auto; box-sizing: border-box; z-index: 1000; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgba(15, 23, 42, .18); padding: 6px; }
 .rb-menu { display: flex; flex-direction: column; min-width: 190px; }
 .rb-menu-item { display: flex; gap: 10px; align-items: center; border: 0; background: transparent; padding: 6px 10px; border-radius: 5px; text-align: left; }
 .rb-menu-item .ico { width: 16px; height: 16px; }

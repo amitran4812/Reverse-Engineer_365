@@ -2,6 +2,13 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.17: Sigma, Split and text functions in Plot
+
+- Calculated columns and filter formulas in Plot's Analysis tab have **sigma**: `sigma([Vth])` (also `stddev` / `stdev`) is the standard deviation. `ucl([Vth], 3)` and `lcl([Vth], 3)` give the mean plus or minus 3 sigma, and `zscore([Vth])` says how many sigmas each row is from the mean.
+- Stats can be worked out per group, the Spotfire way: `sigma([Vth]) OVER [Lot]` or `avg([Vth]) OVER ([Lot], [Wafer])`. This works for avg, sum, count, median, min, max, sigma, ucl, lcl and zscore.
+- **Split** a tag into a new column: `split([Tag], "_", 2)` keeps the second part, and `-1` keeps the last part. New text helpers too: `left`, `right`, `mid`, `upper`, `lower`, `trim`, `concat` and `number` (turns text like "07" into a number).
+- Fixed: column lists that open from a plot's axis picker, or any other drop-down near the bottom of the window, now open upward when there is no room below and scroll, so every column can be picked.
+
 ## 0.2.16: Google Drive sign-in fix
 
 - **Connect Google Drive** works with one click: Work's built-in Google sign-in now carries the right app ID, so you just pick your Google account instead of seeing "OAuth client was not found".
