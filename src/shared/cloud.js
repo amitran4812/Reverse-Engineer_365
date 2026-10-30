@@ -159,7 +159,7 @@ export async function cloudSettings() {
       const cfg = s.cloudClients?.[meta.id] || {};
       const card = h('div', 'cloud-card');
       const who = st.account ? escapeHtml(st.account.email || st.account.name) : '';
-      card.innerHTML = `<div class="cloud-card-head">${icon(meta.icon, 22)}<div><b>${meta.label}</b><span class="muted">${st.connected ? `Connected${who ? ` as ${who}` : ''}${cfg.org ? ` through ${escapeHtml(cfg.org)}` : ''}` : st.configured ? 'Not connected' : 'Needs an app client ID (see README)'}</span></div></div>`;
+      card.innerHTML = `<div class="cloud-card-head">${icon(meta.icon, 22)}<div><b>${meta.label}</b><span class="muted">${st.connected ? `Connected${who ? ` as ${who}` : ''}${cfg.org ? ` through ${escapeHtml(cfg.org)}` : ''}` : st.configured ? (cfg.org ? `Not connected. Only ${escapeHtml(cfg.org)} accounts can sign in.` : 'Not connected') : 'Needs an app client ID (see README)'}</span></div></div>`;
       const actions = h('div', 'cloud-card-actions');
       const btn = h('button', `btn${st.connected ? '' : ' primary'}`, st.connected ? 'Disconnect' : 'Connect');
       btn.type = 'button';
@@ -173,10 +173,11 @@ export async function cloudSettings() {
         draw();
       };
       const setup = h('details', 'cloud-setup');
-      setup.innerHTML = `<summary>Organization and app registration</summary>
-        <label class="modal-field"><span>${meta.id === 'google' ? 'Google Workspace domain for a work or school account (optional)' : 'Work or school domain or tenant ID (optional)'}</span><input name="org" value="${escapeHtml(cfg.org || '')}" placeholder="${meta.id === 'google' ? 'college.edu' : 'contoso.com'}"></label>
+      setup.innerHTML = `<summary>App registration and college or work sign-in</summary>
+        ${st.builtIn ? `<p class="muted">Work signs in with its own app registration, so you don’t need to fill this in. Enter an ID here only to use your own.</p>` : ''}
         <label class="modal-field"><span>${meta.id === 'google' ? 'Google OAuth client ID (Desktop app)' : 'Microsoft application (client) ID'}</span><input name="clientId" value="${escapeHtml(cfg.clientId || '')}" placeholder="${meta.id === 'google' ? '…apps.googleusercontent.com' : '00000000-0000-0000-0000-000000000000'}"></label>
         ${meta.id === 'google' ? `<label class="modal-field"><span>Client secret</span><input name="clientSecret" type="password" placeholder="${cfg.hasSecret ? '•••••••• (saved)' : 'GOCSPX-…'}"></label>` : ''}
+        <label class="modal-field"><span>Only for a college or work account: its ${meta.id === 'google' ? 'Google Workspace domain' : 'domain or tenant ID'}. Leave empty for a personal account.</span><input name="org" value="${escapeHtml(cfg.org || '')}" placeholder="${meta.id === 'google' ? 'college.edu' : 'contoso.com'}"></label>
         <button class="btn" type="button" data-save>Save</button>`;
       setup.querySelector('[data-save]').onclick = async () => {
         const v = { org: setup.querySelector('[name=org]').value, clientId: setup.querySelector('[name=clientId]').value, clientSecret: setup.querySelector('[name=clientSecret]')?.value || '' };
@@ -185,7 +186,30 @@ export async function cloudSettings() {
         draw();
       };
       if (!st.configured) setup.open = true;
+      if (st.builtIn && st.custom) {
+        const reset = h('button', 'btn', 'Use Work’s built-in sign-in');
+        reset.type = 'button';
+        reset.onclick = async () => {
+          if (st.connected) await window.office.cloud.disconnect(meta.id);
+          await window.office.settings.set({ cloudClients: { [meta.id]: { reset: true } } });
+          toast(`${meta.label} now uses Work’s built-in sign-in. Connect again.`);
+          draw();
+        };
+        setup.querySelector('[data-save]').after(reset);
+      }
       actions.append(btn);
+      if (cfg.org && !st.connected) {
+        // A domain limits sign-in to that organization; offer the way back to personal accounts.
+        const any = h('button', 'btn', `Use any ${meta.id === 'google' ? 'Google' : 'Microsoft'} account`);
+        any.type = 'button';
+        any.title = `Sign-in is limited to ${cfg.org} accounts`;
+        any.onclick = async () => {
+          await window.office.settings.set({ cloudClients: { [meta.id]: { ...cfg, org: '' } } });
+          toast(`${meta.label} now accepts any account, including personal ones`);
+          draw();
+        };
+        actions.append(any);
+      }
       card.append(actions, setup);
       wrap.append(card);
     }

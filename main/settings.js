@@ -14,7 +14,7 @@ const MODELS = [
 ];
 
 const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [], provider: 'anthropic', aiModels: {} };
-const AI = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini' };
+const AI = { anthropic: 'Claude', chatgpt: 'ChatGPT', openai: 'OpenAI', gemini: 'Gemini' };
 
 function file() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -72,6 +72,9 @@ function setSecret(name, value) {
 function publicSettings() {
   const raw = readRaw();
   const others = Object.fromEntries(['openai', 'gemini'].map((id) => [id, { hasKey: Boolean(getSecret(`ai-key:${id}`)), model: raw.aiModels?.[id] || '' }]));
+  const chatgpt = getSecret('ai-chatgpt');
+  // "hasKey" means signed in for ChatGPT, so the provider lists treat it like the others.
+  others.chatgpt = { hasKey: Boolean(chatgpt), email: chatgpt?.email || '', model: raw.aiModels?.chatgpt || '' };
   const provider = AI[raw.provider] ? raw.provider : 'anthropic';
   const hasKey = Boolean(getApiKey());
   return {
@@ -97,7 +100,7 @@ function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModel
   }
   if (aiModels && typeof aiModels === 'object') {
     raw.aiModels = { ...(raw.aiModels || {}) };
-    for (const [id, m] of Object.entries(aiModels)) if (['openai', 'gemini'].includes(id) && typeof m === 'string') raw.aiModels[id] = m.trim().slice(0, 100);
+    for (const [id, m] of Object.entries(aiModels)) if (['chatgpt', 'openai', 'gemini'].includes(id) && typeof m === 'string') raw.aiModels[id] = m.trim().slice(0, 100);
   }
   if (provider && AI[provider]) raw.provider = provider;
   if (typeof coach === 'boolean') raw.coach = coach;
@@ -107,6 +110,11 @@ function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModel
     for (const [id, v] of Object.entries(cloudClients)) {
       if (!['google', 'onedrive'].includes(id) || !v) continue;
       const prev = raw.cloudClients[id] || {};
+      if (v.reset) {
+        // Back to Work's built-in app registration; a college or work domain stays.
+        raw.cloudClients[id] = { clientId: '', clientSecret: '', org: prev.org || '' };
+        continue;
+      }
       const secret = v.clientSecret == null || v.clientSecret === '' ? prev.clientSecret || '' : String(v.clientSecret).trim();
       const org = String(v.org ?? prev.org ?? '').trim().toLowerCase().replace(/[^a-z0-9.-]/g, '');
       raw.cloudClients[id] = { clientId: String(v.clientId ?? prev.clientId ?? '').trim(), clientSecret: secret, org };
@@ -142,4 +150,9 @@ function recent() {
   return readRaw().recent.filter((r) => fs.existsSync(r.path));
 }
 
-module.exports = { getApiKey, getSecret, setSecret, publicSettings, update, addRecent, recent, readRaw };
+// Merges small internal values (not shown in Options) into the settings file.
+function setRaw(patch) {
+  writeRaw({ ...readRaw(), ...patch });
+}
+
+module.exports = { getApiKey, getSecret, setSecret, setRaw, publicSettings, update, addRecent, recent, readRaw };
