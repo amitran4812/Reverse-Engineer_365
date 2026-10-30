@@ -6,6 +6,7 @@ import { computeBook, format, isError } from './engine.js';
 import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
+import { closePopup, popup } from '../shared/ribbon.js';
 import { createAnalysis } from './analysis/workspace.js';
 import { appendTable, joinTable, JOINS, matchHeaders, tableOf } from './combine.js';
 
@@ -449,6 +450,64 @@ layer.addEventListener('mousedown', (e) => {
   dragging = { mode: 'cells' };
 });
 
+// Right-click on a cell or a row/column header: select it (unless it's already
+// in the selection) and offer the cell commands.
+layer.addEventListener('contextmenu', (e) => {
+  const ch = e.target.closest('.ch');
+  const rh = e.target.closest('.rh');
+  const p = cellFromEvent(e);
+  if (!ch && !rh && !p) return;
+  e.preventDefault();
+  if (editing) commitEdit();
+  const s = selRect();
+  if (ch) {
+    const c = Number(ch.dataset.c);
+    if (!(s.r0 === 0 && s.r1 === rows - 1 && c >= s.c0 && c <= s.c1)) select({ row: 0, col: c }, { row: rows - 1, col: c }, { scroll: false });
+  } else if (rh) {
+    const r = Number(rh.dataset.r);
+    if (!(s.c0 === 0 && s.c1 === cols - 1 && r >= s.r0 && r <= s.r1)) select({ row: r, col: 0 }, { row: r, col: cols - 1 }, { scroll: false });
+  } else if (p.row < s.r0 || p.row > s.r1 || p.col < s.c0 || p.col > s.c1) select(p, p, { scroll: false });
+  scroller.focus({ preventScroll: true });
+  gridMenu(e.clientX, e.clientY);
+});
+
+function gridMenu(x, y) {
+  const s = selRect();
+  const e = extent();
+  const wholeCols = s.r0 === 0 && s.r1 === rows - 1;
+  const wholeRows = s.c0 === 0 && s.c1 === cols - 1;
+  // Count only rows and columns up to the data, as deleteRow/deleteCol do.
+  const r1 = Math.max(s.r0, Math.min(s.r1, e.rows));
+  const c1 = Math.max(s.c0, Math.min(s.c1, e.cols));
+  const nRows = wholeCols ? 1 : s.r1 - s.r0 + 1;
+  const nCols = wholeRows ? 1 : s.c1 - s.c0 + 1;
+  const m = h('div', 'rb-menu');
+  const item = (label, ic, run) => {
+    const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${escapeHtml(label)}</span>`);
+    b.onclick = () => {
+      closePopup();
+      run();
+    };
+    m.append(b);
+  };
+  const sep = () => m.append(h('div', 'rb-menu-sep'));
+  item('Cut', 'cut', () => document.execCommand('cut'));
+  item('Copy', 'copy', () => document.execCommand('copy'));
+  sep();
+  if (!wholeCols) {
+    item(nRows > 1 ? `Insert ${nRows} rows above` : 'Insert row above', 'insertRow', insertRow);
+    item(r1 > s.r0 ? `Delete rows ${s.r0 + 1}–${r1 + 1}` : `Delete row ${s.r0 + 1}`, 'deleteRow', deleteRow);
+  }
+  if (!wholeRows) {
+    item(nCols > 1 ? `Insert ${nCols} columns left` : 'Insert column left', 'insertCol', insertCol);
+    item(c1 > s.c0 ? `Delete columns ${colName(s.c0)}–${colName(c1)}` : `Delete column ${colName(s.c0)}`, 'deleteCol', deleteCol);
+  }
+  sep();
+  item('Clear contents', 'clear', () => clearSelection('contents'));
+  item('Clear formats', 'clear', () => clearSelection('formats'));
+  popup({ getBoundingClientRect: () => ({ left: x, right: x, top: y, bottom: y }) }, m);
+}
+
 layer.addEventListener('dblclick', (e) => {
   const p = cellFromEvent(e);
   if (p) startEdit();
@@ -835,19 +894,9 @@ function renderTabs() {
     const t = h('button', `sheet-tab${i === book.active ? ' active' : ''}`, escapeHtml(s.name));
     t.onclick = () => switchSheet(i);
     t.ondblclick = () => renameSheet(i);
-    t.oncontextmenu = async (e) => {
+    t.oncontextmenu = (e) => {
       e.preventDefault();
-      const v = await dialog({ title: `Sheet “${s.name}”`, fields: [{ name: 'action', label: 'Action', type: 'select', options: [{ value: 'rename', label: 'Rename' }, { value: 'delete', label: 'Delete' }, { value: 'dup', label: 'Duplicate' }] }], ok: 'Go' });
-      if (v?.action === 'rename') renameSheet(i);
-      if (v?.action === 'delete') deleteSheet(i);
-      if (v?.action === 'dup') {
-        snapshot();
-        const copy = JSON.parse(JSON.stringify(s));
-        delete copy.gid;
-        copy.name = uniqueName(`${s.name} (2)`);
-        book.sheets.splice(i + 1, 0, copy);
-        switchSheet(i + 1);
-      }
+      sheetMenu(i, t);
     };
     tabsBar.append(t);
   });
@@ -863,6 +912,46 @@ function renderTabs() {
     switchSheet(book.sheets.length - 1);
   };
   tabsBar.append(add);
+}
+
+function sheetMenu(i, anchor) {
+  const m = h('div', 'rb-menu');
+  const item = (label, ic, run, enabled = true) => {
+    const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${label}</span>`);
+    b.disabled = !enabled;
+    b.onclick = () => {
+      closePopup();
+      run();
+    };
+    m.append(b);
+  };
+  const n = book.sheets.length;
+  item('Rename…', 'textbox', () => renameSheet(i));
+  item('Duplicate', 'duplicate', () => duplicateSheet(i));
+  item('Move left', 'prevSlide', () => moveSheet(i, -1), i > 0);
+  item('Move right', 'nextSlide', () => moveSheet(i, 1), i < n - 1);
+  m.append(h('div', 'rb-menu-sep'));
+  item('Delete', 'trash', () => deleteSheet(i), n > 1);
+  popup(anchor, m);
+}
+
+function duplicateSheet(i) {
+  snapshot();
+  const copy = JSON.parse(JSON.stringify(book.sheets[i]));
+  delete copy.gid;
+  copy.name = uniqueName(`${book.sheets[i].name} (2)`);
+  book.sheets.splice(i + 1, 0, copy);
+  switchSheet(i + 1);
+}
+
+function moveSheet(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= book.sheets.length) return;
+  snapshot();
+  [book.sheets[i], book.sheets[j]] = [book.sheets[j], book.sheets[i]];
+  if (book.active === i) book.active = j;
+  else if (book.active === j) book.active = i;
+  renderTabs();
 }
 
 function uniqueName(base) {
@@ -886,14 +975,22 @@ async function renameSheet(i) {
   refreshCells();
 }
 
-function deleteSheet(i) {
+async function deleteSheet(i = book.active) {
   if (book.sheets.length === 1) {
     toast('A workbook needs at least one sheet');
     return;
   }
+  const s = book.sheets[i];
+  if (usedRange(s)) {
+    const ok = await dialog({ title: `Delete sheet “${s.name}”?`, body: '<p>The sheet and everything on it is removed. Undo (Ctrl+Z) brings it back.</p>', ok: 'Delete' });
+    if (!ok) return;
+  }
   snapshot();
   book.sheets.splice(i, 1);
-  switchSheet(Math.max(0, i - 1));
+  const next = book.active > i ? book.active - 1 : book.active === i ? Math.max(0, i - 1) : book.active;
+  switchSheet(Math.min(next, book.sheets.length - 1));
+  scroller.focus({ preventScroll: true });
+  toast(`Deleted sheet ${s.name}`);
 }
 
 function switchSheet(i) {
@@ -1454,6 +1551,7 @@ const homeTab = {
       { type: 'stack', items: [
         { type: 'small', icon: 'deleteRow', label: 'Delete rows', run: deleteRow },
         { type: 'small', icon: 'deleteCol', label: 'Delete columns', run: deleteCol },
+        { type: 'small', icon: 'trash', label: 'Delete sheet', run: () => deleteSheet() },
       ] },
     ] },
     { label: 'Editing', items: [
@@ -1480,7 +1578,10 @@ const insertTab = {
       { type: 'big', icon: 'insertRow', label: 'Rows', run: insertRow },
       { type: 'big', icon: 'insertCol', label: 'Columns', run: insertCol },
     ] },
-    { label: 'Sheets', items: [{ type: 'big', icon: 'newFile', label: 'New Sheet', run: () => tabsBar.querySelector('.sheet-add').click() }] },
+    { label: 'Sheets', items: [
+      { type: 'big', icon: 'newFile', label: 'New Sheet', run: () => tabsBar.querySelector('.sheet-add').click() },
+      { type: 'big', icon: 'trash', label: 'Delete Sheet', run: () => deleteSheet() },
+    ] },
     { label: 'Tables', items: [{ type: 'big', icon: 'table', label: 'Table with Claude', run: () => shell.claude.runQuick(QUICK.table) }] },
   ],
 };
