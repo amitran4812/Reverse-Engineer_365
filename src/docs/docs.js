@@ -14,6 +14,8 @@ import { markdownToHtml } from '../shared/claude-pane.js';
 import { popup } from '../shared/ribbon.js';
 import { sendToPresent } from './to-present.js';
 import { NotesKeys, createNotes, notesHtml, notesPlaceholder, notesState } from './notes.js';
+import { NoteFile } from './notes-media.js';
+import { NoteBoard } from './notes-board.js';
 
 const FONTS = ['Calibri', 'Arial', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New', 'Consolas'];
 const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
@@ -54,6 +56,8 @@ const editor = new Editor({
     TaskList,
     TaskItem.configure({ nested: true }),
     NotesKeys,
+    NoteFile,
+    NoteBoard,
     PageBreak,
   ],
   content: '<p></p>',
@@ -249,6 +253,7 @@ const insertTab = {
     { label: 'Pages', items: [{ type: 'big', icon: 'pageBreak', label: 'Page Break', shortcut: 'Ctrl+Enter', run: () => chain().setPageBreak().run() }] },
     { label: 'Tables', items: [{ type: 'big', icon: 'table', label: 'Table', run: insertTable }] },
     { label: 'Illustrations', items: [{ type: 'big', icon: 'image', label: 'Pictures', run: insertImage }] },
+    { label: 'Symbols', items: [{ type: 'big', icon: 'equation', label: 'Equation', title: 'Type an equation, or describe it for the AI to write. Double-click an equation to edit it.', run: () => notes.equation() }] },
     { label: 'Links', items: [{ type: 'big', icon: 'link', label: 'Link', shortcut: 'Ctrl+K', run: insertLink, active: is('link') }] },
     { label: 'Text', items: [
       { type: 'stack', items: [
@@ -473,7 +478,7 @@ paper.addEventListener('contextmenu', (e) => {
 
 if (shell.info.file?.data) {
   loading = true;
-  editor.commands.setContent(shell.info.file.data.html || '<p></p>');
+  editor.commands.setContent(shell.info.file.data.json || shell.info.file.data.html || '<p></p>');
   loading = false;
   if (shell.info.file.data.warnings?.length) console.info('Import notes:', shell.info.file.data.warnings);
 }

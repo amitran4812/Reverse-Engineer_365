@@ -2,7 +2,7 @@
 
 An installable desktop office suite with AI built in (Claude by default, or OpenAI or Gemini with your own key):
 
-- **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)), and a **Notes mode** for quick notes: switch with **Document / Notes** at the top right, or start with **New > Notes**. Every new line is a bullet, `/` inserts checklists, tables, drawings and plots, and the page can be lined, grid or dotted in six colours. Draw with a mouse, finger or stylus (pen pressure works), and double-click a picture to draw on it. **Send to Present** turns a document's text, lists, pictures and tables into a new presentation, designed by the AI you've connected or laid out one slide per heading without one.
+- **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)), and a **Notes mode** for quick notes: switch with **Document / Notes** at the top right, or start with **New > Notes**. Every new line is a bullet, `/` inserts checklists, tables, drawings and plots, and the page can be lined, grid or dotted in six colours. Draw with a mouse, finger or stylus (pen pressure works), and double-click a picture to draw on it. Add write-anywhere areas where you click anywhere to type, voice notes, equations and file attachments. **Send to Present** turns a document's text, lists, pictures and tables into a new presentation, designed by the AI you've connected or laid out one slide per heading without one.
 - **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open. Its **Analysis** tab plots large data files, and **Send to Present** puts the plots you pick, with a table of rows if you like, on a slide in a new presentation.
 - **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides`, exports `.pptx`, and opens `.pptx` and OpenDocument `.odp`.
 
@@ -20,7 +20,7 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 | App | Claude features |
 | --- | --- |
 | Write | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document, and **Send to Present**: design a presentation from the document, with short bullets, speaker notes and your pictures and tables placed on the slides |
-| Write (Notes) | Summarize notes into key points, decisions and action items; pull out action items as a checklist; tidy up rough notes; turn a web link into notes; insert a plot or a picture from a typed instruction (pictures use an OpenAI or Gemini key's image model when one is saved, otherwise the chat AI draws an illustration) |
+| Write (Notes) | Summarize notes into key points, decisions and action items; pull out action items as a checklist; tidy up rough notes; turn a web link or a YouTube video into notes; transcribe voice notes, dictation and meeting recordings (needs an OpenAI or Gemini key); write an equation from a description; insert a plot or a picture from a typed instruction (pictures use an OpenAI or Gemini key's image model when one is saved, otherwise the chat AI draws an illustration) |
 | Write (LaTeX) | **LaTeX helper**: write LaTeX from a description ("a 3-column table of results"), turn data into a table, convert plain text or math to LaTeX, explain a command, answer "which command do I need?", improve the wording without touching commands, and fix compile errors |
 | Plot | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
 | Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
@@ -178,7 +178,8 @@ main/            Electron main process
   claude.js      streams Claude responses (the API key stays in this process)
   attachments.js files attached to Claude messages (PDF, images, Office files, text)
   generated.js   opens what the Claude app made in Write, Plot or Present, and slides Plot and Write send to Present
-  links.js       reads a public web page for Write's "Notes from a link"
+  links.js       reads a public web page, or a YouTube video's captions, for Write's "Notes from a link"
+  media.js       voice notes, transcription and attachments for Write's notes
   cloud/         Google Drive, Google Sheets live sync and OneDrive (OAuth + APIs)
   settings.js    settings + encrypted API key
   profiles.js    accounts: one data folder and process per account
@@ -202,7 +203,7 @@ build/icon.*     app icon
 
 ## Built on
 
-Open-source components only: [Electron](https://www.electronjs.org/), [TipTap](https://tiptap.dev/)/ProseMirror, [fast-formula-parser](https://github.com/LesterLyu/fast-formula-parser), [docx](https://github.com/dolanmiu/docx), [mammoth](https://github.com/mwilliamson/mammoth.js), [ExcelJS](https://github.com/exceljs/exceljs), [PptxGenJS](https://github.com/gitbrent/PptxGenJS), [marked](https://marked.js.org/), [CodeMirror](https://codemirror.net/), [pdf.js](https://mozilla.github.io/pdf.js/), [Tectonic](https://tectonic-typesetting.github.io/) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
+Open-source components only: [Electron](https://www.electronjs.org/), [TipTap](https://tiptap.dev/)/ProseMirror, [fast-formula-parser](https://github.com/LesterLyu/fast-formula-parser), [docx](https://github.com/dolanmiu/docx), [mammoth](https://github.com/mwilliamson/mammoth.js), [ExcelJS](https://github.com/exceljs/exceljs), [PptxGenJS](https://github.com/gitbrent/PptxGenJS), [marked](https://marked.js.org/), [CodeMirror](https://codemirror.net/), [pdf.js](https://mozilla.github.io/pdf.js/), [MathJax](https://www.mathjax.org/), [Tectonic](https://tectonic-typesetting.github.io/) and the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript).
 
 The look follows the general layout conventions of desktop office suites (ribbon tabs, a File screen, a status bar). All icons, the app icon, colours and code are original; nothing is taken from Microsoft Office or any other proprietary product. Microsoft, Word, Excel and PowerPoint are trademarks of Microsoft Corporation; Work is not affiliated with Microsoft. File formats are handled through the open libraries above.
 
