@@ -11,6 +11,8 @@ import { MODELS, fitExpression } from './fit.js';
 import { FUNCTION_GROUPS } from './expr.js';
 import { formatValue } from './axes.js';
 import { sendToPresent } from './to-present.js';
+import { createProps } from './props.js';
+import { kbd, menuAt, showShortcuts } from './menus.js';
 
 const TYPE_ICON = { number: 'colNumber', string: 'colText', date: 'colDate' };
 const AGGED = ['bar', 'pie', 'table'];
@@ -49,6 +51,11 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   const empty = h('div', 'an-empty');
   const loading = h('div', 'an-loading', '<div class="an-load-box"><b></b><div class="an-bar"><i></i></div><span></span></div>');
   center.append(pagesBar, page, empty, loading);
+  page.addEventListener('contextmenu', (e) => {
+    if (e.target !== page || !st.info) return;
+    e.preventDefault();
+    pageContextMenu(e.clientX, e.clientY);
+  });
   main.append(rail, left, center, right);
   const tableWrap = h('div', 'an-table');
   root.append(main, tableWrap);
@@ -300,7 +307,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       tab.ondblclick = () => renamePage(i);
       tab.oncontextmenu = (e) => {
         e.preventDefault();
-        pageMenu(i, tab);
+        pageMenu(i, e.clientX, e.clientY);
       };
       pagesBar.append(tab);
     });
@@ -310,23 +317,17 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     pagesBar.append(add);
   }
 
-  function pageMenu(i, anchor) {
-    const m = h('div', 'rb-menu');
-    const item = (label, ic, run, enabled = true) => {
-      const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${label}</span>`);
-      b.disabled = !enabled;
-      b.onclick = () => {
-        closePopup();
-        run();
-      };
-      m.append(b);
-    };
-    item('Rename…', 'textbox', () => renamePage(i));
-    item('Duplicate page', 'duplicate', () => addPage(st.pages[i]));
-    item('Move left', 'prevSlide', () => movePage(i, -1), i > 0);
-    item('Move right', 'nextSlide', () => movePage(i, 1), i < st.pages.length - 1);
-    item('Delete page', 'trash', () => deletePage(i), st.pages.length > 1);
-    popup(anchor, m);
+  function pageMenu(i, x, y) {
+    menuAt(x, y, [
+      { label: 'Rename…', icon: 'textbox', run: () => renamePage(i) },
+      { label: 'New page', icon: 'slideNew', kbd: kbd('Ctrl+N'), run: () => addPage() },
+      { label: 'Duplicate page', icon: 'duplicate', kbd: kbd('Ctrl+Shift+D'), run: () => addPage(st.pages[i], i + 1) },
+      '-',
+      { label: 'Move left', icon: 'prevSlide', run: () => movePage(i, -1), enabled: i > 0 },
+      { label: 'Move right', icon: 'nextSlide', run: () => movePage(i, 1), enabled: i < st.pages.length - 1 },
+      '-',
+      { label: 'Delete page', icon: 'trash', run: () => deletePage(i), enabled: st.pages.length > 1 },
+    ]);
   }
 
   function showPage(i) {
@@ -345,14 +346,42 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     refreshPlots();
   }
 
-  function addPage(copyFrom = null) {
+  // A new page, at the end or at a position (copies go right after their page).
+  function addPage(copyFrom = null, at = null) {
     const n = st.pages.length + 1;
-    st.pages.push({ title: copyFrom ? `${copyFrom.title} (copy)` : `Page ${n}`, plots: [] });
+    const where = at == null ? st.pages.length : Math.max(0, Math.min(st.pages.length, at));
+    for (const v of st.plots) v.el.remove();
+    st.pages.splice(where, 0, { title: copyFrom ? uniqueTitle(`${copyFrom.title} (copy)`) : uniqueTitle(`Page ${n}`), plots: [] });
+    st.page = where;
     const specs = copyFrom ? copyFrom.plots.map((v) => ({ ...JSON.parse(JSON.stringify(v.spec)), id: undefined })) : [];
-    showPage(st.pages.length - 1);
+    showPage(where);
     for (const spec of specs) addPlot(spec, { quiet: true });
     refreshPlots();
     renderProps();
+  }
+
+  function uniqueTitle(title) {
+    const taken = new Set(st.pages.map((pg) => pg.title));
+    if (!taken.has(title)) return title;
+    for (let k = 2; ; k += 1) if (!taken.has(`${title} ${k}`)) return `${title} ${k}`;
+  }
+
+  // Ctrl+D: the selected visualization, copied onto its own new page right
+  // after this one, where its type and settings can be changed freely.
+  function duplicateViz(v = st.active) {
+    if (!v) return toast('Select a visualization first');
+    const spec = JSON.parse(JSON.stringify({ ...v.spec, id: undefined, view: v.spec.view }));
+    const title = (v.spec.title || autoTitle(v.spec)).slice(0, 40);
+    for (const x of st.plots) x.el.remove();
+    const at = st.page + 1;
+    st.pages.splice(at, 0, { title: uniqueTitle(title), plots: [] });
+    showPage(at);
+    const copy = addPlot(spec);
+    refreshPlots();
+    renderPages();
+    toast(`Copied to the new page “${st.pages[at].title}”. Change its type or settings in Properties.`);
+    if (copy) openProps(copy);
+    return copy;
   }
 
   async function renamePage(i) {
@@ -400,6 +429,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     view?.el.classList.add('active');
     renderProps();
     renderFits();
+    props.render();
     shell.refresh?.();
   }
 
@@ -426,6 +456,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       afterMark();
     },
     clearMark: () => clearMark(),
+    properties: (v) => openProps(v),
+    contextMenu: (v, x, y) => vizContextMenu(v, x, y),
     axisMenu: (v, key, anchor) => axisMenu(v, key, anchor),
     axisPick: (v, key, name) => axisPick(v, key, name),
   };
@@ -534,6 +566,10 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       row.draggable = true;
       row.ondragstart = (e) => e.dataTransfer.setData('text/x-column', c.name);
       row.onclick = (e) => columnMenu(c, row, e);
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        columnMenu(c, row, e);
+      };
       list.append(row);
     }
     data.append(list);
@@ -595,6 +631,18 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     v.setSpec(v.spec);
     renderProps();
     renderFits();
+    props.render();
+  }
+
+  // Settings that change only how a visualization looks: no new data.
+  function setLook(fn) {
+    const v = st.active;
+    if (!v) return;
+    fn(v.spec);
+    v.updateHead();
+    if (v.panels) v.fetch();
+    else v.draw();
+    renderProps();
   }
 
   function field(label, control) {
@@ -649,7 +697,14 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     if (!propsHost) return;
     propsHost.innerHTML = '';
     const v = st.active;
-    propsHost.append(h('div', 'an-section-head', `${icon('settings', 15)}<b>Plot properties</b>`));
+    const headRow = h('div', 'an-section-head', `${icon('settings', 15)}<b>Plot properties</b>`);
+    propsHost.append(headRow);
+    if (v) {
+      const more = h('button', 'btn an-small', 'All settings…');
+      more.title = 'Trellis, markers, line connection, axes, labels, legend and more (Alt+Enter)';
+      more.onclick = () => openProps(v);
+      headRow.append(more);
+    }
     if (!v) {
       propsHost.append(h('div', 'an-meta', 'Add a plot from the Analyze tab.'));
       return;
@@ -905,6 +960,10 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       d.dataset.col = c.name;
       if (filterSpecs[c.name]) d.classList.add('on');
       const sum = h('summary', '', `${icon(c.expr ? 'colCalc' : TYPE_ICON[c.type], 13)}<span>${escapeHtml(c.name)}</span>`);
+      sum.oncontextmenu = (e) => {
+        e.preventDefault();
+        filterContextMenu(c.name, e.clientX, e.clientY);
+      };
       d.append(sum);
       d.ontoggle = () => {
         if (d.open) {
@@ -1861,6 +1920,281 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     shell.refresh?.();
   }
 
+  // ---------- properties, menus and shortcuts ----------
+  const props = createProps({
+    active: () => st.active,
+    info: () => st.info,
+    client,
+    setProp: (fn) => setProp(fn),
+    setLook: (fn) => setLook(fn),
+    fitMenu: (anchor) => fitMenu(anchor),
+    removeFit: (v, f) => {
+      v.spec.fits = v.spec.fits.filter((g) => g !== f);
+      v.draw();
+      renderProps();
+      renderFits();
+    },
+    duplicate: () => duplicateViz(),
+    remove: () => st.active && removePlot(st.active),
+    close: () => closeProps(),
+  });
+  center.append(props.el);
+
+  function openProps(v = st.active, tab = null) {
+    if (v && v !== st.active) setActive(v);
+    if (!st.active) return toast('Select a visualization first');
+    props.open(tab);
+    root.classList.add('props-open');
+    for (const x of st.plots) x.onResize();
+    return undefined;
+  }
+
+  function closeProps() {
+    props.close();
+    root.classList.remove('props-open');
+    for (const x of st.plots) x.onResize();
+  }
+
+  async function markAll(mode) {
+    if (!st.info) return;
+    st.info = await client.call('markAll', mode);
+    afterMark();
+  }
+
+  async function filterMarked(mode) {
+    if (!st.info?.marked) return toast('Mark some rows first by dragging across a plot');
+    await afterFilter(await client.call('setRowset', mode));
+    renderFilters();
+    return undefined;
+  }
+
+  async function resetAllFilters() {
+    await afterFilter(await client.call('resetFilters'));
+    renderFilters();
+  }
+
+  async function copyMarkedRows() {
+    if (!st.info?.marked) return toast('Mark some rows first by dragging across a plot');
+    const limit = 100000;
+    const res = await client.call('rows', 0, limit, 'marked');
+    const clean = (x) => String(x ?? '').replace(/[\t\r\n]+/g, ' ');
+    await navigator.clipboard.writeText([res.columns, ...res.rows].map((r) => r.map(clean).join('\t')).join('\n'));
+    toast(res.total > limit ? `Copied the first ${fmtInt(limit)} of ${fmtInt(res.total)} marked rows` : `Copied ${fmtInt(res.total)} marked rows`);
+    return undefined;
+  }
+
+  async function copyVizImage(v = st.active) {
+    if (!v) return toast('Select a visualization first');
+    try {
+      const blob = await v.toPng(2);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast('Visualization copied as a picture');
+    } catch (err) {
+      toast(err.message || String(err), 'error');
+    }
+    return undefined;
+  }
+
+  const vizTypeGrid = (v) => {
+    const grid = h('div', 'an-ctx-types');
+    for (const [type, ic, label] of VIZ_MENU) {
+      if (type === 'multi') continue;
+      const b = h('button', `an-ctx-type${v?.spec.type === type ? ' on' : ''}`, icon(ic, 18));
+      b.title = v ? `Change to ${label.toLowerCase()}` : `New ${label.toLowerCase()}`;
+      b.onclick = () => {
+        closePopup();
+        if (v) {
+          setActive(v);
+          changeType(type);
+        } else addPlot(newSpec(type));
+      };
+      grid.append(b);
+    }
+    return grid;
+  };
+
+  // Switches the selected visualization to another type, keeping its columns.
+  function changeType(t) {
+    setProp((x) => {
+      x.type = t;
+      if (AGGED.includes(t) && !x.agg) x.agg = x.y?.[0]?.col ? 'mean' : 'count';
+      if (['bar', 'box', 'heatmap', 'histogram', 'pie', 'table'].includes(t)) x.y = (x.y || []).slice(0, 1);
+      if (t === 'histogram') x.y = [];
+      if (['scatter', 'line', 'box', 'heatmap'].includes(t) && !x.y?.[0]?.col) {
+        const y = st.info.columns.find((c) => c.type !== 'string' && c.name !== x.x);
+        if (y) x.y = [{ col: y.name }];
+      }
+      if (['scatter', 'line', 'histogram', 'heatmap'].includes(t) && st.info.columns.find((c) => c.name === x.x)?.type === 'string') {
+        x.x = st.info.columns.find((c) => c.type !== 'string')?.name || x.x;
+      }
+    });
+  }
+
+  function columnItems(pick, current, filter = () => true) {
+    return [
+      { label: '(none)', icon: current ? null : 'mark', run: () => pick(null) },
+      ...st.info.columns.filter(filter).slice(0, 60).map((c) => ({ label: c.name, icon: c.name === current ? 'mark' : TYPE_ICON[c.type], run: () => pick(c.name) })),
+    ];
+  }
+
+  function vizContextMenu(v, x, y) {
+    if (!st.info) return;
+    setActive(v);
+    const s = v.spec;
+    const xy = ['scatter', 'line'].includes(s.type);
+    const marked = !!st.info.marked;
+    menuAt(x, y, [
+      { head: s.title || autoTitle(s) },
+      { node: vizTypeGrid(v) },
+      { label: 'Properties…', icon: 'settings', kbd: 'Alt+Enter', run: () => openProps(v) },
+      { label: 'Duplicate to a new page', icon: 'duplicate', kbd: kbd('Ctrl+D'), run: () => duplicateViz(v) },
+      '-',
+      { label: 'Trellis by', icon: 'grid', items: [...columnItems((name) => setProp((sp) => { sp.trellis = name ? { ...(sp.trellis || {}), mode: 'panels', by: name } : null; }), s.trellis?.by), '-', { label: 'Trellis settings…', icon: 'settings', run: () => openProps(v, 'trellis') }], enabled: s.type !== 'table' },
+      { label: 'Color by', icon: 'theme', items: columnItems((name) => setProp((sp) => { sp.color = name; }), s.color), enabled: ['scatter', 'line', 'bar', 'histogram', 'table'].includes(s.type) && (s.y || []).length <= 1 },
+      xy ? { label: 'Marker', icon: 'chartScatter', items: [
+        { label: 'Marker settings…', icon: 'settings', run: () => openProps(v, 'marker') },
+        { label: 'Size by…', icon: 'chartScatter', items: columnItems((name) => setProp((sp) => { sp.marker = { ...(sp.marker || {}), sizeBy: name }; }), s.marker?.sizeBy) },
+        { label: 'Shape by…', icon: 'shape', items: columnItems((name) => setProp((sp) => { sp.marker = { ...(sp.marker || {}), shapeBy: name }; }), s.marker?.shapeBy) },
+      ], enabled: s.type === 'scatter' || s.markers } : null,
+      s.type === 'scatter' ? { label: 'Connect points by', icon: 'chartMulti', items: [
+        { label: s.connect?.on ? 'Stop connecting' : 'Connect in X order', icon: 'chartLine', run: () => setProp((sp) => { sp.connect = { ...(sp.connect || {}), on: !sp.connect?.on }; }) },
+        '-',
+        ...st.info.columns.slice(0, 60).map((c) => ({ label: c.name, icon: s.connect?.on && s.connect.by === c.name ? 'mark' : TYPE_ICON[c.type], run: () => setProp((sp) => { sp.connect = { ...(sp.connect || {}), on: true, by: c.name }; }) })),
+      ] } : null,
+      xy ? { label: 'Fit curve', icon: 'fitCurve', items: Object.entries(MODELS).map(([id, m]) => ({ label: `${m.label}${id === 'poly' || id === 'custom' ? '…' : ''}`, icon: 'fitCurve', run: () => addFit(id) })) } : null,
+      { label: 'Filters for this visualization…', icon: 'filter', run: () => openProps(v, 'data') },
+      '-',
+      { label: 'Mark all rows', icon: 'mark', kbd: kbd('Ctrl+A'), run: () => markAll('replace') },
+      { label: 'Unmark all', icon: 'markClear', kbd: kbd('Ctrl+E'), run: () => clearMark(), enabled: marked },
+      { label: 'Invert marking', icon: 'refresh', kbd: kbd('Ctrl+I'), run: () => markAll('toggle') },
+      { label: 'Filter to marked', icon: 'markFilter', kbd: kbd('Ctrl+M'), run: () => filterMarked('marked'), enabled: marked },
+      { label: 'Filter out marked', icon: 'filterOff', kbd: kbd('Ctrl+Shift+M'), run: () => filterMarked('unmarked'), enabled: marked },
+      { label: 'Copy marked rows', icon: 'copy', kbd: kbd('Ctrl+C'), run: () => copyMarkedRows(), enabled: marked },
+      '-',
+      { label: 'Copy as picture', icon: 'image', kbd: kbd('Ctrl+Shift+C'), run: () => copyVizImage(v) },
+      { label: 'Export', icon: 'export', items: [
+        { label: 'Plot as PNG…', icon: 'image', run: () => exportPlot('png') },
+        { label: 'Plot as SVG…', icon: 'export', run: () => exportPlot('svg') },
+        { label: 'Plot as PDF…', icon: 'pdf', kbd: kbd('Ctrl+P'), run: () => exportPlot('pdf') },
+        { label: 'Marked rows as CSV…', icon: 'mark', run: () => exportCsv('marked') },
+        { label: 'Filtered rows as CSV…', icon: 'grid', run: () => exportCsv('filtered') },
+      ] },
+      { label: 'Send to Present…', icon: 'toPresent', run: () => sendToPresent({ st, client, showPage, refreshPlots, setLoading }) },
+      '-',
+      { label: 'Rename…', icon: 'textbox', run: () => viewCtx.rename(v) },
+      { label: 'Show all data', icon: 'fitView', run: () => v.resetView() },
+      { label: 'Remove visualization', icon: 'trash', run: () => removePlot(v) },
+    ]);
+  }
+
+  function pageContextMenu(x, y) {
+    menuAt(x, y, [
+      { head: 'Add a visualization' },
+      { node: vizTypeGrid(null) },
+      { label: 'New page', icon: 'slideNew', kbd: kbd('Ctrl+N'), run: () => addPage() },
+      { label: 'Duplicate page', icon: 'duplicate', kbd: kbd('Ctrl+Shift+D'), run: () => addPage(st.pages[st.page], st.page + 1) },
+      '-',
+      { label: 'Reset all filters', icon: 'filterOff', kbd: kbd('Ctrl+R'), run: () => resetAllFilters() },
+      { label: 'Unmark all', icon: 'markClear', kbd: kbd('Ctrl+E'), run: () => clearMark(), enabled: !!st.info?.marked },
+      '-',
+      { label: 'Keyboard shortcuts', icon: 'key', kbd: 'F1', run: () => showShortcuts() },
+    ]);
+  }
+
+  function filterContextMenu(name, x, y) {
+    menuAt(x, y, [
+      { head: name },
+      { label: 'Reset this filter', icon: 'filterOff', run: async () => { await setFilter(name, null); renderFilters(); }, enabled: !!filterSpecs[name] },
+      { label: 'Reset all filters', icon: 'filterOff', kbd: kbd('Ctrl+R'), run: () => resetAllFilters() },
+      '-',
+      st.active ? { label: 'Use only in the selected visualization', icon: 'filter', note: 'Moves this filter into its properties', run: async () => {
+        const spec = filterSpecs[name];
+        if (!spec) return openProps(st.active, 'data');
+        setProp((sp) => { sp.vizFilters = { ...(sp.vizFilters || {}), [name]: spec }; });
+        await setFilter(name, null);
+        renderFilters();
+        return openProps(st.active, 'data');
+      } } : null,
+      { label: 'Collapse all filters', icon: 'up', run: () => { openFilters.clear(); renderFilters(); } },
+    ]);
+  }
+
+  function tableContextMenu(x, y) {
+    menuAt(x, y, [
+      { label: 'Copy marked rows', icon: 'copy', kbd: kbd('Ctrl+C'), run: () => copyMarkedRows(), enabled: !!st.info?.marked },
+      { label: 'Filter to marked', icon: 'markFilter', kbd: kbd('Ctrl+M'), run: () => filterMarked('marked'), enabled: !!st.info?.marked },
+      { label: 'Unmark all', icon: 'markClear', kbd: kbd('Ctrl+E'), run: () => clearMark(), enabled: !!st.info?.marked },
+      '-',
+      { label: 'Marked rows as CSV…', icon: 'mark', run: () => exportCsv('marked') },
+      { label: 'Filtered rows as CSV…', icon: 'grid', run: () => exportCsv('filtered') },
+      { label: 'Hide the details table', icon: 'close', kbd: kbd('Ctrl+1'), run: () => togglePanel('table') },
+    ]);
+  }
+  tableWrap.addEventListener('contextmenu', (e) => {
+    if (!st.info) return;
+    e.preventDefault();
+    tableContextMenu(e.clientX, e.clientY);
+  });
+
+  function stepPage(d) {
+    if (st.pages.length < 2) return;
+    switchPage((st.page + d + st.pages.length) % st.pages.length);
+  }
+
+  const NEW_VIZ = { 2: 'table', 3: 'bar', 5: 'line', 6: 'multi', 7: 'pie', 8: 'scatter', 9: 'histogram', 0: 'box' };
+
+  // The workspace's shortcuts (see SHORTCUTS for the list people see).
+  function onKey(e) {
+    if (!root.isConnected || !root.offsetParent || document.querySelector('.modal-back')) return;
+    const t = e.target;
+    const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    const ctrl = e.ctrlKey || e.metaKey;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const code = e.code || '';
+    const take = (run) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closePopup();
+      run();
+    };
+    if (k === 'F1' && !ctrl) return take(() => showShortcuts());
+    if (typing) return;
+    if (ctrl && !e.altKey && k === 'o') return take(() => openData());
+    if (!st.info) return;
+    const digit = code.startsWith('Digit') ? Number(code.slice(5)) : null;
+    if (ctrl && !e.altKey) {
+      if (k === 'd') return take(() => (e.shiftKey ? addPage(st.pages[st.page], st.page + 1) : duplicateViz()));
+      if (k === 'n') return take(() => addPage());
+      if (k === 'p') return take(() => exportPlot('pdf'));
+      if (k === 'a') return take(() => markAll('replace'));
+      if (k === 'e') return take(() => clearMark());
+      if (k === 'i') return take(() => markAll('toggle'));
+      if (k === 'm') return take(() => filterMarked(e.shiftKey ? 'unmarked' : 'marked'));
+      if (k === 'r') return take(() => resetAllFilters());
+      if (k === 'f') return take(() => {
+        st.panels.right = true;
+        applyPanels();
+        renderRail();
+        right.querySelector('.an-filter-search')?.focus();
+      });
+      if (k === 'c' && e.shiftKey) return take(() => copyVizImage());
+      if (k === 'c' && !String(window.getSelection?.() || '')) return take(() => copyMarkedRows());
+      if (k === 'Tab' || k === 'PageDown' || k === 'PageUp') return take(() => stepPage(k === 'PageUp' || e.shiftKey ? -1 : 1));
+      if (k === 'ArrowRight' || k === 'ArrowLeft') return take(() => stepPage(k === 'ArrowLeft' ? -1 : 1));
+      if (digit === 1 && !e.shiftKey) return take(() => togglePanel('table'));
+      if (digit === 3 && e.shiftKey) return take(() => addPlot(newSpec('heatmap')));
+      if (digit != null && !e.shiftKey && NEW_VIZ[digit]) return take(() => addPlot(newSpec(NEW_VIZ[digit])));
+    }
+    if (e.altKey && k === 'Enter') return take(() => openProps());
+    if (e.shiftKey && k === 'F10' && st.active) return take(() => {
+      const r = st.active.el.getBoundingClientRect();
+      vizContextMenu(st.active, r.left + 40, r.top + 40);
+    });
+    if (k === 'Delete' && !ctrl && st.info.marked) return take(() => filterMarked('unmarked'));
+    return undefined;
+  }
+  document.addEventListener('keydown', onKey, true);
+
   // ---------- AI ----------
   async function aiContext() {
     if (!st.info) return '<analysis>No data is open in the analysis workspace yet.</analysis>';
@@ -2069,7 +2403,12 @@ ${plots}
           { type: 'small', icon: 'chartTable', label: 'Cross Table', run: () => addPlot(newSpec('table')), enabled: needData },
           { type: 'small', icon: 'chartMulti', label: 'Two-Axis Line', title: 'Line plot with a second Y axis', run: () => addPlot(newSpec('multi')), enabled: needData },
         ] },
-        { type: 'big', icon: 'slideNew', label: 'New Page', title: 'Add a page of visualizations', run: () => addPage(), enabled: needData },
+        { type: 'big', icon: 'slideNew', label: 'New Page', title: `Add a page of visualizations (${kbd('Ctrl+N')})`, run: () => addPage(), enabled: needData },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'settings', label: 'Properties', title: 'Every setting of the selected visualization (Alt+Enter)', run: () => openProps(), enabled: hasPlot },
+          { type: 'small', icon: 'duplicate', label: 'Duplicate', title: `Copy the selected visualization onto a new page (${kbd('Ctrl+D')})`, run: () => duplicateViz(), enabled: hasPlot },
+          { type: 'small', icon: 'grid', label: 'Trellis', title: 'Split the selected visualization into panels', run: () => openProps(st.active, 'trellis'), enabled: hasPlot },
+        ] },
       ] },
       { label: 'Filter & Mark', items: [
         { type: 'stack', items: [
@@ -2097,6 +2436,7 @@ ${plots}
           { type: 'small', icon: 'panel', label: 'Filters', run: () => togglePanel('right'), active: () => st.panels.right },
           { type: 'small', icon: 'details', label: 'Details', run: () => togglePanel('table'), active: () => st.table.open },
         ] },
+        { type: 'big', icon: 'key', label: 'Shortcuts', title: 'Keyboard shortcuts (F1)', run: () => showShortcuts() },
       ] },
       { label: 'AI', items: [{ type: 'big', icon: 'sparkle', label: 'Ask AI', title: 'Describe the plots or filters you want', run: () => shell.claude?.runQuick(aiQuick) }] },
     ],
