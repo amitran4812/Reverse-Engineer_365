@@ -75,11 +75,13 @@ Compiling uses [Tectonic](https://tectonic-typesetting.github.io/), a self-conta
 
 The key is encrypted with your operating system's keychain (Electron `safeStorage`) and is only sent to Anthropic. **Sign out** removes it. You can also set the `ANTHROPIC_API_KEY` environment variable instead.
 
-### Use OpenAI or Gemini instead
+### Use ChatGPT, OpenAI or Gemini instead
 
-In **File > Options > AI assistant**, paste an OpenAI key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)) or a Gemini key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)), click **Check key and list models**, pick a model and **Save**. Then choose it under **Use for AI features**, or switch from the menu at the top of any AI pane. The Claude app, every side pane, What to say and file attachments (PDF, images, Office files, text) work with each provider; structured results use each provider's JSON schema output. Keys are encrypted and kept per account, and each is only sent to its own provider.
+**ChatGPT (no key):** in **File > Options > AI assistant**, click **Sign in with ChatGPT**, sign in in your browser, pick a model and **Save**. Work then uses your ChatGPT Plus or Pro plan through OpenAI's Sign in with ChatGPT for open-source apps, so there's nothing to pay separately and no key to copy. Usage counts toward your plan's limits, and you can cap or disconnect Work in ChatGPT's settings.
 
-Why an API key and not a Claude.ai login? Anthropic doesn't allow third-party apps to offer Claude.ai (Pro/Max) login, so Work uses the official API-key sign-in from the Anthropic Console. API usage is billed to your Console account.
+**API keys:** click **Get a key**, create and copy a key on the provider's page, and come back to Work: it fills the copied key in and checks it for you. Or paste an OpenAI key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)) or a Gemini key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)), click **Check key and list models**, pick a model and **Save**. Then choose it under **Use for AI features**, or switch from the menu at the top of any AI pane. The Claude app, every side pane, What to say and file attachments (PDF, images, Office files, text) work with each provider; structured results use each provider's JSON schema output. Keys are encrypted and kept per account, and each is only sent to its own provider.
+
+Why an API key for Claude and Gemini? Anthropic doesn't allow third-party apps to offer Claude.ai (Pro/Max) login, so Work uses the official API key from the Anthropic Console, billed to your Console account. Gemini's Google sign-in for the API bills the app publisher's Cloud project rather than you, so Work uses your own Gemini key (free tier available in Google AI Studio). ChatGPT is the one provider that lets an open-source app use your own plan by signing in.
 
 ## Google Drive and OneDrive
 
@@ -111,6 +113,13 @@ For a work or school account, open **File > Options > Cloud storage > Organizati
 Removing an account deletes its data from this computer (key, sign-ins, recent list and cached copies). Files in your folders, Google Drive or OneDrive aren't touched. The first account keeps the app's original settings and can be renamed but not removed.
 
 ### Register the app with Google and Microsoft
+
+Whoever publishes Work registers it once with Google and Microsoft and adds the IDs as repository secrets. Every installer built after that has the sign-in built in: people just click **Connect** and sign in with their own Google or Microsoft account, with nothing to set up. Without the secrets, each person has to register their own app as below.
+
+What the publisher needs to know:
+
+- **Google:** while the app is in Testing, only the test users you list (up to 100) can sign in, and they sign in again every 7 days. To open it to everyone, publish the app and pass Google's verification. Full Drive access (`drive`) is a restricted scope, so verification includes a yearly third-party security assessment; Sheets access needs the standard review.
+- **Microsoft:** no review is needed. Personal Microsoft accounts can sign in as soon as the app is registered as below. Some colleges and companies only let people approve apps from verified publishers, or need an admin to approve Work once; Publisher verification in Entra covers the first case.
 
 Each copy of Work needs an OAuth client ID from Google and from Microsoft. Enter them in **File > Options > Cloud storage > App registration**. To ship them inside the installers instead, add them as repository secrets (`REA_GOOGLE_CLIENT_ID`, `REA_GOOGLE_CLIENT_SECRET`, `REA_MICROSOFT_CLIENT_ID`); the Build workflow bakes them into `main/cloud-config.json`. You can also set the same names as environment variables.
 

@@ -2,6 +2,12 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.8: Sign in with ChatGPT, keys fill in by themselves
+
+- **Sign in with ChatGPT**: if you have ChatGPT Plus or Pro, click Sign in with ChatGPT in File > Options > AI assistant and use your plan for every AI feature. No API key needed.
+- Getting an API key is easier: click **Get a key**, copy the key on the provider's page, and come back. Work fills it in and checks it for Claude, OpenAI and Gemini.
+- Google Drive and OneDrive can sign in with Work's own app registration when the installer includes one, so people just click Connect. If you entered your own client ID before, **Use Work's built-in sign-in** switches back.
+
 ## 0.2.7: Personal Google accounts
 
 - Connecting Google Drive always shows Google's account chooser, so you can pick your personal Gmail account even when you're signed in to a college or work account in the browser.

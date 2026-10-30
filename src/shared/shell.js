@@ -6,7 +6,7 @@ import { icon } from './icons.js';
 import { Ribbon } from './ribbon.js';
 import { ClaudePane } from './claude-pane.js';
 import { accountChip, accountsSection } from './accounts.js';
-import { aiSettings } from './ai-settings.js';
+import { aiSettings, pasteCopiedKey } from './ai-settings.js';
 import { updateSettings, watchUpdates } from './updates.js';
 import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
@@ -481,7 +481,7 @@ export async function settingsForm(onSaved) {
     <p class="settings-status ${s.hasKey ? 'ok' : ''}" data-status>${escapeHtml(status)}</p>
     <ol class="connect-steps">
       <li><b>Sign in to your Anthropic account.</b> <button class="btn" type="button" data-link="https://console.anthropic.com/settings/keys">${icon('key', 16)} Sign in and create a key</button>
-        <span class="muted">Opens the Anthropic Console in your browser. Create a key there and copy it.</span></li>
+        <span class="muted">Opens the Anthropic Console in your browser. Create a key there and copy it, then come back: Work fills it in for you.</span></li>
       <li><b>Paste the key here.</b>
         <label class="modal-field"><span>Anthropic API key</span>
           <input name="apiKey" type="password" autocomplete="off" placeholder="${s.hasKey ? '•••••••• (saved)' : 'sk-ant-…'}" ${s.keyFromEnv ? 'disabled' : ''}>
@@ -498,6 +498,10 @@ export async function settingsForm(onSaved) {
   };
   form.querySelector('[data-link]').onclick = (e) => {
     e.preventDefault();
+    if (!s.keyFromEnv) pasteCopiedKey('anthropic', form.apiKey, () => {
+      setStatus('Found the key you copied. Connecting…');
+      form.requestSubmit();
+    });
     window.office.openExternal(e.currentTarget.dataset.link);
   };
   form.querySelector('[data-test]')?.addEventListener('click', async () => {

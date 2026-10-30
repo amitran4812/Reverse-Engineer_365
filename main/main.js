@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require('electron');
 const profiles = require('./profiles');
 
 const account = profiles.init(); // before anything reads userData
@@ -393,6 +393,24 @@ ipcMain.handle('latex:open-pdf-external', safe(async (e, main) => {
 
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
 ipcMain.handle('ai:models', (e, provider, key) => require('./ai').models(provider, key));
+ipcMain.handle('chatgpt:sign-in', async () => {
+  try {
+    return { ok: true, ...(await require('./chatgpt').signIn()) };
+  } catch (err) {
+    return { ok: false, message: err?.message || String(err) };
+  }
+});
+ipcMain.handle('chatgpt:sign-out', () => {
+  require('./chatgpt').signOut();
+  if (settings.readRaw().provider === 'chatgpt') settings.update({ provider: 'anthropic' });
+  return settings.publicSettings();
+});
+// An API key the person just copied from a provider's key page, so it can be filled in for them.
+const KEY_SHAPES = { anthropic: /^sk-ant-[\w-]{20,}$/, openai: /^sk-[\w-]{20,}$/, gemini: /^AIza[\w-]{30,}$/ };
+ipcMain.handle('app:clipboard-key', (e, provider) => {
+  const text = clipboard.readText().trim();
+  return KEY_SHAPES[provider]?.test(text) && !(provider === 'openai' && text.startsWith('sk-ant-')) ? text : '';
+});
 
 // --rea-new=docs|sheets|slides comes from the taskbar jump list.
 const newFromArgv = (argv) => TITLES[argv.find((a) => a.startsWith('--rea-new='))?.slice(10)] ? argv.find((a) => a.startsWith('--rea-new=')).slice(10) : null;
