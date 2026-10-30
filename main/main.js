@@ -447,6 +447,13 @@ ipcMain.handle('latex:open-pdf-external', safe(async (e, main) => {
 
 ipcMain.handle('notes:image', (e, prompt) => require('./ai').image(prompt));
 ipcMain.handle('notes:fetch-link', (e, url) => require('./links').fetchLink(url));
+ipcMain.handle('notes:transcribe', (e, audio) => require('./media').transcribe(audio || {}));
+ipcMain.handle('notes:transcribe-file', (e) => require('./media').transcribeFile(senderWin(e), dialog));
+ipcMain.handle('notes:mic', async () => (process.platform === 'darwin' ? require('electron').systemPreferences.askForMediaAccess('microphone') : true));
+ipcMain.handle('notes:can-transcribe', () => Boolean(require('./media').transcriber()));
+ipcMain.handle('notes:attach', (e) => require('./media').pickAttachments(senderWin(e), dialog));
+ipcMain.handle('notes:open-attachment', (e, file) => require('./media').openAttachment(file || {}).catch((err) => ({ ok: false, message: err.message })));
+ipcMain.handle('notes:save-attachment', (e, file) => require('./media').saveAttachment(senderWin(e), dialog, file || {}).catch((err) => ({ ok: false, message: err.message })));
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
 ipcMain.handle('ai:models', (e, provider, key) => require('./ai').models(provider, key));
 ipcMain.handle('chatgpt:sign-in', async () => {

@@ -108,7 +108,66 @@
 .ink-canvas { display: block; width: 100%; aspect-ratio: 1000 / 560; touch-action: none; cursor: crosshair; }
 .ink-hint { margin-right: auto; color: var(--muted); font-size: 12px; }
 
+/* Write-anywhere area: free-placed text boxes on the page. */
+.note-board { position: relative; margin: 8px 0; border: 1px dashed #c9ced8; border-radius: 10px; background: color-mix(in srgb, var(--note-bg, #fff) 70%, transparent); cursor: text; user-select: none; line-height: 1.45; }
+.note-board:hover, .note-board.selected { border-color: var(--accent); }
+.nb-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: #9aa1ab; font: 13px var(--ui-font); pointer-events: auto; }
+.nb-hint[hidden] { display: none; }
+.nb-box { position: absolute; min-height: 34px; background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: default; }
+.nb-box:hover, .nb-box:focus-within { background: #fff; border-color: #c9ced8; box-shadow: 0 2px 8px rgba(15, 23, 42, .08); }
+.nb-grip { position: relative; height: 10px; border-radius: 6px 6px 0 0; cursor: move; touch-action: none; }
+.nb-box:hover .nb-grip, .nb-box:focus-within .nb-grip { background: repeating-linear-gradient(90deg, #c9ced8 0 2px, transparent 2px 5px) center / 28px 2px no-repeat, #f3f4f7; }
+.nb-del { position: absolute; right: -8px; top: -9px; display: none; width: 18px; height: 18px; padding: 0; border: 1px solid #dfe3ea; border-radius: 50%; background: #fff; color: #6b7280; cursor: pointer; place-items: center; }
+.nb-box:hover .nb-del { display: grid; }
+.nb-del:hover { color: #c62828; border-color: #c62828; }
+.nb-text { padding: 2px 8px 6px; outline: 0; user-select: text; cursor: text; min-height: 20px; overflow-wrap: anywhere; font-size: 11.5pt; }
+.nb-text ul, .nb-text ol { margin: 0; padding-left: 18px; }
+.nb-size { position: absolute; right: -3px; top: 10px; bottom: 0; width: 7px; cursor: ew-resize; touch-action: none; }
+.nb-resize { position: absolute; left: 0; right: 0; bottom: -5px; height: 10px; cursor: ns-resize; touch-action: none; }
+.nb-resize::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #c9ced8; opacity: 0; }
+.note-board:hover .nb-resize::after { opacity: 1; }
+.nb-remove { position: absolute; right: 6px; top: 6px; display: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #6b7280; cursor: pointer; place-items: center; }
+.note-board:hover .nb-remove { display: grid; }
+.nb-remove:hover { background: var(--hover); color: #c62828; }
+
+/* Attachments and voice notes. */
+.note-file { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; padding: 8px 12px; max-width: 560px; border: 1px solid #dfe3ea; border-radius: 10px; background: #fff; line-height: 1.4; font: 13px var(--ui-font); color: #1f2328; }
+.note-file.ProseMirror-selectednode { outline: 2px solid var(--accent); }
+.note-file-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.note-file-head > .ico { flex: none; color: var(--accent-dark); }
+.note-file-head b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-file-head > span { color: var(--muted); white-space: nowrap; }
+.note-file-head audio { height: 32px; flex: 1; min-width: 140px; }
+.note-file-actions { display: flex; gap: 4px; margin-left: auto; }
+.note-file-btn { display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: 1px solid #dfe3ea; border-radius: 6px; background: #fff; color: #343a43; font: 12px var(--ui-font); cursor: pointer; white-space: nowrap; }
+.note-file-btn:hover { background: var(--hover); }
+.note-file-text { padding: 6px 10px; border-left: 3px solid color-mix(in srgb, var(--accent) 40%, #fff); background: #f8f9fb; border-radius: 0 6px 6px 0; white-space: pre-wrap; color: #343a43; }
+
+/* Recorder bar. */
+.rec-bar { position: fixed; left: 50%; bottom: 44px; z-index: 950; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; background: #fff; border: 1px solid #dfe3ea; border-radius: 999px; box-shadow: 0 10px 30px rgba(15, 23, 42, .2); font: 13px var(--ui-font); }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #d64545; animation: rec-blink 1.2s infinite; }
+@keyframes rec-blink { 50% { opacity: .3; } }
+.rec-time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 36px; }
+.rec-bar .btn { border-radius: 999px; }
+
+/* Equation editor. */
+.eq-snippets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.eq-snip { min-width: 30px; height: 28px; padding: 0 7px; border: 1px solid #dfe3ea; border-radius: 6px; background: #fff; color: #343a43; font: 13px var(--ui-font); cursor: pointer; }
+.eq-snip:hover { background: var(--hover); border-color: #c9ced8; }
+.eq-input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: 13px Consolas, 'Cascadia Mono', monospace; resize: vertical; outline: 0; }
+.eq-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.eq-preview { display: flex; align-items: center; justify-content: center; min-height: 80px; margin-top: 8px; padding: 10px; border: 1px solid #eceef2; border-radius: 8px; background: #fbfbfc; overflow: auto; color: #1f2328; }
+.eq-preview svg { max-width: 100%; height: auto; }
+.eq-error { min-height: 18px; margin-top: 4px; color: #c62828; font-size: 12px; }
+.eq-ask { display: flex; gap: 6px; margin-top: 6px; padding-top: 10px; border-top: 1px solid #eceef2; }
+.eq-ask input { flex: 1; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; outline: 0; }
+.eq-ask input:focus { border-color: var(--accent); }
+.eq-ask .btn { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ProseMirror img[title="Equation"] { border-radius: 0 !important; cursor: pointer; vertical-align: middle; }
+
 @media print {
+  .nb-hint, .nb-remove, .nb-resize, .nb-del, .note-file-actions { display: none !important; }
+  .note-board { border-color: transparent; }
   .doc-canvas.notes-canvas { background: #fff; }
   .doc-page.notes { background: none !important; border-radius: 0; }
   .ProseMirror { caret-color: transparent; }

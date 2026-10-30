@@ -75,6 +75,15 @@ export function readDocument(json) {
           tables.push(full);
           blocks.push({ type: 'table', index: tables.length });
         }
+      } else if (n.type === 'noteBoard') {
+        // Write-anywhere boxes, top to bottom then left to right.
+        const boxes = (Array.isArray(n.attrs?.items) ? n.attrs.items : []).slice().sort((a, b) => (Math.abs(a.y - b.y) < 12 ? a.x - b.x : a.y - b.y));
+        const items = boxes.map((b) => tidy(String(b.html || '').replace(/<br\s*\/?>|<\/?(div|p|li)\b[^>]*>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'))).filter(Boolean);
+        if (items.length) blocks.push({ type: 'list', items: items.map((t) => ({ text: t, depth: 0 })) });
+      } else if (n.type === 'noteFile') {
+        const a = n.attrs || {};
+        if (a.kind === 'audio' && a.transcript) blocks.push({ type: 'quote', text: tidy(a.transcript) });
+        else if (a.kind !== 'audio' && a.name) blocks.push({ type: 'para', text: `Attachment: ${a.name}` });
       } else if (n.type === 'pageBreak' || n.type === 'horizontalRule') {
         blocks.push({ type: 'break' });
       } else if (n.content) {

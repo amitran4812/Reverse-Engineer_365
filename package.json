@@ -1,7 +1,7 @@
 {
   "name": "rea-office",
   "productName": "Work",
-  "version": "0.2.24",
+  "version": "0.2.26",
   "description": "An Office-style desktop suite (documents, spreadsheets, presentations) with Claude built in.",
   "private": true,
   "license": "MIT",
@@ -58,11 +58,12 @@
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "fast-formula-parser": "^1.0.19",
-    "pdfjs-dist": "^6.4.299",
     "fflate": "^0.8.3",
     "hyparquet": "^1.32.0",
     "hyparquet-compressors": "^1.1.2",
-    "hyparquet-writer": "^0.18.0"
+    "hyparquet-writer": "^0.18.0",
+    "mathjax-full": "^3.2.2",
+    "pdfjs-dist": "^6.4.299"
   },
   "build": {
     "appId": "tools.rea.office",
@@ -107,6 +108,9 @@
         "dmg"
       ],
       "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Work records voice notes in Write when you ask it to."
+      },
       "icon": "build/icon.png",
       "fileAssociations": [
         {

@@ -107,3 +107,17 @@ test('pictures keep their shape inside the box they are given', () => {
   assert.deepEqual(fitImage({ w: 2000, h: 1000 }, { x: 0, y: 0, w: 400, h: 400 }), { x: 0, y: 100, w: 400, h: 200 });
   assert.deepEqual(fitImage({ w: 500, h: 1000 }, { x: 10, y: 10, w: 400, h: 200 }), { x: 160, y: 10, w: 100, h: 200 });
 });
+
+test('notes cards and free boxes reach the deck as text', () => {
+  const doc = readDocument({ type: 'doc', content: [
+    { type: 'noteBoard', attrs: { items: [{ x: 300, y: 10, html: 'Second' }, { x: 0, y: 12, html: 'First <b>idea</b>' }, { x: 0, y: 90, html: '' }] } },
+    { type: 'noteFile', attrs: { kind: 'audio', transcript: 'Ship on  Friday.' } },
+    { type: 'noteFile', attrs: { kind: 'audio' } },
+    { type: 'noteFile', attrs: { kind: 'file', name: 'Budget.pdf' } },
+  ] });
+  assert.deepEqual(doc.blocks, [
+    { type: 'list', items: [{ text: 'First idea', depth: 0 }, { text: 'Second', depth: 0 }] },
+    { type: 'quote', text: 'Ship on Friday.' },
+    { type: 'para', text: 'Attachment: Budget.pdf' },
+  ]);
+});

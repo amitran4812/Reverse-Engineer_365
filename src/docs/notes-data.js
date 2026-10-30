@@ -105,3 +105,27 @@ export function matchCommands(items, query) {
   if (!q) return items;
   return items.filter((it) => [it.label, ...(it.keys || [])].some((k) => k.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) || k.toLowerCase().startsWith(q)));
 }
+
+// "1.2 MB" for a file size in bytes.
+export function formatBytes(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 0) return '';
+  if (v < 1024) return `${v} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let x = v / 1024;
+  let i = 0;
+  while (x >= 1024 && i < units.length - 1) {
+    x /= 1024;
+    i += 1;
+  }
+  return `${x < 10 ? x.toFixed(1).replace(/\.0$/, '') : Math.round(x)} ${units[i]}`;
+}
+
+// "m:ss" (or "h:mm:ss") for a length in seconds.
+export function formatDuration(secs) {
+  const t = Math.max(0, Math.round(Number(secs) || 0));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = String(t % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
