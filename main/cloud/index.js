@@ -31,8 +31,8 @@ function client(id) {
     ? { clientId: process.env.REA_GOOGLE_CLIENT_ID, clientSecret: process.env.REA_GOOGLE_CLIENT_SECRET }
     : { clientId: process.env.REA_MICROSOFT_CLIENT_ID };
   return {
-    clientId: saved.clientId || env.clientId || baked.clientId || '',
-    clientSecret: saved.clientSecret || env.clientSecret || baked.clientSecret || '',
+    clientId: (saved.clientId || env.clientId || baked.clientId || '').trim(),
+    clientSecret: (saved.clientSecret || env.clientSecret || baked.clientSecret || '').trim(),
     org: saved.org || '',
   };
 }

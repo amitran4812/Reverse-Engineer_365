@@ -84,11 +84,18 @@ jobs:
           REA_GOOGLE_CLIENT_ID: ${{ secrets.REA_GOOGLE_CLIENT_ID }}
           REA_GOOGLE_CLIENT_SECRET: ${{ secrets.REA_GOOGLE_CLIENT_SECRET }}
           REA_MICROSOFT_CLIENT_ID: ${{ secrets.REA_MICROSOFT_CLIENT_ID }}
+        # Values are trimmed; a warning names a value that doesn't look right, without printing it.
         run: |
-          node -e 'require("fs").writeFileSync("main/cloud-config.json", JSON.stringify({
-            google: { clientId: process.env.REA_GOOGLE_CLIENT_ID || "", clientSecret: process.env.REA_GOOGLE_CLIENT_SECRET || "" },
-            onedrive: { clientId: process.env.REA_MICROSOFT_CLIENT_ID || "" },
-          }))'
+          node -e '
+            const v = (k) => (process.env[k] || "").trim();
+            const check = (k, re, hint) => { if (v(k) && !re.test(v(k))) console.log(`::warning::${k} doesn’t look like ${hint}`); };
+            check("REA_GOOGLE_CLIENT_ID", /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/, "a Google client ID (…apps.googleusercontent.com)");
+            check("REA_GOOGLE_CLIENT_SECRET", /^GOCSPX-[\w-]+$/, "a Google client secret (GOCSPX-…)");
+            check("REA_MICROSOFT_CLIENT_ID", /^[0-9a-f-]{36}$/i, "a Microsoft application ID");
+            require("fs").writeFileSync("main/cloud-config.json", JSON.stringify({
+              google: { clientId: v("REA_GOOGLE_CLIENT_ID"), clientSecret: v("REA_GOOGLE_CLIENT_SECRET") },
+              onedrive: { clientId: v("REA_MICROSOFT_CLIENT_ID") },
+            }));'
       - name: Build installer
         # Windows builds are signed when signing secrets are set (see SIGNING.md):
         # Azure Artifact Signing first, then a certificate file. Otherwise unsigned.
