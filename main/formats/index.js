@@ -152,6 +152,27 @@ async function openFile(file) {
   return { app, path: file, name, ext, data };
 }
 
+// Reads a spreadsheet file into the sheet model without opening it, for
+// combining it with the open workbook. Big files belong in the analysis workspace.
+const TABLE_EXTS = ['xlsx', 'xlsm', 'xltx', 'xls', 'ods', 'csv', 'tsv', 'tab', 'txt'];
+const TABLE_MAX = 40 * 1024 * 1024;
+
+async function readTable(file) {
+  const ext = extOf(file);
+  if (!TABLE_EXTS.includes(ext)) throw new Error(`Work can't read .${ext} files as a table`);
+  const { size } = await fs.stat(file);
+  if (size > TABLE_MAX) throw new Error(`${path.basename(file)} is too big for a sheet. Open it on the Analysis tab and use Add rows or Add columns there.`);
+  let data;
+  if (ext === 'csv') data = xlsx.importCsv(await fs.readFile(file, 'utf8'));
+  else if (ext === 'tsv' || ext === 'tab' || ext === 'txt') data = xlsx.importCsv(await fs.readFile(file, 'utf8'), '\t');
+  else if (ext === 'xls' || ext === 'ods') data = imports.importSheetJs(await fs.readFile(file));
+  else {
+    const buf = await fs.readFile(file);
+    data = await xlsx.importXlsx(buf).catch(() => imports.importSheetJs(buf));
+  }
+  return { name: path.basename(file), data };
+}
+
 // A .tex file opens its folder as a LaTeX project in Write. A "% !TEX root"
 // comment points at the main file when the opened file is a chapter.
 async function latexProject(file) {
@@ -197,4 +218,4 @@ async function saveFile(appName, file, payload) {
   return { path: file, name: path.basename(file), ext };
 }
 
-module.exports = { APPS, IMPORT_ONLY, appForFile, openFile, saveFile, extOf };
+module.exports = { APPS, IMPORT_ONLY, TABLE_EXTS, appForFile, openFile, readTable, saveFile, extOf };

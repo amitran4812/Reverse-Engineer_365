@@ -2,6 +2,13 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.12: Combine tables in any sheet
+
+- **Add Rows** on the Data tab stacks another table under the one you're in. Take it from another sheet in the workbook or from a file (Excel, OpenDocument, CSV or TSV). Columns are matched by name, and you can map the rest yourself or leave them out. Optionally add a column that says where each row came from.
+- **Add Columns** joins another table on one or more key columns, with a left, inner, right or full join, and lets you pick which of its columns to bring in. Keys are compared as written, so IDs like 007 stay as they are.
+- Click anywhere inside your table first: Work finds its edges, with the column names in the first row. The result goes under or next to the table, or on a new sheet. Formulas and formats in your table are kept, formula columns carry on into new rows, and Undo puts everything back.
+- **Connect Google Drive** with one click: Work now comes with its own Google sign-in, so you just pick your Google account. No setup in Options.
+
 ## 0.2.11: Upload LaTeX projects as a .zip
 
 - **Upload LaTeX (.zip)** on the Home and New screens opens a zipped LaTeX project, like the ones online LaTeX editors download. Work unpacks it next to the .zip, finds the main `.tex` file and compiles it.

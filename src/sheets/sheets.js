@@ -7,6 +7,7 @@ import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
 import { createAnalysis } from './analysis/workspace.js';
+import { appendTable, joinTable, JOINS, matchHeaders, tableOf } from './combine.js';
 
 const { colName, mapRefs, parseRef, rangeName, rect, refName, shiftFormula } = cellref;
 
@@ -1087,6 +1088,309 @@ function setAnalysisMode(on) {
   else scroller.focus({ preventScroll: true });
 }
 
+// ---------- combining tables ----------
+// Add Rows stacks another table (a sheet here or a file) under the table on
+// this sheet; Add Columns joins one on matching key columns.
+const filled = (s, r, c) => {
+  const v = s.cells[refName(r, c)]?.v;
+  return v != null && v !== '';
+};
+
+function usedRange(s) {
+  let g = null;
+  for (const [ref, cell] of Object.entries(s.cells)) {
+    const p = parseRef(ref);
+    if (!p || cell.v == null || cell.v === '') continue;
+    if (!g) g = { r0: p.row, r1: p.row, c0: p.col, c1: p.col };
+    else Object.assign(g, { r0: Math.min(g.r0, p.row), r1: Math.max(g.r1, p.row), c0: Math.min(g.c0, p.col), c1: Math.max(g.c1, p.col) });
+  }
+  return g;
+}
+
+// The block of data around the active cell, or the selection when there is one.
+function currentRegion() {
+  const s = selRect();
+  if (s.r0 !== s.r1 || s.c0 !== s.c1) return trimmedSelection();
+  const has = (r, c) => r >= 0 && c >= 0 && filled(sheet(), r, c);
+  let { r0, r1, c0, c1 } = s;
+  const rowHas = (r) => Array.from({ length: c1 - c0 + 3 }, (_, k) => c0 - 1 + k).some((c) => has(r, c));
+  const colHas = (c) => Array.from({ length: r1 - r0 + 3 }, (_, k) => r0 - 1 + k).some((r) => has(r, c));
+  for (let grew = true; grew;) {
+    grew = false;
+    if (r0 > 0 && rowHas(r0 - 1)) [r0, grew] = [r0 - 1, true];
+    if (rowHas(r1 + 1)) [r1, grew] = [r1 + 1, true];
+    if (c0 > 0 && colHas(c0 - 1)) [c0, grew] = [c0 - 1, true];
+    if (colHas(c1 + 1)) [c1, grew] = [c1 + 1, true];
+  }
+  if (r0 === r1 && c0 === c1 && !has(r0, c0)) return usedRange(sheet());
+  return { r0, r1, c0, c1 };
+}
+
+function regionMatrix(s, vals, g) {
+  const out = [];
+  for (let r = g.r0; r <= g.r1; r += 1) {
+    const row = [];
+    for (let c = g.c0; c <= g.c1; c += 1) {
+      const cell = s.cells[refName(r, c)];
+      const v = vals?.get(refName(r, c)) ?? cell?.v;
+      // Dates are numbers underneath; keep them readable once they move.
+      const asText = isError(v) || typeof v === 'object' || (typeof v === 'number' && cell?.s?.fmt === 'date');
+      row.push(v == null || v === '' ? null : asText ? format(v, cell?.s) : v);
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+async function pickCombineSource() {
+  const others = book.sheets.filter((s) => s !== sheet() && usedRange(s));
+  let from = '\u0000file';
+  if (others.length) {
+    const options = [...others.map((s) => ({ value: s.name, label: `Sheet “${s.name}”` })), { value: '\u0000file', label: 'A file on this computer…' }];
+    const v = await dialog({ title: 'Combine with', fields: [{ name: 'from', label: 'Take the other table from', type: 'select', options }], ok: 'Next' });
+    if (!v) return null;
+    from = v.from;
+  }
+  if (from !== '\u0000file') {
+    const s = book.sheets.find((x) => x.name === from);
+    return { name: s.name, short: s.name, table: tableOf(regionMatrix(s, values[s.name], usedRange(s))) };
+  }
+  const got = await window.office.sheets.openTable();
+  if (!got) return null;
+  if (got.error) throw new Error(got.error);
+  const sheets = got.data.sheets.filter((s) => usedRange(s));
+  if (!sheets.length) throw new Error(`${got.name} has no data`);
+  let s = sheets[0];
+  if (sheets.length > 1) {
+    const pick = await dialog({ title: `Choose a sheet in ${got.name}`, fields: [{ name: 'sheet', label: 'Sheet', type: 'select', options: sheets.map((x, i) => ({ value: String(i), label: x.name })) }], ok: 'Next' });
+    if (!pick) return null;
+    s = sheets[Number(pick.sheet)];
+  }
+  const short = got.name.replace(/\.[^.]+$/, '');
+  return {
+    name: sheets.length > 1 ? `${got.name} (${s.name})` : got.name,
+    short: sheets.length > 1 ? `${short} ${s.name}` : short,
+    table: tableOf(regionMatrix(s, computeBook(got.data)[s.name], usedRange(s))),
+  };
+}
+
+function pickList(options, value) {
+  const el = h('select');
+  for (const o of options) {
+    const opt = h('option', '', escapeHtml(o.label));
+    opt.value = o.value;
+    el.append(opt);
+  }
+  el.value = value;
+  return el;
+}
+
+function labeled(label, control) {
+  const row = h('label', 'an-field');
+  row.append(h('span', '', escapeHtml(label)), control);
+  return row;
+}
+
+function placeField(body, here) {
+  const place = pickList([{ value: 'here', label: here }, { value: 'new', label: 'A new sheet' }], 'here');
+  body.append(labeled('Put the result in', place));
+  return place;
+}
+
+const rowCount = (t) => `${t.table.rows.length.toLocaleString()} ${t.table.rows.length === 1 ? 'row' : 'rows'}`;
+
+function rowsBody(base, other) {
+  const body = h('div', 'an-combine');
+  body.append(h('p', 'muted', `${escapeHtml(other.name)} has ${rowCount(other)}. Match each of its columns to a column here; unmatched columns become new columns.`));
+  const table = h('div', 'an-map');
+  table.append(h('div', 'an-map-row an-map-head', '<span>Column in the other table</span><span>Goes into</span>'));
+  const options = [{ value: '\u0000new', label: '(new column)' }, { value: '\u0000skip', label: '(leave out)' }, ...base.header.map((n) => ({ value: n, label: n }))];
+  const picks = matchHeaders(base, other.table).map((m) => {
+    const row = h('div', 'an-map-row', `<span>${escapeHtml(m.from)}</span>`);
+    const el = pickList(options, m.to ?? '\u0000new');
+    row.append(el);
+    table.append(row);
+    return { from: m.from, el };
+  });
+  body.append(table);
+  const src = h('div', 'an-combine-source');
+  const on = h('input');
+  on.type = 'checkbox';
+  const name = h('input');
+  name.value = 'Source';
+  const a = h('input');
+  a.value = sheet().name;
+  const b = h('input');
+  b.value = other.short;
+  const fields = [labeled('Column name', name), labeled('Label for the rows already here', a), labeled('Label for the new rows', b)];
+  const sync = () => fields.forEach((f) => { f.hidden = !on.checked; });
+  on.onchange = sync;
+  sync();
+  const check = h('label', 'an-check');
+  check.append(on, document.createTextNode(' Add a column that tells where each row came from'));
+  src.append(check, ...fields);
+  body.append(src);
+  const place = placeField(body, 'This sheet, under the table');
+  body.read = () => ({
+    mapping: picks.map(({ from, el }) => ({ from, to: el.value === '\u0000new' ? null : el.value === '\u0000skip' ? '' : el.value })),
+    source: on.checked ? { name: name.value.trim() || 'Source', base: a.value || sheet().name, add: b.value || other.short } : null,
+    place: place.value,
+  });
+  return body;
+}
+
+function columnsBody(base, other) {
+  const body = h('div', 'an-combine');
+  const theirs = other.table.header;
+  body.append(h('p', 'muted', `${escapeHtml(other.name)} has ${rowCount(other)}. Rows are matched where the key columns have equal values.`));
+  const keysBox = h('div', 'an-keys');
+  keysBox.append(h('div', 'an-map-row an-map-head', '<span>Column here</span><span>Column in the other table</span>'));
+  const lower = (x) => String(x).toLowerCase();
+  const keyRow = () => {
+    const row = h('div', 'an-key-row');
+    const guess = base.header.find((n) => theirs.some((x) => lower(x) === lower(n))) || base.header[0];
+    const a = pickList(base.header.map((n) => ({ value: n, label: n })), guess);
+    const b = pickList(theirs.map((n) => ({ value: n, label: n })), theirs.find((x) => lower(x) === lower(guess)) || theirs[0]);
+    const rm = h('button', 'btn an-x', icon('close', 12));
+    rm.type = 'button';
+    rm.title = 'Remove this key';
+    rm.onclick = () => {
+      if (keysBox.querySelectorAll('.an-key-row').length > 1) row.remove();
+      syncKeys();
+    };
+    row.append(a, h('span', 'an-key-eq', '='), b, rm);
+    row.read = () => ({ base: a.value, add: b.value });
+    keysBox.insertBefore(row, more);
+  };
+  const more = h('button', 'btn an-small', `${icon('plus', 12)} Add key column`);
+  more.type = 'button';
+  more.onclick = () => {
+    keyRow();
+    syncKeys();
+  };
+  keysBox.append(more);
+  keyRow();
+  body.append(h('b', '', 'Match rows on'), keysBox);
+  const how = pickList(Object.entries(JOINS).map(([value, label]) => ({ value, label })), 'left');
+  body.append(labeled('Join', how));
+  const list = h('div', 'an-values an-bring');
+  const checks = theirs.map((n) => {
+    const l = h('label', 'an-value an-bring-col');
+    const box = h('input');
+    box.type = 'checkbox';
+    box.checked = true;
+    l.append(box, h('span', '', escapeHtml(n)));
+    list.append(l);
+    return { name: n, box };
+  });
+  body.append(h('b', '', 'Columns to add'), list);
+  function syncKeys() {
+    const used = new Set([...keysBox.querySelectorAll('.an-key-row')].map((r) => r.read().add));
+    for (const c of checks) c.box.closest('label').hidden = used.has(c.name);
+  }
+  keysBox.addEventListener('change', syncKeys);
+  syncKeys();
+  const place = placeField(body, 'This sheet, next to the table');
+  body.read = () => ({
+    keys: [...keysBox.querySelectorAll('.an-key-row')].map((r) => r.read()),
+    how: how.value,
+    include: checks.filter((c) => c.box.checked).map((c) => c.name),
+    place: place.value,
+  });
+  return body;
+}
+
+// Writes the result over the table. Rows that stay where they were keep their
+// cells (formulas and all); everything else is written as values.
+function writeCombined(g, base, res, kind) {
+  const width = base.header.length;
+  const nA = base.rows.length;
+  const keep = kind === 'rows' || (res.from.length === nA && res.from.every((i, k) => i === k));
+  const s = sheet();
+  const styleOf = (r, c) => s.cells[refName(r, c)]?.s;
+  const headStyle = styleOf(g.r0, g.c0 + width - 1);
+  const rowStyle = Array.from({ length: width }, (_, j) => (nA ? styleOf(g.r0 + nA, g.c0 + j) : null));
+  // Formula columns carry on into the new rows, like a table that grows.
+  const lastFormula = Array.from({ length: width }, (_, j) => {
+    const v = nA ? s.cells[refName(g.r0 + nA, g.c0 + j)]?.v : null;
+    return typeof v === 'string' && v.startsWith('=') ? v : null;
+  });
+  snapshot();
+  const prev = Object.keys(s.cells);
+  if (!keep) for (let r = g.r0 + 1; r <= g.r1; r += 1) for (let c = g.c0; c <= g.c1; c += 1) setRaw(r, c, '');
+  const put = (r, c, v, style) => {
+    setRaw(r, c, v == null ? '' : v);
+    if (style && v != null) s.cells[refName(r, c)].s = { ...style };
+  };
+  for (let j = width; j < res.header.length; j += 1) put(g.r0, g.c0 + j, res.header[j], headStyle);
+  res.rows.forEach((row, i) => row.forEach((v, j) => {
+    if (keep && i < nA && j < width) return;
+    if (kind === 'rows' && i >= nA && v == null && lastFormula[j]) v = shiftFormula(lastFormula[j], i - nA + 1, 0);
+    put(g.r0 + 1 + i, g.c0 + j, v, i >= nA && j < width ? rowStyle[j] : null);
+  }));
+  ensureGrid();
+  sel = { a: { row: g.r0, col: g.c0 }, f: { row: g.r0 + res.rows.length, col: g.c0 + res.header.length - 1 } };
+  refreshCells(prev);
+  scroller.focus({ preventScroll: true });
+  return keep;
+}
+
+// Cells outside the table that the result would write over.
+function inTheWay(g, res) {
+  const r1 = g.r0 + res.rows.length;
+  const c1 = g.c0 + res.header.length - 1;
+  for (const ref of Object.keys(sheet().cells)) {
+    const p = parseRef(ref);
+    if (!p || !filled(sheet(), p.row, p.col)) continue;
+    const inside = p.row >= g.r0 && p.row <= g.r1 && p.col >= g.c0 && p.col <= g.c1;
+    if (!inside && p.row >= g.r0 && p.row <= r1 && p.col >= g.c0 && p.col <= c1) return true;
+  }
+  return false;
+}
+
+async function combineTables(kind) {
+  if (editing) commitEdit();
+  const g = currentRegion();
+  if (!g || g.r0 === g.r1) {
+    toast('Click inside a table first: column names in its first row, data below');
+    return;
+  }
+  const base = tableOf(regionMatrix(sheet(), values[sheet().name], g));
+  let other;
+  try {
+    other = await pickCombineSource();
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
+  }
+  if (!other) return;
+  const body = kind === 'rows' ? rowsBody(base, other) : columnsBody(base, other);
+  const ok = await dialog({ title: kind === 'rows' ? `Add rows from ${other.name}` : `Add columns from ${other.name}`, body, wide: true, ok: kind === 'rows' ? 'Add rows' : 'Add columns' });
+  if (!ok) return;
+  const { place, ...opts } = body.read();
+  let res;
+  try {
+    res = kind === 'rows' ? appendTable(base, other.table, opts) : joinTable(base, other.table, opts);
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
+  }
+  let onNew = place === 'new';
+  if (!onNew && inTheWay(g, res)) {
+    const move = await dialog({ title: 'Cells in the way', body: 'The combined table needs cells that already hold other data. Put it on a new sheet instead?', ok: 'New sheet' });
+    if (!move) return;
+    onNew = true;
+  }
+  if (onNew) {
+    matrixToSheet([res.header, ...res.rows], `${sheet().name} + ${other.short}`.slice(0, 31));
+    return;
+  }
+  const kept = writeCombined(g, base, res, kind);
+  const n = other.table.rows.length;
+  const what = kind === 'rows' ? `Added ${n.toLocaleString()} ${n === 1 ? 'row' : 'rows'} from ${other.name}` : `Added columns from ${other.name}; ${res.rows.length.toLocaleString()} rows now`;
+  toast(kept ? what : `${what}. The table's cells are now values.`);
+}
+
 // ---------- ribbon ----------
 const active = (key) => () => !!cellAt(sel.a.row, sel.a.col)?.s?.[key];
 const alignIs = (a) => () => cellAt(sel.a.row, sel.a.col)?.s?.align === a;
@@ -1204,6 +1508,10 @@ const dataTab = {
     { label: 'Sort', items: [
       { type: 'big', icon: 'sortAsc', label: 'Sort A to Z', run: () => sortSelection(1) },
       { type: 'big', icon: 'sortDesc', label: 'Sort Z to A', run: () => sortSelection(-1) },
+    ] },
+    { label: 'Combine', items: [
+      { type: 'big', icon: 'addRows', label: 'Add Rows', title: 'Stack another sheet or file under this table', run: () => combineTables('rows') },
+      { type: 'big', icon: 'addColumns', label: 'Add Columns', title: 'Join another sheet or file on matching key columns', run: () => combineTables('columns') },
     ] },
     { label: 'Data Tools', items: [{ type: 'big', icon: 'wand', label: 'Clean Up with Claude', run: () => shell.claude.runQuick(QUICK.clean) }] },
   ],

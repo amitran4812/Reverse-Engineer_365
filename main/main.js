@@ -270,6 +270,14 @@ ipcMain.handle('data:save-project', safe(async (e, req) => {
   if (saved) settings.addRecent('sheets', saved.path);
   return saved;
 }));
+ipcMain.handle('sheets:open-table', safe(async (e) => {
+  const res = await dialog.showOpenDialog(senderWin(e), {
+    title: 'Choose a file to combine',
+    properties: ['openFile'],
+    filters: [{ name: 'Spreadsheets', extensions: formats.TABLE_EXTS }, { name: 'All files', extensions: ['*'] }],
+  });
+  return res.canceled || !res.filePaths[0] ? null : formats.readTable(res.filePaths[0]);
+}));
 ipcMain.handle('cloud:status', () => cloud.status());
 ipcMain.handle('cloud:connect', safe((e, id) => cloud.connect(id)));
 ipcMain.handle('cloud:disconnect', safe((e, id) => cloud.disconnect(id)));

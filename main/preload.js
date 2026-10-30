@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld('office', {
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
   },
+  sheets: {
+    openTable: () => ipcRenderer.invoke('sheets:open-table'),
+  },
   data: {
     openDialog: () => ipcRenderer.invoke('data:open-dialog'),
     launch: (step) => ipcRenderer.invoke('data:launch', step),

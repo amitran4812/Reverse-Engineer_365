@@ -127,8 +127,8 @@ async function importXlsx(buffer) {
   return { sheets: sheets.length ? sheets : [{ name: 'Sheet1', cells: {}, cols: {} }] };
 }
 
-function importCsv(text) {
-  const rows = parseCsv(text.replace(/^﻿/, ''));
+function importCsv(text, delimiter = ',') {
+  const rows = parseCsv(text.replace(/^﻿/, ''), delimiter);
   const cells = {};
   rows.forEach((row, r) => row.forEach((v, c) => {
     if (v !== '') cells[`${colName(c)}${r + 1}`] = { v };
