@@ -2,7 +2,12 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.17: Spotfire-style functions and sheet tab menu in Plot
+## 0.2.20: Delete sheets from their tab
+
+- Right-click a sheet tab in Plot for **Rename**, **Duplicate**, **Move left**, **Move right** and **Delete**. Before, you got a small dialog where Delete was easy to miss.
+- **Delete sheet** is also on the Home tab (Cells) and the Insert tab (Sheets). A sheet with data asks first, and Undo (Ctrl+Z) brings it back.
+
+## 0.2.17: Spotfire-style functions in Plot
 
 - Calculated columns and filter formulas in Plot's Analysis tab now cover the functions you'd use in Spotfire. Names aren't case-sensitive, so a formula like `StdDev([Vth]) OVER ([Lot])` works as written. The calculated column window lists them all by category.
 - **Sigma and statistics**: `sigma` (also `stddev`), `var`, `stderr`, `median`, `percentile`, `p10`, `p90`, `q1`, `q3`, `iqr`, the box plot fences `lif`, `uif`, `lav`, `uav`, `lof`, `uof`, `l95` / `u95`, `uniquecount`, `mode`, `first`, `last` and more. `ucl([Vth], 3)` and `lcl([Vth], 3)` give the mean plus or minus 3 sigma, and `zscore([Vth])` says how many sigmas each row is from the mean.
@@ -14,8 +19,6 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Dates**: `year`, `quarter`, `month`, `week`, `day`, `dayofweek`, `dayofyear`, `hour`, `minute`, `second`, `datepart`, `dateadd`, `datediff`, `date`, `datetime`, `today` and `datetimenow`. A formula that gives a date makes a date column.
 - **Math and conversion**: `log(x, base)`, `power`, `divint`, `ceiling`, `cot`, `degrees`, `radians`, `pi`, `rand`, `randbetween`, `integer`, `real` and `string`.
 - Fixed: column lists that open from a plot's axis picker, or any other drop-down near the bottom of the window, now open upward when there is no room below and scroll, so every column can be picked.
-- Right-click a sheet tab in Plot for **Rename**, **Duplicate**, **Move left**, **Move right** and **Delete**. Before, you got a small dialog where Delete was easy to miss.
-- **Delete sheet** is also on the Home tab (Cells) and the Insert tab (Sheets). A sheet with data asks first, and Undo (Ctrl+Z) brings it back.
 
 ## 0.2.16: Google Drive sign-in fix
 
