@@ -318,6 +318,7 @@ ipcMain.handle('accounts:rename', safe((e, id, name) => profiles.rename(id, name
 ipcMain.handle('accounts:remove', safe((e, id) => profiles.remove(id)));
 ipcMain.handle('accounts:open', safe((e, id) => profiles.open(id)));
 ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
+ipcMain.handle('web:data', safe(async (e, kind, params) => ({ value: await require('./webdata').data(kind, params) })));
 
 ipcMain.handle('settings:get', () => settings.publicSettings());
 ipcMain.handle('settings:set', (e, patch) => {

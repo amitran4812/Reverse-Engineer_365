@@ -14,6 +14,15 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Send to Present includes the text of write-anywhere boxes and voice note transcripts.
 - Fixed: the hint on an empty line kept showing the Document text after switching to Notes.
 
+## 0.2.25: Google Sheets formulas in Plot
+
+- **Google Sheets files open without errors.** Formulas Google Sheets writes in a special wrapped form (GOOGLEFINANCE, ARRAYFORMULA, QUERY, SPLIT and other Google-only functions) now open as the real formula. Until live data arrives, or when you're offline, cells show the value saved in the file instead of an error.
+- **GOOGLEFINANCE works**: current price and other attributes (`"price"`, `"change"`, `"changepct"`, `"high52"`, `"name"`, `"currency"`…) for tickers like `NASDAQ:GOOG`, `NSE:INFY` or `CURRENCY:USDINR`, and price history with a start date, end date or number of days, daily or weekly. Prices refresh every minute while the sheet is open.
+- **IMPORTRANGE** reads from another Google Sheet through your Google Drive sign-in. **IMPORTDATA**, **IMPORTHTML**, **IMPORTXML** and **IMPORTFEED** read files, tables, lists and feeds from the web. **GOOGLETRANSLATE** and **DETECTLANGUAGE** work too.
+- **Every Google Sheets function, built in.** Plot now has over 500 functions you can type in any cell, from `+` and `SUM` up: math, text, dates, lookup, statistics and distributions, finance and bonds, engineering, database functions, `REGEXMATCH`/`REGEXEXTRACT`/`REGEXREPLACE`, `SPLIT`, `JOIN`, `FILTER`, `SORT`, `SORTN`, `UNIQUE`, `QUERY`, `SEQUENCE`, `LET`, `LAMBDA`, `MAP`, `REDUCE`, `BYROW`, `XLOOKUP` and more. Formulas → Functions → **All functions…** lists them.
+- **Array formulas spill.** A formula that returns several values (like `=A2:A10*2`, `=ARRAYFORMULA(…)`, `=FILTER(…)` or `=SPLIT(…)`) fills the cells below and to the right. If something is in the way, the cell shows `#REF!`; hover an error to see why.
+- Saving as .xlsx keeps Google-only formulas in the form Google Sheets reads back, so files go back and forth without losing them.
+
 ## 0.2.24: Save notes as PDF
 
 - **Save as PDF** is now on Write's **Notes** tab and in the **/** menu, next to Send to Present. It's still under **File > Export** too.
