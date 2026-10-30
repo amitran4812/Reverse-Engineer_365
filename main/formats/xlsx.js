@@ -6,10 +6,13 @@
 //   v = what the user typed ("=SUM(A1:A3)", "42", "hello")
 //   r = computed result (sent by the renderer so files carry cached values)
 //   s = style { b, i, u, color, bg, align, fmt }
+// sheet.spillCache = { A2: value } holds values an array formula spilled into, as saved in the file;
+// sheet.spilled / sheet.spillAnchors come from the renderer on save.
 
 const ExcelJS = require('exceljs');
 const { colIndex, colName, parseCsv, parseRef, toCsv } = require('../../common/cellref');
 const { hex } = require('./docx');
+const { unwrapFormula, wrapFormula, computedFormula, usesGoogleOnly } = require('../../common/gsheets');
 
 const NUMFMT = {
   number: '#,##0.00',
@@ -47,13 +50,23 @@ async function exportXlsx(model) {
     for (const [col, width] of Object.entries(sheet.cols || {})) {
       ws.getColumn(colIndex(col) + 1).width = Math.max(4, Math.round(width / 7));
     }
+    const anchors = new Set(sheet.spillAnchors || []);
+    for (const [ref, value] of Object.entries(sheet.spilled || {})) {
+      if (!parseRef(ref) || sheet.cells?.[ref]?.v) continue;
+      const result = typeof value === 'string' && value.startsWith('#') ? undefined : scalar(value);
+      ws.getCell(ref).value = { formula: computedFormula(result), result: result ?? undefined };
+    }
     for (const [ref, cell] of Object.entries(sheet.cells || {})) {
       if (!parseRef(ref)) continue;
       const c = ws.getCell(ref);
       const v = cell.v ?? '';
       if (typeof v === 'string' && v.startsWith('=') && v.length > 1) {
         const result = typeof cell.r === 'string' && cell.r.startsWith('#') ? undefined : scalar(cell.r);
-        c.value = { formula: v.slice(1), result: result ?? undefined };
+        const f = v.slice(1);
+        // Google Sheets reads these back as the real formula; Excel shows the saved value.
+        c.value = { formula: anchors.has(ref) || usesGoogleOnly(f) ? wrapFormula(f, result) : f, result: result ?? undefined };
+      } else if (!v && sheet.spilled?.[ref] !== undefined) {
+        // Styled cell that an array result spilled into: written above.
       } else {
         const sv = scalar(v);
         if (cell.s?.fmt === 'date' && typeof sv === 'string' && !Number.isNaN(Date.parse(sv))) {
@@ -81,12 +94,31 @@ function argbToCss(color) {
   return `#${argb.slice(-6)}`;
 }
 
+const resultOf = (r) => {
+  if (r == null || typeof r !== 'object') return r ?? undefined;
+  if (r instanceof Date) return r.toISOString().slice(0, 10);
+  if (r.error) return r.error;
+  if (r.richText) return r.richText.map((t) => t.text).join('');
+  return undefined;
+};
+
+// { v, r, computed } for a cell: Google's wrapped formulas come back as the real formula and saved value.
 function cellInput(cell) {
+  const v = cell.value;
+  if (v != null && typeof v === 'object' && (v.formula || v.sharedFormula)) {
+    const g = unwrapFormula(cell.formula || v.formula);
+    const r = resultOf(v.result) ?? g.cached;
+    if (g.computed) return { v: '', r, computed: true };
+    return { v: `=${g.formula}`, r };
+  }
+  return { v: plainInput(cell) };
+}
+
+function plainInput(cell) {
   const v = cell.value;
   if (v == null) return '';
   if (typeof v === 'object') {
     if (v instanceof Date) return v.toISOString().slice(0, 10);
-    if (v.formula || v.sharedFormula) return `=${cell.formula || v.formula}`;
     if (v.richText) return v.richText.map((t) => t.text).join('');
     if (v.text !== undefined) return String(v.text);
     if (v.error) return v.error;
@@ -103,12 +135,14 @@ async function importXlsx(buffer) {
   wb.eachSheet((ws) => {
     const cells = {};
     const cols = {};
+    const spillCache = {};
     ws.columns?.forEach((col, i) => {
       if (col.width) cols[colName(i)] = Math.round(col.width * 7);
     });
     ws.eachRow({ includeEmpty: false }, (row) => {
       row.eachCell({ includeEmpty: false }, (cell) => {
-        const v = cellInput(cell);
+        const { v, r, computed } = cellInput(cell);
+        if (computed && r !== undefined) spillCache[cell.address] = r;
         const s = {};
         if (cell.font?.bold) s.b = true;
         if (cell.font?.italic) s.i = true;
@@ -119,10 +153,12 @@ async function importXlsx(buffer) {
         const fmt = guessFmt(cell.numFmt);
         if (fmt) s.fmt = fmt;
         if (v === '' && !Object.keys(s).length) return;
-        cells[cell.address] = Object.keys(s).length ? { v, s } : { v };
+        const out = Object.keys(s).length ? { v, s } : { v };
+        if (v.startsWith('=') && r !== undefined) out.r = r;
+        cells[cell.address] = out;
       });
     });
-    sheets.push({ name: ws.name, cells, cols });
+    sheets.push(Object.keys(spillCache).length ? { name: ws.name, cells, cols, spillCache } : { name: ws.name, cells, cols });
   });
   return { sheets: sheets.length ? sheets : [{ name: 'Sheet1', cells: {}, cols: {} }] };
 }
@@ -150,6 +186,13 @@ function exportCsv(model, sheetIndex = 0) {
     const v = cell.v ?? '';
     grid.set(ref, typeof v === 'string' && v.startsWith('=') ? (cell.r ?? '') : v);
   }
+  for (const [ref, v] of Object.entries(sheet?.spilled || {})) {
+    const p = parseRef(ref);
+    if (!p || grid.get(ref)) continue;
+    maxR = Math.max(maxR, p.row);
+    maxC = Math.max(maxC, p.col);
+    grid.set(ref, v ?? '');
+  }
   const rows = [];
   for (let r = 0; r <= maxR; r += 1) {
     const row = [];
@@ -173,7 +216,10 @@ function exportOds(model) {
       const { row: r, col: c } = parseRef(ref);
       maxR = Math.max(maxR, r);
       maxC = Math.max(maxC, c);
-      if (v.startsWith('=')) ws[ref] = { t: 'n', v: 0, f: v.slice(1) };
+      if (v.startsWith('=')) {
+        const r = scalar(cell.r);
+        ws[ref] = typeof r === 'string' ? { t: 's', v: r, f: v.slice(1) } : typeof r === 'boolean' ? { t: 'b', v: r, f: v.slice(1) } : { t: 'n', v: r ?? 0, f: v.slice(1) };
+      }
       else if (/^-?\d+(\.\d+)?$/.test(v)) ws[ref] = { t: 'n', v: Number(v) };
       else ws[ref] = { t: 's', v };
     }
