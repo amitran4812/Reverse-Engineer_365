@@ -9,6 +9,17 @@ import { fit } from './fit.js';
 export const POINT_CAP = 1_500_000;
 const FIT_SAMPLE = 500_000;
 const MAX_CATEGORIES = 500;
+const CONNECT_CAP = 400_000;
+export const MARKER_SHAPES = ['circle', 'square', 'diamond', 'triangle', 'triangleDown', 'plus', 'cross'];
+
+// A stable pseudo-random number in [0, 1) for a row, used for jitter.
+function hash01(i, seed) {
+  let h = Math.imul(i ^ (seed * 0x9e3779b9), 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h / 4294967296;
+}
 
 const natural = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
@@ -24,6 +35,7 @@ export class Dataset {
     this.keys = new Map();
     this.mark = new Uint8Array(this.n);
     this.markCount = 0;
+    this.rowCache = new Map();
     this.applyFilters();
   }
 
@@ -144,7 +156,31 @@ export class Dataset {
 
   applyFilters() {
     const pass = new Uint8Array(this.n).fill(1);
-    for (const [name, spec] of this.filters) {
+    this.columnMask(this.filters, pass);
+    for (const f of this.exprFilters) for (let i = 0; i < this.n; i += 1) pass[i] &= f.mask[i];
+    if (this.rowset) for (let i = 0; i < this.n; i += 1) pass[i] &= this.rowset[i];
+    let count = 0;
+    for (let i = 0; i < this.n; i += 1) count += pass[i];
+    const index = new Uint32Array(count);
+    for (let i = 0, k = 0; i < this.n; i += 1) if (pass[i]) index[k++] = i;
+    this.pass = pass;
+    this.index = index;
+    this.markedIndex = null;
+    this.rowCache.clear();
+    // Rows hidden by a filter are no longer marked.
+    if (this.markCount) {
+      let m = 0;
+      for (let i = 0; i < this.n; i += 1) {
+        if (this.mark[i] && !pass[i]) this.mark[i] = 0;
+        m += this.mark[i];
+      }
+      this.markCount = m;
+    }
+  }
+
+  // Clears pass[i] for rows that fail any of the column filters.
+  columnMask(filters, pass) {
+    for (const [name, spec] of filters) {
       const c = this.column(name);
       if (!c) continue;
       if (c.type === 'string') {
@@ -175,24 +211,86 @@ export class Dataset {
         for (let i = 0; i < this.n; i += 1) if (pass[i] && set.has(cellText(c, i)) === !!spec.exclude) pass[i] = 0;
       }
     }
-    for (const f of this.exprFilters) for (let i = 0; i < this.n; i += 1) pass[i] &= f.mask[i];
-    if (this.rowset) for (let i = 0; i < this.n; i += 1) pass[i] &= this.rowset[i];
+    return pass;
+  }
+
+  // ---------- per-visualization rows ----------
+  // The rows one visualization draws: the page filters (or every row when it
+  // ignores them), narrowed by its own filters, its limiting formula and,
+  // for a trellis panel, the panel's categories.
+  plotRows(spec) {
+    const own = spec.vizFilters && Object.keys(spec.vizFilters).length;
+    const limit = String(spec.limit || '').trim();
+    if (!spec.ignoreFilters && !own && !limit && !spec.panel?.length) return this.index;
+    const id = JSON.stringify([!!spec.ignoreFilters, spec.vizFilters || null, limit, spec.panel || null]);
+    if (this.rowCache.has(id)) return this.rowCache.get(id);
+    const pass = spec.ignoreFilters ? new Uint8Array(this.n).fill(1) : Uint8Array.from(this.pass);
+    if (own) this.columnMask(new Map(Object.entries(spec.vizFilters).filter(([n]) => this.column(n))), pass);
+    if (limit) {
+      const v = evaluateColumn(limit, this.exprContext());
+      if (!(v instanceof Float64Array)) throw new Error('The limiting formula must be true or false for each row');
+      for (let i = 0; i < this.n; i += 1) if (!(v[i] && !Number.isNaN(v[i]))) pass[i] = 0;
+    }
+    for (const p of spec.panel || []) {
+      const k = this.keyFor(p.col).keys;
+      for (let i = 0; i < this.n; i += 1) if (k[i] !== p.key) pass[i] = 0;
+    }
     let count = 0;
     for (let i = 0; i < this.n; i += 1) count += pass[i];
-    const index = new Uint32Array(count);
-    for (let i = 0, k = 0; i < this.n; i += 1) if (pass[i]) index[k++] = i;
-    this.pass = pass;
-    this.index = index;
-    this.markedIndex = null;
-    // Rows hidden by a filter are no longer marked.
-    if (this.markCount) {
-      let m = 0;
-      for (let i = 0; i < this.n; i += 1) {
-        if (this.mark[i] && !pass[i]) this.mark[i] = 0;
-        m += this.mark[i];
+    const out = new Uint32Array(count);
+    for (let i = 0, k = 0; i < this.n; i += 1) if (pass[i]) out[k++] = i;
+    if (this.rowCache.size > 64) this.rowCache.clear();
+    this.rowCache.set(id, out);
+    return out;
+  }
+
+  plotMarked(spec) {
+    const rows = this.plotRows(spec);
+    if (rows === this.index) return this.marked();
+    if (!this.markCount) return new Uint32Array(0);
+    let k = 0;
+    const out = new Uint32Array(rows.length);
+    for (const i of rows) if (this.mark[i]) out[k++] = i;
+    return out.subarray(0, k);
+  }
+
+  // Trellis panels share their axes: bounds come from all the panels' rows.
+  boundRows(spec) {
+    return spec.panel?.length && spec.sharedAxes !== false ? this.plotRows({ ...spec, panel: null }) : this.plotRows(spec);
+  }
+
+  // The panels of a trellised visualization: one per category of the
+  // panel column, or a grid of row and column categories.
+  trellis(spec) {
+    const t = spec.trellis || {};
+    const base = this.plotRows({ ...spec, panel: null });
+    const max = Math.max(1, Math.min(100, t.max || 24));
+    const used = (col) => {
+      const k = this.keyFor(col);
+      const counts = new Float64Array(k.labels.length);
+      for (const i of base) if (k.keys[i] >= 0) counts[k.keys[i]] += 1;
+      return k.labels.map((label, key) => ({ label, key, n: counts[key] })).filter((x) => x.n);
+    };
+    if (t.mode === 'grid' && (t.rows || t.cols)) {
+      const rows = t.rows ? used(this.need(t.rows).name) : [null];
+      const cols = t.cols ? used(this.need(t.cols).name) : [null];
+      const nc = Math.min(cols.length, max);
+      const nr = Math.max(1, Math.min(rows.length, Math.floor(max / nc)));
+      const panels = [];
+      for (const r of rows.slice(0, nr)) {
+        for (const c of cols.slice(0, nc)) {
+          panels.push({
+            panel: [r && { col: t.rows, key: r.key }, c && { col: t.cols, key: c.key }].filter(Boolean),
+            label: [r?.label, c?.label].filter((x) => x != null).join(' · '),
+          });
+        }
       }
-      this.markCount = m;
+      return { mode: 'grid', rows: nr, cols: nc, panels, rowLabels: rows.slice(0, nr).map((r) => r?.label ?? ''), colLabels: cols.slice(0, nc).map((c) => c?.label ?? ''), hidden: rows.length * cols.length - panels.length };
     }
+    if (!t.by) return { mode: 'panels', panels: [], hidden: 0 };
+    const col = this.need(t.by).name;
+    const all = used(col);
+    return { mode: 'panels', panels: all.slice(0, max).map((x) => ({ panel: [{ col, key: x.key }], label: x.label })), hidden: Math.max(0, all.length - max) };
   }
 
   // What the filter panel shows for one column.
@@ -274,11 +372,23 @@ export class Dataset {
   // numbers are category positions (0, 1, 2, …).
   markPlot(spec, sel, mode) {
     const t = spec.type;
+    const rows = this.plotRows(spec);
+    if (rows !== this.index) {
+      const inPlot = new Uint8Array(this.n);
+      for (const i of rows) inPlot[i] = 1;
+      const apply = this.applyMark.bind(this);
+      return this.markPlotWith(spec, sel, mode, (hit, m) => apply((i) => inPlot[i] === 1 && hit(i), m));
+    }
+    return this.markPlotWith(spec, sel, mode, (hit, m) => this.applyMark(hit, m));
+  }
+
+  markPlotWith(spec, sel, mode, applyMark) {
+    const t = spec.type;
     if (t === 'scatter' || t === 'line') {
       const x = this.need(spec.x).data;
       const ys = (spec.y || []).filter((s) => (s.axis || 'left') === (sel.axis || 'left')).map((s) => this.need(s.col).data);
       const yAll = !Number.isFinite(sel.y0) && !Number.isFinite(sel.y1);
-      return this.applyMark((i) => {
+      return applyMark((i) => {
         const xv = x[i];
         if (!(xv >= sel.x0 && xv <= sel.x1)) return false;
         if (yAll) return true;
@@ -288,21 +398,21 @@ export class Dataset {
     }
     if (t === 'histogram') {
       const x = this.need(spec.x).data;
-      return this.applyMark((i) => x[i] >= sel.x0 && x[i] <= sel.x1, mode);
+      return applyMark((i) => x[i] >= sel.x0 && x[i] <= sel.x1, mode);
     }
     if (t === 'bar' || t === 'box' || t === 'pie' || t === 'table') {
       const k = spec.x ? this.keyFor(spec.x) : null;
       const g = sel.groups && spec.color && t !== 'pie' ? this.keyFor(spec.color) : null;
       const cats = new Set(sel.cats);
       const groups = g ? new Set(sel.groups) : null;
-      return this.applyMark((i) => (!k || cats.has(k.keys[i])) && (!g || groups.has(g.keys[i])), mode);
+      return applyMark((i) => (!k || cats.has(k.keys[i])) && (!g || groups.has(g.keys[i])), mode);
     }
     if (t === 'heatmap') {
       const kx = this.keyFor(spec.x, { bins: spec.bins || 40, force: true });
       const ky = this.keyFor(spec.y?.[0]?.col, { bins: spec.bins || 40, force: true });
       const xs = new Set(sel.xcats);
       const ys = new Set(sel.ycats);
-      return this.applyMark((i) => xs.has(kx.keys[i]) && ys.has(ky.keys[i]), mode);
+      return applyMark((i) => xs.has(kx.keys[i]) && ys.has(ky.keys[i]), mode);
     }
     return this.markCount;
   }
@@ -385,15 +495,16 @@ export class Dataset {
   }
 
   scatter(spec, view, size) {
-    const rows = this.index;
+    const rows = this.plotRows(spec);
+    const bRows = this.boundRows(spec);
     const xc = this.need(spec.x);
     const series = (spec.y || []).map((s) => ({ ...s, c: this.need(s.col) }));
     if (!series.length) throw new Error('Choose a column for the Y axis');
     const x = xc.data;
-    const xb = this.bounds(x, rows);
+    const xb = this.bounds(x, bRows);
     const out = { kind: 'points', xType: xc.type, bounds: { x: xb }, series: [], transfer: [] };
     for (const s of series) {
-      const yb = this.bounds(s.c.data, rows);
+      const yb = this.bounds(s.c.data, bRows);
       const ax = s.axis || 'left';
       out.bounds[ax] = out.bounds[ax] ? [Math.min(out.bounds[ax][0], yb[0]), Math.max(out.bounds[ax][1], yb[1])] : yb;
     }
@@ -403,6 +514,7 @@ export class Dataset {
       for (const i of rows) if (!Number.isNaN(x[i]) && !Number.isNaN(y[i])) total += 1;
     }
     out.total = total;
+    out.refStats = this.refStats(spec, rows);
     if (total > POINT_CAP && series.length === 1) return this.density(spec, view, size, out);
     let color = null;
     if (series.length === 1 && spec.color) {
@@ -412,16 +524,31 @@ export class Dataset {
         color = { mode: 'category', keys: k.keys };
         out.legend = k.labels;
       } else {
-        const b = this.bounds(cc.data, rows);
+        const b = this.bounds(cc.data, bRows);
         color = { mode: 'continuous', data: cc.data, lo: b[0], span: b[1] - b[0] || 1 };
         out.colorRange = b;
         out.colorType = cc.type;
       }
       out.colorMode = color.mode;
     }
+    const mk = spec.marker || {};
+    const sizer = mk.sizeBy ? this.unitScale(mk.sizeBy, bRows) : null;
+    let shaper = null;
+    if (mk.shapeBy) {
+      const k = this.keyFor(this.need(mk.shapeBy).name);
+      shaper = k.keys;
+      out.shapeLegend = k.labels.slice(0, MARKER_SHAPES.length);
+    }
+    if (sizer) out.sizeRange = sizer.range;
+    const jitter = Math.max(0, Math.min(1, Number(mk.jitter) || 0));
+    const jx = jitter * (xb[1] - xb[0] || 1) * 0.04;
+    const lab = spec.labels?.col && spec.labels.show && spec.labels.show !== 'none' ? { c: this.column(spec.labels.col), max: Math.max(1, Math.min(2000, spec.labels.max || 200)), all: spec.labels.show === 'all' } : null;
+    if (lab?.c) out.labels = [];
     const step = total > POINT_CAP ? total / POINT_CAP : 1;
     for (const [si, s] of series.entries()) {
       const y = s.c.data;
+      const yb = out.bounds[s.axis || 'left'];
+      const jy = jitter * (yb[1] - yb[0] || 1) * 0.04;
       let n = 0;
       for (const i of rows) if (!Number.isNaN(x[i]) && !Number.isNaN(y[i])) n += 1;
       const keep = Math.min(n, Math.ceil(n / step));
@@ -430,8 +557,10 @@ export class Dataset {
       const pc = new Float32Array(keep);
       const pm = new Uint8Array(keep);
       const pr = new Uint32Array(keep);
+      const pz = sizer ? new Float32Array(keep) : null;
+      const ps = shaper ? new Float32Array(keep) : null;
       const xOff = xb[0];
-      const yOff = out.bounds[s.axis || 'left'][0];
+      const yOff = yb[0];
       let k = 0;
       let acc = 0;
       for (const i of rows) {
@@ -440,20 +569,95 @@ export class Dataset {
         if (step > 1 && acc < step) continue;
         acc -= step > 1 ? step : 1;
         if (k >= keep) break;
-        px[k] = x[i] - xOff;
-        py[k] = y[i] - yOff;
+        px[k] = x[i] - xOff + (jitter ? (hash01(i, 1) - 0.5) * 2 * jx : 0);
+        py[k] = y[i] - yOff + (jitter ? (hash01(i, 2) - 0.5) * 2 * jy : 0);
         pm[k] = this.mark[i];
         pr[k] = i;
         if (color?.mode === 'category') pc[k] = color.keys[i];
         else if (color?.mode === 'continuous') pc[k] = Number.isNaN(color.data[i]) ? -1 : (color.data[i] - color.lo) / color.span;
         else pc[k] = si;
+        if (pz) pz[k] = sizer.at(i);
+        if (ps) ps[k] = shaper[i] < 0 ? 0 : shaper[i] % MARKER_SHAPES.length;
+        if (lab?.c && out.labels.length < lab.max && (lab.all || this.mark[i])) out.labels.push({ x: px[k] + xOff, y: py[k] + yOff, axis: s.axis || 'left', text: cellText(lab.c, i) });
         k += 1;
       }
-      out.series.push({ name: s.c.name, axis: s.axis || 'left', n: k, x: px.subarray(0, k), y: py.subarray(0, k), c: pc.subarray(0, k), m: pm.subarray(0, k), rows: pr.subarray(0, k), xOff, yOff });
-      out.transfer.push(px.buffer, py.buffer, pc.buffer, pm.buffer, pr.buffer);
+      const se = { name: s.c.name, axis: s.axis || 'left', n: k, x: px.subarray(0, k), y: py.subarray(0, k), c: pc.subarray(0, k), m: pm.subarray(0, k), rows: pr.subarray(0, k), xOff, yOff };
+      if (pz) se.z = pz.subarray(0, k);
+      if (ps) se.s = ps.subarray(0, k);
+      out.series.push(se);
+      out.transfer.push(px.buffer, py.buffer, pc.buffer, pm.buffer, pr.buffer, ...(pz ? [pz.buffer] : []), ...(ps ? [ps.buffer] : []));
     }
+    if (spec.connect?.on) out.paths = this.connectPaths(spec, rows, series, color);
     out.sampled = step > 1;
     return out;
+  }
+
+  // Row -> 0..1 for sizing markers by a column (text by category order).
+  unitScale(name, rows) {
+    const c = this.need(name);
+    if (c.type === 'string') {
+      const k = this.keyFor(c.name);
+      const n = Math.max(1, k.labels.length - 1);
+      return { at: (i) => (k.keys[i] < 0 ? 0 : k.keys[i] / n), range: null };
+    }
+    const [lo, hi] = this.bounds(c.data, rows);
+    const span = hi - lo || 1;
+    return { at: (i) => (Number.isNaN(c.data[i]) ? 0 : (c.data[i] - lo) / span), range: [lo, hi] };
+  }
+
+  // Lines joining a scatter plot's points: one per category of the
+  // "connect by" column, in the order of the "sort by" column (X by default).
+  connectPaths(spec, rows, series, color) {
+    const cn = spec.connect;
+    const by = cn.by ? this.keyFor(this.need(cn.by).name) : null;
+    const order = cn.order ? this.need(cn.order).data : this.need(spec.x).data;
+    const x = this.need(spec.x).data;
+    const stride = Math.max(1, Math.ceil(rows.length / CONNECT_CAP));
+    const paths = [];
+    for (const [si, s] of series.entries()) {
+      const y = s.c.data;
+      const groups = new Map();
+      for (let k = 0; k < rows.length; k += stride) {
+        const i = rows[k];
+        if (Number.isNaN(x[i]) || Number.isNaN(y[i])) continue;
+        const g = by ? by.keys[i] : 0;
+        if (g < 0) continue;
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(i);
+      }
+      for (const [g, list] of groups) {
+        if (list.length < 2) continue;
+        list.sort((a, b) => (order[a] - order[b]) || (a - b));
+        const px = new Float64Array(list.length);
+        const py = new Float64Array(list.length);
+        list.forEach((i, k) => {
+          px[k] = x[i];
+          py[k] = y[i];
+        });
+        const c = color?.mode === 'category' ? color.keys[list[0]] : by && !spec.color && series.length === 1 ? g : si;
+        paths.push({ axis: s.axis || 'left', c, n: list.length, x: px, y: py });
+      }
+    }
+    return paths;
+  }
+
+  // Means and medians the reference lines of a plot ask for.
+  refStats(spec, rows) {
+    if (!(spec.refLines || []).some((r) => r.kind === 'mean' || r.kind === 'median')) return null;
+    const stat = (name) => {
+      const c = name && this.column(name);
+      if (!c || c.type === 'string') return null;
+      const v = [];
+      for (const i of rows) if (!Number.isNaN(c.data[i])) v.push(c.data[i]);
+      if (!v.length) return null;
+      const sorted = Float64Array.from(v).sort();
+      let sum = 0;
+      for (const a of sorted) sum += a;
+      return { mean: sum / sorted.length, median: quantile(sorted, 0.5) };
+    };
+    const left = (spec.y || []).find((y) => (y.axis || 'left') === 'left');
+    const right = (spec.y || []).find((y) => y.axis === 'right');
+    return { x: stat(spec.x), left: stat(left?.col), right: stat(right?.col) };
   }
 
   // Too many points to draw one by one: bin them per pixel instead.
@@ -477,7 +681,7 @@ export class Dataset {
     const marked = new Float32Array(w * h);
     const tx0 = tx(x0);
     const ty0 = ty(y0);
-    for (const i of this.index) {
+    for (const i of this.plotRows(spec)) {
       const a = Math.floor((tx(x[i]) - tx0) * sx);
       const b = Math.floor((ty(y[i]) - ty0) * sy);
       if (a < 0 || b < 0 || a >= w || b >= h) continue;
@@ -498,13 +702,14 @@ export class Dataset {
   // Lines reduced per pixel column (min, max, first, last), so a line of
   // ten million points draws the same picture from a few thousand.
   line(spec, view, size) {
-    const rows = this.index;
+    const rows = this.plotRows(spec);
+    const bRows = this.boundRows(spec);
     const xc = this.need(spec.x);
     const x = xc.data;
     const series = (spec.y || []).map((s) => ({ ...s, c: this.need(s.col) }));
     if (!series.length) throw new Error('Choose a column for the Y axis');
-    const xb = this.bounds(x, rows);
-    const out = { kind: 'lines', xType: xc.type, bounds: { x: xb }, series: [], markedSeries: [] };
+    const xb = this.bounds(x, bRows);
+    const out = { kind: 'lines', xType: xc.type, bounds: { x: xb }, series: [], markedSeries: [], refStats: this.refStats(spec, rows) };
     const x0 = view?.x0 ?? xb[0];
     const x1 = view?.x1 ?? xb[1];
     const width = Math.max(50, Math.min(4000, Math.round(size?.w || 800)));
@@ -516,7 +721,7 @@ export class Dataset {
     }
     for (const [si, s] of series.entries()) {
       const y = s.c.data;
-      const yb = this.bounds(y, rows);
+      const yb = this.bounds(y, bRows);
       const ax = s.axis || 'left';
       out.bounds[ax] = out.bounds[ax] ? [Math.min(out.bounds[ax][0], yb[0]), Math.max(out.bounds[ax][1], yb[1])] : yb;
       const parts = groups ? groups.labels.map((label, g) => ({ label, g })) : [{ label: s.c.name, g: -1 }];
@@ -527,7 +732,7 @@ export class Dataset {
         out.series.push({ name: part.g < 0 ? s.c.name : part.label, axis: ax, color: part.g < 0 ? si : part.g, x: red.x, y: red.y, n: red.n });
       }
       if (this.markCount) {
-        const red = m4(this.marked(), x, y, x0, x1, width, null, !!spec.logX);
+        const red = m4(this.plotMarked(spec), x, y, x0, x1, width, null, !!spec.logX);
         if (red.n) out.markedSeries.push({ axis: ax, x: red.x, y: red.y, n: red.n });
       }
     }
@@ -536,7 +741,7 @@ export class Dataset {
   }
 
   aggregate(spec) {
-    const rows = this.index;
+    const rows = this.plotRows(spec);
     const kx = spec.x ? this.keyFor(spec.x) : { keys: null, labels: ['All rows'] };
     const kg = spec.color ? this.keyFor(spec.color) : null;
     const nx = kx.labels.length;
@@ -588,7 +793,7 @@ export class Dataset {
       return { val, cnt };
     };
     const main = run(rows);
-    const markedRun = this.markCount ? run(this.marked()) : null;
+    const markedRun = this.markCount ? run(this.plotMarked(spec)) : null;
     // Drop empty categories and keep the biggest when there are too many.
     let cats = [...Array(nx).keys()].filter((a) => {
       for (let g = 0; g < ng; g += 1) if (main.cnt[a * ng + g]) return true;
@@ -626,8 +831,8 @@ export class Dataset {
     const c = this.need(spec.x);
     if (c.type === 'string') throw new Error(`${c.name} is text; a histogram needs numbers. Try a bar chart.`);
     const x = c.data;
-    const rows = this.index;
-    const b = this.bounds(x, rows);
+    const rows = this.plotRows(spec);
+    const b = this.bounds(x, this.boundRows(spec));
     let n = 0;
     for (const i of rows) if (!Number.isNaN(x[i])) n += 1;
     const bins = spec.bins || Math.max(10, Math.min(100, Math.round(2 * (Math.log2(Math.max(n, 2)) + 1))));
@@ -656,6 +861,7 @@ export class Dataset {
     return {
       kind: 'histogram', xType: c.type, edges: Array.from(edges), groups: kg ? used.map((g) => kg.labels[g]) : null, groupIds: used,
       values: vals, marked: this.markCount ? marked.map((v) => v * norm) : null, n, normalize: spec.normalize || 'count',
+      refStats: this.refStats({ ...spec, y: [] }, rows),
     };
   }
 
@@ -687,8 +893,8 @@ export class Dataset {
       }
       return stats;
     };
-    const stats = run(this.index);
-    const marked = this.markCount ? run(this.marked()) : null;
+    const stats = run(this.plotRows(spec));
+    const marked = this.markCount ? run(this.plotMarked(spec)) : null;
     return { kind: 'box', valueName: yc.name, stats, marked };
   }
 
@@ -707,7 +913,7 @@ export class Dataset {
     const lo = new Float64Array(nx * ny).fill(Infinity);
     const hi = new Float64Array(nx * ny).fill(-Infinity);
     const z = zc?.data;
-    for (const i of this.index) {
+    for (const i of this.plotRows(spec)) {
       const a = kx.keys[i];
       const b = ky.keys[i];
       if (a < 0 || b < 0) continue;
@@ -756,7 +962,7 @@ export class Dataset {
     const xc = this.need(spec.x);
     const yc = this.need(s.col);
     if (xc.type === 'string' || yc.type === 'string') throw new Error('Curve fitting needs numeric X and Y columns');
-    const rows = fitSpec.markedOnly && this.markCount ? this.marked() : this.index;
+    const rows = fitSpec.markedOnly && this.markCount ? this.plotMarked(spec) : this.plotRows(spec);
     const nonlinear = fitSpec.model !== 'linear' && fitSpec.model !== 'poly';
     const step = nonlinear && rows.length > FIT_SAMPLE ? rows.length / FIT_SAMPLE : 1;
     const len = Math.floor(rows.length / step);

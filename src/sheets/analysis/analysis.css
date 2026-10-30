@@ -278,3 +278,70 @@
 .an-present-tip { margin: -4px 0 8px; font-size: 11.5px; }
 .an-present-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .an-present-cols { margin-bottom: 10px; max-height: 96px; overflow: auto; }
+
+/* ---- properties panel ---- */
+.an-props-drawer { position: absolute; top: 31px; right: 0; bottom: 0; width: 340px; background: #fff; border-left: 1px solid #cfd4da; box-shadow: -6px 0 18px rgba(15,23,42,.08); display: flex; flex-direction: column; z-index: 6; }
+.an-root.props-open .an-page { margin-right: 340px; }
+.an-props-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
+.an-props-head b { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-props-icon { color: var(--accent-dark); display: inline-flex; }
+.an-props-main { flex: 1; min-height: 0; display: flex; }
+.an-props-nav { flex: none; width: 118px; overflow: auto; background: #f6f7f9; border-right: 1px solid var(--line-soft); padding: 4px; display: flex; flex-direction: column; gap: 1px; }
+.an-props-tab { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; border-radius: 4px; padding: 6px 7px; font-size: 12px; text-align: left; color: #3a4048; }
+.an-props-tab:hover { background: var(--hover); }
+.an-props-tab.on { background: #fff; color: var(--accent-dark); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.an-props-tab .ico { flex: none; color: var(--muted); }
+.an-props-body { flex: 1; min-width: 0; overflow: auto; padding: 4px 12px 16px; }
+.an-props-body .an-field select, .an-props-body .an-field input:not([type]), .an-props-body .an-range-inputs input, .an-props-body .an-series-row input:not([type]), .an-props-body > select { height: 26px; border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; background: #fff; min-width: 0; width: 100%; }
+.an-props-body .an-mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 11.5px; }
+.an-props-body .an-checks { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0; font-size: 12px; }
+.an-pgroup { margin: 14px 0 4px; padding-top: 8px; border-top: 1px solid var(--line-soft); font-size: 12px; }
+.an-pgroup:first-child { border-top: 0; margin-top: 4px; }
+.an-props-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.an-props-actions .btn { display: inline-flex; align-items: center; gap: 5px; }
+.an-slider { display: flex; align-items: center; gap: 8px; }
+.an-slider input { flex: 1; }
+.an-slider span { width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.an-color-row { display: flex; align-items: center; gap: 8px; }
+.an-color-row input[type="color"], .an-refline input[type="color"] { width: 34px; height: 26px; padding: 1px; border: 1px solid var(--line); border-radius: 4px; background: #fff; flex: none; }
+.an-vfilter, .an-refline { border: 1px solid var(--line-soft); border-radius: 6px; padding: 6px 8px; margin: 6px 0; display: flex; flex-direction: column; gap: 5px; }
+.an-vfilter-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.an-vfilter-head span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-vvalues { max-height: 180px; overflow: auto; }
+.an-range-inputs { display: flex; align-items: center; gap: 6px; }
+
+/* ---- right-click menus ---- */
+.rb-popup:has(.an-ctx) { overflow: visible; }
+.an-ctx { min-width: 250px; }
+.an-ctx .rb-menu-item { padding: 5px 10px; font-size: 12.5px; }
+.an-ctx .rb-menu-item > span { flex: 1; }
+.an-ctx .rb-menu-item:disabled { opacity: .45; }
+.an-ctx kbd, .an-keys-table kbd { font: 11px/1 Consolas, "Cascadia Mono", monospace; color: var(--muted); background: #f3f4f6; border: 1px solid var(--line-soft); border-radius: 3px; padding: 2px 4px; }
+.an-ctx-head { padding: 4px 10px 6px; font-weight: 600; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+.an-ctx-types { display: flex; gap: 2px; padding: 0 6px 6px; border-bottom: 1px solid var(--line-soft); margin-bottom: 4px; }
+.an-ctx-type { width: 30px; height: 30px; border: 1px solid transparent; border-radius: 5px; background: transparent; display: inline-flex; align-items: center; justify-content: center; color: #4a5059; }
+.an-ctx-type:hover { background: var(--hover); }
+.an-ctx-type.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, white); color: var(--accent-dark); }
+.an-sub { position: relative; }
+.an-sub > .rb-menu-item { width: 100%; }
+.an-sub > .rb-menu-item > .ico:last-child { transform: rotate(-90deg); }
+.an-flyout { display: none; position: absolute; left: 100%; top: -6px; margin-left: 2px; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgba(15,23,42,.18); padding: 6px; overflow: auto; min-width: 210px; z-index: 2; }
+.an-sub.left > .an-flyout { left: auto; right: 100%; margin: 0 2px 0 0; }
+.an-sub:hover > .an-flyout, .an-sub.open > .an-flyout { display: flex; }
+
+/* ---- shortcuts list ---- */
+.an-keys-list { max-height: 60vh; overflow: auto; font-size: 12.5px; }
+.an-keys-list b { display: block; margin: 10px 0 4px; }
+.an-keys-table { width: 100%; border-collapse: collapse; }
+.an-keys-table td { padding: 3px 6px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.an-keys-table td:first-child { width: 42%; white-space: nowrap; }
+
+/* ---- trellis ---- */
+.viz-body.viz-trellis > .viz-canvas, .viz-body.viz-trellis > .viz-selectors { display: none; }
+.viz-panels { position: absolute; inset: 4px; display: grid; gap: 4px; }
+.viz-panels-note { position: absolute; right: 8px; bottom: 4px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,.9); padding: 1px 6px; border-radius: 8px; }
+.viz.viz-panel { border-color: #e1e4e8; border-radius: 2px; }
+.viz.viz-panel.active { box-shadow: none; border-color: #e1e4e8; }
+.viz.viz-panel .viz-head { height: 20px; background: #f3f4f6; padding: 0 6px; }
+.viz.viz-panel .viz-title { font-size: 11px; }
+.viz.viz-panel .viz-type, .viz.viz-panel .viz-tools { display: none; }

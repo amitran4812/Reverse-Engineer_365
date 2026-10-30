@@ -240,3 +240,47 @@ test('a slide fits the charts in a grid and the table beside or under them', () 
   assert.equal(new Set(slide.elements.map((e) => e.id)).size, slide.elements.length);
   assert.equal(planSlide({ count: 0, table }).table.w, SLIDE_W - 72);
 });
+
+test('each visualization can have its own filters, limit and trellis panels', () => {
+  const d = sample();
+  const base = { type: 'scatter', x: 'x', y: [{ col: 'y' }] };
+  d.setFilter('x', { kind: 'range', min: 0, max: 499 });
+  assert.equal(d.plotRows(base).length, 500);
+  assert.equal(d.plotRows({ ...base, ignoreFilters: true }).length, 1000);
+  assert.equal(d.plotRows({ ...base, limit: '[x] < 100' }).length, 100);
+  const own = d.plotRows({ ...base, vizFilters: { g: { kind: 'values', values: ['A'] } } });
+  assert.ok(own.length > 0 && own.length < 500);
+  assert.ok([...own].every((i) => d.column('g').dict[d.column('g').data[i]] === 'A'));
+  const tr = d.trellis({ ...base, trellis: { by: 'g' } });
+  assert.equal(tr.panels.length, d.column('g').dict.length);
+  const sum = tr.panels.reduce((a, p) => a + d.plotRows({ ...base, panel: p.panel }).length, 0);
+  assert.equal(sum, 500);
+  const panel = d.scatter({ ...base, panel: tr.panels[0].panel }, null, { w: 300, h: 200 });
+  assert.deepEqual(panel.bounds.x, d.scatter(base, null, { w: 300, h: 200 }).bounds.x);
+  const grid = d.trellis({ ...base, trellis: { mode: 'grid', rows: 'g', cols: 'g', max: 4 } });
+  assert.ok(grid.panels.length <= 4);
+  d.markPlot({ ...base, limit: '[x] < 10' }, { x0: -1e9, x1: 1e9, y0: -1e9, y1: 1e9 }, 'replace');
+  assert.equal(d.markCount, 10);
+});
+
+test('scatter extras: size and shape by, labels, line connection and reference stats', () => {
+  const d = sample();
+  const spec = {
+    type: 'scatter', x: 'x', y: [{ col: 'y' }],
+    marker: { sizeBy: 'x', shapeBy: 'g', jitter: 0.5 },
+    labels: { show: 'all', col: 'g', max: 5 },
+    connect: { on: true, by: 'g' },
+    refLines: [{ axis: 'y', kind: 'mean' }],
+  };
+  const out = d.scatter(spec, null, { w: 300, h: 200 });
+  const se = out.series[0];
+  assert.equal(se.z.length, se.n);
+  assert.ok(se.z.every((v) => v >= 0 && v <= 1));
+  assert.ok(se.s.every((v) => v >= 0 && v < 7));
+  assert.equal(out.labels.length, 5);
+  assert.equal(out.paths.length, d.column('g').dict.length);
+  for (const p of out.paths) for (let k = 1; k < p.n; k += 1) assert.ok(p.x[k] >= p.x[k - 1]);
+  assert.ok(Math.abs(out.refStats.x.mean - 499.5) < 1e-9);
+  const again = d.scatter(spec, null, { w: 300, h: 200 });
+  assert.deepEqual(Array.from(again.series[0].x.slice(0, 20)), Array.from(se.x.slice(0, 20)));
+});
