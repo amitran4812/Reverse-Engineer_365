@@ -8,6 +8,7 @@
 
 import {
   REDUCERS, RUNNING, newAcc, addAcc, readAcc, datePartName, datePart, dateAdd, dateDiff, parseDate, startOfDay,
+  dateTrunc, fiscalPart, parseDateWith, quantile,
 } from './expr-fns.js';
 
 const OPS = ['<=', '>=', '==', '!=', '<>', '&&', '||', '**', '&', '<', '>', '=', '+', '-', '*', '/', '%', '^', '(', ')', ',', '?', ':', '!'];
@@ -385,7 +386,7 @@ function sortKey(v, n) {
 
 const TEXT_OK = new Set(['count', 'uniquecount', 'first', 'last', 'mode']);
 const TEXT_OUT = new Set(['first', 'last', 'mode']);
-const NAV = new Set(['allprevious', 'allnext', 'previous', 'next']);
+const NAV = new Set(['allprevious', 'allnext', 'previous', 'next', 'previousperiod', 'nextperiod', 'lastperiods']);
 
 // A column statistic over the whole column, or per group with OVER (the
 // result is broadcast back to every row of its group). over is
@@ -439,12 +440,82 @@ function stat(v, kind, over, n, param) {
         if (fresh) acc = newAcc();
         for (const x of slice(k)) addAcc(acc, x);
         res[k] = readAcc(acc, kind);
+      } else if (nav.kind === 'lastperiods') {
+        // This node and the nav.span - 1 nodes before it in the same group.
+        const parts = [];
+        for (let b = j; b >= 0 && b > j - nav.span && nodeG[walk[b]] === nodeG[k]; b -= 1) parts.push(...slice(walk[b]));
+        res[k] = reduce(Float64Array.from(parts), param);
       } else if (!fresh) res[k] = reduce(slice(walk[j - 1]), param);
     }
     for (let i = 0; i < n; i += 1) out[i] = res[ids[i]];
   }
   if (!textOut) return out;
   return { codes: Int32Array.from(out, (c) => (Number.isNaN(c) ? -1 : c)), dict: v.dict };
+}
+
+// The value of val on the row where ref is largest (or smallest), per group.
+function valueFor(ref, val, isMax, over, n) {
+  const r = sortKey(ref, n);
+  const groups = over?.groups || [];
+  const { ids, count } = groups.length ? groupIds(groups, n) : { ids: new Int32Array(n), count: 1 };
+  const best = new Int32Array(count).fill(-1);
+  for (let i = 0; i < n; i += 1) {
+    if (Number.isNaN(r[i])) continue;
+    const g = ids[i];
+    if (best[g] < 0 || (isMax ? r[i] > r[best[g]] : r[i] < r[best[g]])) best[g] = i;
+  }
+  if (isCat(val)) {
+    const codes = Int32Array.from(ids, (g) => (best[g] < 0 ? -1 : val.codes[best[g]]));
+    return groups.length ? { codes, dict: val.dict } : codes[0] < 0 ? NaN : val.dict[codes[0]];
+  }
+  const v = numeric(val, n);
+  const at = (i) => (i < 0 ? NaN : typeof v === 'number' ? v : v[i]);
+  return groups.length ? Float64Array.from(ids, (g) => at(best[g])) : at(best[0]);
+}
+
+// Distinct values joined with ", " in sorted order, per group.
+function uniqueConcat(v, over, n) {
+  const groups = over?.groups || [];
+  const { ids, count } = groups.length ? groupIds(groups, n) : { ids: new Int32Array(n), count: 1 };
+  const get = strAt(v);
+  const sets = Array.from({ length: count }, () => new Set());
+  for (let i = 0; i < n; i += 1) {
+    const s = get(i);
+    if (s != null) sets[ids[i]].add(s);
+  }
+  const joined = sets.map((set) => [...set].sort((x, y) => x.localeCompare(y, undefined, { numeric: true })).join(', '));
+  if (!groups.length) return joined[0];
+  const dict = [...new Set(joined)];
+  const index = new Map(dict.map((s, i) => [s, i]));
+  return { codes: Int32Array.from(ids, (g) => index.get(joined[g])), dict };
+}
+
+// Binning. Each row gets the lower edge of its bin, so bins sort and plot
+// in order.
+function binEdges(v, n, edges) {
+  const a = numeric(v, n);
+  const lo = typeof a === 'number' ? a : REDUCERS.min(a.filter((x) => !Number.isNaN(x)));
+  return map1(a, n, (x) => {
+    if (Number.isNaN(x)) return NaN;
+    let e = lo;
+    for (const edge of edges) if (x >= edge) e = edge;
+    return e;
+  });
+}
+
+function binEven(v, n, k) {
+  const a = numeric(v, n);
+  const vals = typeof a === 'number' ? Float64Array.of(a) : a.filter((x) => !Number.isNaN(x));
+  const lo = REDUCERS.min(vals);
+  const w = (REDUCERS.max(vals) - lo) / k;
+  return map1(a, n, (x) => (Number.isNaN(x) ? NaN : w > 0 ? lo + Math.min(k - 1, Math.floor((x - lo) / w)) * w : lo));
+}
+
+function binQuantiles(v, n, k) {
+  const a = numeric(v, n);
+  const s = (typeof a === 'number' ? Float64Array.of(a) : a.filter((x) => !Number.isNaN(x))).sort();
+  const edges = [...new Set(Array.from({ length: k - 1 }, (_, i) => quantile(s, (i + 1) / k, true)))];
+  return binEdges(a, n, edges);
 }
 
 // Rank within the whole column or within groups. method: 'minimum' (ties
@@ -630,7 +701,7 @@ const STATS = {
   l95: 'l95', u95: 'u95', product: 'product', geometricmean: 'geometricmean', range: 'range', meandeviation: 'meandeviation',
   medianabsolutedeviation: 'medianabsolutedeviation', mad: 'medianabsolutedeviation', percentile: 'percentile',
   p10: 'p10', p90: 'p90', q1: 'q1', q3: 'q3', iqr: 'iqr', lif: 'lif', uif: 'uif', lof: 'lof', uof: 'uof', lav: 'lav', uav: 'uav',
-  first: 'first', last: 'last', mode: 'mode',
+  first: 'first', last: 'last', mode: 'mode', mostcommon: 'mode', countbig: 'count', outliers: 'outliers', pctoutliers: 'pctoutliers',
 };
 
 // Shown as chips in the calculated column dialog, by category.
@@ -639,9 +710,12 @@ export const FUNCTION_GROUPS = {
     'avg(col)', 'sum(col)', 'count(col)', 'uniquecount(col)', 'min(col)', 'max(col)', 'median(col)', 'sigma(col)', 'var(col)', 'stderr(col)',
     'zscore(col)', 'ucl(col, k)', 'lcl(col, k)', 'percentile(col, p)', 'p10(col)', 'p90(col)', 'q1(col)', 'q3(col)', 'iqr(col)',
     'lif(col)', 'uif(col)', 'lav(col)', 'uav(col)', 'lof(col)', 'uof(col)', 'l95(col)', 'u95(col)', 'cv(col)', 'range(col)', 'product(col)',
-    'geometricmean(col)', 'meandeviation(col)', 'mad(col)', 'mode(col)', 'first(col)', 'last(col)',
+    'geometricmean(col)', 'meandeviation(col)', 'mad(col)', 'mode(col)', 'first(col)', 'last(col)', 'outliers(col)', 'pctoutliers(col)',
+    'valueformax(ref, value)', 'valueformin(ref, value)', 'weightedaverage(weight, value)', 'uniqueconcatenate(col)', 'covariance(a, b)', 'correlation(a, b)',
   ],
-  'Grouping (OVER)': ['avg([x]) OVER [Lot]', 'OVER ([Lot], [Wafer])', 'OVER AllPrevious([Date])', 'OVER AllNext([Date])', 'OVER Previous([Date])', 'OVER Next([Date])', 'OVER Intersect([Lot], AllPrevious([Date]))'],
+  'Grouping (OVER)': ['avg([x]) OVER [Lot]', 'OVER ([Lot], [Wafer])', 'OVER AllPrevious([Date])', 'OVER AllNext([Date])', 'OVER Previous([Date])', 'OVER Next([Date])', 'OVER LastPeriods(3, [Date])', 'OVER Intersect([Lot], AllPrevious([Date]))', 'OVER All([Lot])'],
+  Shortcuts: ['pctoftotal(col)', 'pctdiff(col)', 'sum([x]) OVER AllPrevious([Date])', 'avg([x]) OVER LastPeriods(3, [Date])'],
+  Binning: ['binbyevenintervals(col, n)', 'binbyevendistribution(col, n)', 'binbyspecificlimits(col, 10, 20, …)', 'autobinnumeric(col)', 'binbydatetime(date, "Year.Quarter.Month", 2)'],
   Ranking: ['rank(col, "desc", groups…)', 'denserank(col, "desc")', 'rankreal(col)', 'cumsum(col)', 'diff(col)', 'lag(col, k)', 'movavg(col, k)', 'rownum()'],
   Distribution: ['normsinv(p)', 'norminv(p, mean, sd)', 'normsdist(z)', 'normdist(x, mean, sd)'],
   Math: [
@@ -657,8 +731,11 @@ export const FUNCTION_GROUPS = {
   'Date and time': [
     'year(date)', 'quarter(date)', 'month(date)', 'week(date)', 'day(date)', 'dayofweek(date)', 'dayofyear(date)', 'hour(date)', 'minute(date)', 'second(date)',
     'datepart("month", date)', 'dateadd("day", n, date)', 'datediff("day", from, to)', 'date(text)', 'date(y, m, d)', 'datetime(y, m, d, h, mi, s)', 'today()', 'datetimenow()',
+    'datetrunc("month", date)', 'dayofmonth(date)', 'yearandweek(date)', 'fiscalyear(date, startMonth)', 'fiscalquarter(date, startMonth)', 'fiscalmonth(date, startMonth)',
+    'datediff(from, to)', 'totaldays(span)', 'totalhours(span)', 'days(span)', 'hours(span)', 'minutes(span)', 'seconds(span)', 'timespan(d, h, m, s)',
+    'toepochseconds(date)', 'fromepochseconds(n)',
   ],
-  Conversion: ['integer(x)', 'real(x)', 'string(x)'],
+  Conversion: ['integer(x)', 'real(x)', 'string(x)', 'boolean(x)', 'parsedate(text, "dd/MM/yyyy")', 'parsedatetime(text, pattern)', 'parsereal(text)', 'parseinteger(text)'],
 };
 export const FUNCTIONS = Object.values(FUNCTION_GROUPS).flat();
 
@@ -728,6 +805,118 @@ function call(fn, args, n, ctx, over) {
       const k = a.length > 1 ? numeric(a[1], n) : 3;
       const ks = map2(sd, k, n, (s, kk) => s * kk);
       return map2(mean, ks, n, fn === 'ucl' ? (m, d) => m + d : (m, d) => m - d);
+    }
+    case 'valueformax':
+    case 'valueformin': return valueFor(a[0], a[1], fn === 'valueformax', over, n);
+    case 'uniqueconcatenate': return uniqueConcat(a[0], over, n);
+    case 'weightedaverage': {
+      // WeightedAverage(weight, value): rows missing either one are left out.
+      const both = map2(a[0], a[1], n, (w, x) => (Number.isNaN(w) || Number.isNaN(x) ? NaN : w));
+      return map2(stat(map2(both, a[1], n, (w, x) => w * x), 'sum', over, n), stat(both, 'sum', over, n), n, (x, w) => x / w);
+    }
+    case 'covariance':
+    case 'correlation': {
+      const x = map2(a[0], a[1], n, (p, q) => (Number.isNaN(q) ? NaN : p));
+      const y = map2(a[1], a[0], n, (q, p) => (Number.isNaN(p) ? NaN : q));
+      const cnt = stat(x, 'count', over, n);
+      const sxy = stat(map2(x, y, n, (p, q) => p * q), 'sum', over, n);
+      const sx = stat(x, 'sum', over, n);
+      const sy = stat(y, 'sum', over, n);
+      const cov = map2(map2(sxy, map2(map2(sx, sy, n, (p, q) => p * q), cnt, n, (p, c) => p / c), n, (p, q) => p - q), cnt, n, (p, c) => p / (c - 1));
+      if (fn === 'covariance') return cov;
+      return map2(cov, map2(stat(x, 'std', over, n), stat(y, 'std', over, n), n, (p, q) => p * q), n, (c, d) => c / d);
+    }
+    case 'pctoftotal': return map2(map2(a[0], stat(a[0], 'sum', over, n), n, (x, t) => x / t), 100, n, (x, k) => x * k);
+    case 'pctdiff': {
+      const v = numeric(a[0], n);
+      if (typeof v === 'number') return 0;
+      return Float64Array.from(v, (x, i) => (i ? (100 * (x - v[i - 1])) / v[i - 1] : NaN));
+    }
+    case 'binbyevenintervals': return binEven(a[0], n, Math.max(1, Math.trunc(numeric(a[1] ?? 10, 0))));
+    case 'autobinnumeric': {
+      const k = a.length > 1 ? Math.trunc(numeric(a[1], 0)) : Math.ceil(Math.log2(Math.max(1, n)) + 1);
+      return binEven(a[0], n, Math.max(1, k));
+    }
+    case 'binbyevendistribution': return binQuantiles(a[0], n, Math.max(1, Math.trunc(numeric(a[1] ?? 4, 0))));
+    case 'binbyspecificlimits': return binEdges(a[0], n, a.slice(1).map((x) => numeric(x, 0)).sort((x, y) => x - y));
+    case 'binbydatetime': {
+      // BinByDateTime([Date], "Year.Quarter.Month", 2) bins by quarter: the
+      // number says how many levels of the hierarchy to keep.
+      const levels = textArg(a[1] ?? 'Year.Month.Day', 'date levels').split('.').filter(Boolean);
+      const keep = a.length > 2 ? Math.min(levels.length, Math.max(1, Math.trunc(numeric(a[2], 0)))) : levels.length;
+      const part = datePartName(levels[keep - 1]);
+      return dateOut(map1(asDate(a[0], n), n, (ms) => dateTrunc(part, ms)), n);
+    }
+    case 'datetrunc': {
+      const part = datePartName(textArg(a[0], 'date part'));
+      return dateOut(map1(asDate(a[1], n), n, (ms) => dateTrunc(part, ms)), n);
+    }
+    case 'fiscalyear':
+    case 'fiscalquarter':
+    case 'fiscalmonth': {
+      const start = Math.trunc(numeric(a[1] ?? 1, 0));
+      return map1(asDate(a[0], n), n, (ms) => fiscalPart(fn.slice(6), ms, start));
+    }
+    case 'yearandweek': return map1(asDate(a[0], n), n, (ms) => {
+      // ISO week-numbering year, so 30 Dec 2024 is 202501.
+      const t = ms + (3 - ((new Date(ms).getUTCDay() + 6) % 7)) * 86400000;
+      return datePart('year', t) * 100 + datePart('week', ms);
+    });
+    case 'dayofmonth': return map1(asDate(a[0], n), n, (ms) => datePart('day', ms));
+    case 'toepochseconds': return map1(asDate(a[0], n), n, (ms) => Math.floor(ms / 1000));
+    case 'toepochmilliseconds': return asDate(a[0], n);
+    case 'fromepochseconds': return dateOut(map1(a[0], n, (x) => x * 1000), n);
+    case 'fromepochmilliseconds': return dateOut(map1(a[0], n, (x) => x), n);
+    // Time spans are milliseconds, as datediff(from, to) gives them.
+    case 'totaldays':
+    case 'totalhours':
+    case 'totalminutes':
+    case 'totalseconds':
+    case 'totalmilliseconds': {
+      const unit = { totaldays: 86400000, totalhours: 3600000, totalminutes: 60000, totalseconds: 1000, totalmilliseconds: 1 }[fn];
+      return map1(a[0], n, (x) => x / unit);
+    }
+    case 'days':
+    case 'hours':
+    case 'minutes':
+    case 'seconds':
+    case 'milliseconds': {
+      // The whole days, or the hours / minutes / … part left over, of a span.
+      const [unit, mod] = { days: [86400000, Infinity], hours: [3600000, 24], minutes: [60000, 60], seconds: [1000, 60], milliseconds: [1, 1000] }[fn];
+      return map1(a[0], n, (x) => Math.sign(x) * (Math.floor(Math.abs(x) / unit) % mod));
+    }
+    case 'timespan': {
+      // TimeSpan(days, hours, minutes, seconds, milliseconds) in milliseconds.
+      const units = [86400000, 3600000, 60000, 1000, 1];
+      return a.reduce((acc, v, i) => map2(acc, v, n, (s, x) => s + x * units[i]), 0);
+    }
+    case 'parsedate':
+    case 'parsedatetime': {
+      const pattern = a.length > 1 ? textArg(a[1], 'date pattern') : '';
+      const ms = typeof a[0] === 'string' ? parseDateWith(a[0], pattern) : isCat(a[0]) ? textToNumber(a[0], n, (s) => parseDateWith(s, pattern)) : numeric(a[0], n);
+      return dateOut(fn === 'parsedate' ? map1(ms, n, startOfDay) : ms, n);
+    }
+    case 'parsereal':
+    case 'parseinteger':
+    case 'longinteger':
+    case 'singlereal': {
+      // Accepts thousands separators and a decimal comma ("1.234,5" or "1,234.5").
+      const read = (s) => {
+        let t = String(s).trim().replace(/\s/g, '');
+        if (/,\d{1,2}$/.test(t) || /^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
+        else t = t.replace(/,/g, '');
+        const x = t ? Number(t) : NaN;
+        return fn === 'parseinteger' || fn === 'longinteger' ? Math.trunc(x) : x;
+      };
+      if (typeof a[0] === 'string') return read(a[0]);
+      if (isCat(a[0])) return textToNumber(a[0], n, read);
+      return fn === 'parseinteger' || fn === 'longinteger' ? map1(a[0], n, Math.trunc) : numeric(a[0], n);
+    }
+    case 'boolean': {
+      const read = (s) => (/^(true|yes|1)$/i.test(s.trim()) ? 1 : /^(false|no|0)$/i.test(s.trim()) ? 0 : NaN);
+      if (typeof a[0] === 'string') return read(a[0]);
+      if (isCat(a[0])) return textToNumber(a[0], n, read);
+      return map1(a[0], n, (x) => (Number.isNaN(x) ? NaN : x ? 1 : 0));
     }
     case 'rank':
     case 'denserank':
@@ -809,6 +998,7 @@ function call(fn, args, n, ctx, over) {
       return dateOut(map2(a[1], asDate(a[2], n), n, (k, ms) => dateAdd(part, k, ms)), n);
     }
     case 'datediff': {
+      if (a.length === 2) return map2(asDate(a[0], n), asDate(a[1], n), n, (x, y) => y - x);
       const part = datePartName(textArg(a[0], 'date part'));
       return map2(asDate(a[1], n), asDate(a[2], n), n, (x, y) => dateDiff(part, x, y));
     }
@@ -1006,9 +1196,14 @@ export function evaluate(ast, ctx) {
       if (fn === 'intersect') node.args.forEach(walk);
       else if (fn === 'all') return;
       else if (NAV.has(fn)) {
-        if (spec.nav) throw new Error('Use only one of AllPrevious, AllNext, Previous or Next in an OVER');
-        if (node.args.length !== 1) throw new Error(`${fn}() takes one column`);
-        spec.nav = { kind: fn, v: ev(node.args[0]) };
+        if (spec.nav) throw new Error('Use only one of AllPrevious, AllNext, Previous, Next or LastPeriods in an OVER');
+        if (fn === 'lastperiods') {
+          if (node.args.length !== 2) throw new Error('LastPeriods() takes a count and a column, like LastPeriods(3, [Date])');
+          spec.nav = { kind: fn, span: Math.max(1, Math.trunc(numeric(ev(node.args[0]), 0))), v: ev(node.args[1]) };
+        } else {
+          if (node.args.length !== 1) throw new Error(`${fn}() takes one column`);
+          spec.nav = { kind: fn.replace('period', ''), v: ev(node.args[0]) };
+        }
       } else spec.groups.push(ev(node));
     };
     list.forEach(walk);
