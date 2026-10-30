@@ -24,6 +24,17 @@ export function latexTile(size = 40, appName = true) {
   return t;
 }
 
+// "Notes" tile: a new Write window that starts in notes mode.
+export function notesTile(size = 40, appName = true, after = null) {
+  const t = h('button', 'bs-tile bs-tile-docs', `<div class="bs-tile-preview">${icon('notes', size)}</div><span>Notes</span>${appName ? '<small>Write</small>' : ''}`);
+  t.title = 'Quick notes: every line a bullet, checklists, drawings, and AI summaries';
+  t.onclick = () => {
+    after?.();
+    window.office.newWindow('docs', { notes: true });
+  };
+  return t;
+}
+
 // "Upload project (.zip)" tile: unpacks a zipped LaTeX project and opens it.
 export function latexZipTile(size = 40, appName = true) {
   const t = h('button', 'bs-tile bs-tile-docs', `<div class="bs-tile-preview">${icon('zip', size)}</div><span>Upload LaTeX (.zip)</span>${appName ? '<small>Write</small>' : ''}`);
@@ -383,7 +394,7 @@ class Backstage {
         };
         row.append(t);
       }
-      row.append(latexTile(40, false), latexZipTile(40, false));
+      row.append(notesTile(40, false, () => this.close()), latexTile(40, false), latexZipTile(40, false));
       return row;
     };
     if (section === 'home' || section === 'new') {

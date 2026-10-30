@@ -6,12 +6,14 @@ import Highlight from '@tiptap/extension-highlight';
 import { TableKit } from '@tiptap/extension-table';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
+import { TaskItem, TaskList } from '@tiptap/extension-list';
 import '../shared/ui.css';
 import './docs.css';
 import { createShell, dialog, h, toast } from '../shared/shell.js';
 import { markdownToHtml } from '../shared/claude-pane.js';
 import { popup } from '../shared/ribbon.js';
 import { sendToPresent } from './to-present.js';
+import { NotesKeys, createNotes, notesHtml, notesPlaceholder, notesState } from './notes.js';
 
 const FONTS = ['Calibri', 'Arial', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New', 'Consolas'];
 const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
@@ -48,7 +50,10 @@ const editor = new Editor({
     Highlight.configure({ multicolor: true }),
     TableKit.configure({ table: { resizable: true } }),
     Image.configure({ allowBase64: true }),
-    Placeholder.configure({ placeholder: 'Start typing, or press Ctrl+J to ask Claude to draft something.' }),
+    Placeholder.configure({ placeholder: notesPlaceholder, includeChildren: true }),
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    NotesKeys,
     PageBreak,
   ],
   content: '<p></p>',
@@ -162,10 +167,12 @@ function selectionText() {
 }
 
 function insertMarkdown(md, replace = false) {
-  const html = markdownToHtml(md);
+  const html = notesHtml(md);
   if (replace && !editor.state.selection.empty) chain().deleteSelection().insertContent(html).run();
   else chain().insertContent(html).run();
 }
+
+const notes = createNotes({ editor, paper, canvas, getShell: () => shell, insertTable, insertImage, toPresent: () => toPresent() });
 
 const homeTab = {
   id: 'home',
@@ -351,11 +358,11 @@ const toPresent = () => sendToPresent({ editor, name: shell.state.name, showAi: 
 const shell = await createShell({
   app: 'docs',
   defaultExt: 'docx',
-  tabs: [homeTab, insertTab, layoutTab, reviewTab, viewTab],
+  tabs: [homeTab, notes.tab, insertTab, layoutTab, reviewTab, viewTab],
   claudeTab,
   undo: () => chain().undo().run(),
   redo: () => chain().redo().run(),
-  getSaveData: () => ({ json: editor.getJSON(), html: editor.getHTML(), text: plainText(), page }),
+  getSaveData: () => ({ json: editor.getJSON(), html: editor.getHTML(), text: plainText(), page, notes: notesState.on }),
   exports: [
     { label: 'Web page (.html)', detail: 'Open in any browser.', icon: 'link', ext: 'html' },
     { label: 'Plain text (.txt)', detail: 'Text only, no formatting.', icon: 'textbox', ext: 'txt' },
@@ -372,7 +379,8 @@ const shell = await createShell({
     context: () => {
       const sel = selectionText();
       const text = plainText();
-      return `<document name="${shell.state.name}">\n${text.slice(0, 400000)}\n</document>${sel ? `\n<selection>\n${sel}\n</selection>` : '\n<selection>(nothing selected)</selection>'}`;
+      const mode = notesState.on ? '<mode>Notes: the user is taking quick notes, so prefer short bullet points and "- [ ]" task lists.</mode>\n' : '';
+      return `${mode}<document name="${shell.state.name}">\n${text.slice(0, 400000)}\n</document>${sel ? `\n<selection>\n${sel}\n</selection>` : '\n<selection>(nothing selected)</selection>'}`;
     },
     quick: [QUICK.draft, QUICK.improve, QUICK.summarize, QUICK.proofread, QUICK.continue],
     actions: (t) => [
@@ -383,6 +391,7 @@ const shell = await createShell({
 });
 
 shell.workspace.append(canvas);
+notes.mountSwitch();
 
 // Status bar: page estimate, word count, zoom.
 const pageInfo = h('span');
@@ -467,6 +476,12 @@ if (shell.info.file?.data) {
   editor.commands.setContent(shell.info.file.data.html || '<p></p>');
   loading = false;
   if (shell.info.file.data.warnings?.length) console.info('Import notes:', shell.info.file.data.warnings);
+}
+// Notes files, and new notes from Home or the Claude app, open in notes mode.
+if (shell.info.file?.notes || shell.info.file?.data?.notes) {
+  loading = true;
+  notes.set(true);
+  loading = false;
 }
 setZoom(100);
 updateStatus();

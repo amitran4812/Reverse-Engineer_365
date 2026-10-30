@@ -24,11 +24,19 @@ function sheetFrom(s, i) {
   return { name: safeName(s.name, `Sheet${i + 1}`).slice(0, 31), cells, cols };
 }
 
+// Markdown "- [ ]" lists become Write checklists.
+function taskLists(html) {
+  return html
+    .replace(/<ul>(\s*<li><input)/g, '<ul data-type="taskList">$1')
+    .replace(/<li><input (checked="" )?disabled="" type="checkbox">\s?/g, (m, checked) => `<li data-type="taskItem" data-checked="${checked ? 'true' : 'false'}">`);
+}
+
 async function toFileInfo(spec) {
   const title = safeName(spec.title, 'Untitled');
   if (spec.kind === 'document') {
     const { marked } = await import('marked'); // ESM-only package
-    return { app: 'docs', path: null, name: title, generated: true, data: { html: await marked.parse(spec.markdown || '') } };
+    const notes = spec.style === 'notes';
+    return { app: 'docs', path: null, name: title, generated: true, notes, data: { html: taskLists(await marked.parse(spec.markdown || '')), notes } };
   }
   if (spec.kind === 'spreadsheet') {
     const sheets = (spec.sheets || []).map(sheetFrom);
@@ -50,4 +58,4 @@ async function toFileInfo(spec) {
   throw new Error('Nothing to open: Claude answered in the chat.');
 }
 
-module.exports = { toFileInfo };
+module.exports = { toFileInfo, taskLists };

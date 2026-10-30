@@ -153,6 +153,14 @@ const P = {
   details: '<rect x="2.5" y="3.5" width="15" height="13" rx="1"/><path d="M2.5 7.5h15"/><path class="a-s" d="M5 10.5h10M5 13.5h7"/>',
   colDate: '<rect x="2.5" y="4" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M6.5 2.5v3M13.5 2.5v3"/><path class="a-s" d="M6 11h2M9.5 11h2M13 11h1M6 14h2M9.5 14h2"/>',
   colCalc: '<path class="a-s" d="M10.5 3.5c-2 0-2.3 1-2.6 3L6.6 16.5M5 8.5h5M12 10l4.5 5M16.5 10L12 15"/>',
+  // Notes mode.
+  pen: '<path d="M4 16l1-4 8.5-8.5a2.1 2.1 0 013 3L8 15z"/><path class="a-s" d="M12 5l3 3"/><path d="M3 18.5h6"/>',
+  eraser: '<path d="M8 17l-4.5-4.5a1.4 1.4 0 010-2L11 3a1.4 1.4 0 012 0l4.5 4.5a1.4 1.4 0 010 2L10 17z"/><path class="a" d="M3.5 12.5L7 9l5.5 5.5L10 17H8z"/><path d="M10 17h7"/>',
+  checklist: '<rect x="2.5" y="3" width="4.5" height="4.5" rx="1"/><path class="a-s" d="M3.6 5.3l1 1 1.6-2"/><rect x="2.5" y="11.5" width="4.5" height="4.5" rx="1"/><path d="M10 5.3h7.5M10 13.8h7.5"/>',
+  clock: '<circle cx="10" cy="10" r="7.5"/><path class="a-s" d="M10 5.5V10l3 2"/>',
+  paper: '<rect x="3.5" y="2.5" width="13" height="15" rx="1.5"/><path class="a-s" d="M3.5 7h13M3.5 10.5h13M3.5 14h13"/>',
+  webNotes: '<circle cx="8" cy="10" r="6"/><path d="M2 10h12M8 4c-2 2-2 10 0 12M8 4c2 2 2 10 0 12"/><path class="a-s" d="M13 13.5h5M13 16.5h3.5"/>',
+  slash: '<rect x="2.5" y="2.5" width="15" height="15" rx="3"/><path class="a-s" d="M12 5.5L8 14.5"/>',
   // App marks: original glyphs, not based on any vendor logo.
   appDocs: '<rect class="a" x="3" y="1.5" width="14" height="17" rx="2.5"/><path stroke="#fff" d="M6.5 6h7M6.5 9h7M6.5 12h7M6.5 15h4"/>',
   appSheets: '<rect class="a" x="2" y="2" width="16" height="16" rx="2.5"/><path stroke="#fff" d="M2.5 7.5h15M2.5 12.5h15M8 7.5v10"/>',

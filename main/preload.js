@@ -13,7 +13,7 @@ ipcRenderer.on('app:save-and-close', () => saveAndClose?.());
 
 contextBridge.exposeInMainWorld('office', {
   launchInfo: () => ipcRenderer.invoke('app:launch-info'),
-  newWindow: (app) => ipcRenderer.invoke('app:new', app),
+  newWindow: (app, opts) => ipcRenderer.invoke('app:new', app, opts),
   home: () => ipcRenderer.invoke('app:home'),
   openDialog: (app) => ipcRenderer.invoke('app:open-dialog', app),
   openPath: (file) => ipcRenderer.invoke('app:open-path', file),
@@ -76,6 +76,10 @@ contextBridge.exposeInMainWorld('office', {
     reveal: (rel) => ipcRenderer.invoke('latex:reveal', rel),
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
+  },
+  notes: {
+    image: (prompt) => ipcRenderer.invoke('notes:image', prompt),
+    fetchLink: (url) => ipcRenderer.invoke('notes:fetch-link', url),
   },
   sheets: {
     openTable: () => ipcRenderer.invoke('sheets:open-table'),

@@ -1,7 +1,7 @@
 {
   "name": "rea-office",
   "productName": "Work",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "An Office-style desktop suite (documents, spreadsheets, presentations) with Claude built in.",
   "private": true,
   "license": "MIT",
@@ -47,6 +47,7 @@
     "@tiptap/core": "^3.32.1",
     "@tiptap/extension-highlight": "^3.32.1",
     "@tiptap/extension-image": "^3.32.1",
+    "@tiptap/extension-list": "^3.32.1",
     "@tiptap/extension-placeholder": "^3.32.1",
     "@tiptap/extension-table": "^3.32.1",
     "@tiptap/extension-text-align": "^3.32.1",
