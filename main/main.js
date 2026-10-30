@@ -14,6 +14,7 @@ const generated = require('./generated');
 const updates = require('./updates');
 const latex = require('./latex');
 const data = require('./data');
+const templates = require('./templates');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
 const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
@@ -330,10 +331,15 @@ ipcMain.handle('claude:attach-images', (e, list) => attachments.fromImages(list)
 ipcMain.handle('claude:attach-paths', (e, paths) => attachments.loadAll((Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string' && p).slice(0, 20)));
 // Opens something Claude made in a new Write, Plot or Present window (unsaved).
 ipcMain.handle('app:new-with', safe(async (e, spec) => {
-  const info = await generated.toFileInfo(spec);
+  const custom = spec?.kind === 'deck' ? await templates.get(spec.theme) : null;
+  const info = await generated.toFileInfo(custom ? { ...spec, themeData: custom } : spec);
   openWindow(info.app, info);
   return { ok: true };
 }));
+// Present templates the user uploaded.
+ipcMain.handle('templates:list', () => templates.list());
+ipcMain.handle('templates:upload', safe((e) => templates.upload(senderWin(e))));
+ipcMain.handle('templates:remove', safe((e, id) => templates.remove(id)));
 // LaTeX projects. Every call works inside the folder this window opened.
 function latexRoot(e) {
   const root = launches.get(e.sender.id)?.file?.latex?.root;
