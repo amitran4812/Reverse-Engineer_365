@@ -8,6 +8,11 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - The LaTeX file list is now a **Files** pop-up instead of a pane that always took space. Open it from the Files tab beside File, Home and View, or from the Files button in the bottom-left corner. It shows how many files and folders the project has, and **Upload** adds files or a .zip. Pin it if you prefer a pane.
 - Drop a .zip onto the file list to add everything inside it to the project.
 
+## 0.2.10: One-click AI sign-in
+
+- The first time you open the AI pane, **Sign in with ChatGPT** is right there. One click signs you in with your ChatGPT Plus or Pro account and picks a model, so the AI is ready without a key.
+- Connecting Claude still needs a key, because Anthropic doesn't let other apps use Claude.ai login. Click the button, copy the key, and come back: Work fills it in.
+
 ## 0.2.9: Combine files and a new look for Plot analysis
 
 - **Add rows**: stack another CSV, Parquet or Excel file under your data. Columns are matched by name, and you can map the rest yourself. A Source column records which file each row came from.

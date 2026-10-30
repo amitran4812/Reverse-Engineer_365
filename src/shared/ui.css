@@ -349,3 +349,4 @@ button { cursor: default; }
 .ai-toggle input { margin-top: 3px; }
 .update-bar { position: fixed; right: 16px; bottom: 36px; z-index: 2500; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px); background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.14); font-size: 13px; }
 .update-bar .ico { flex: none; }
+.settings-status:empty { display: none; }
