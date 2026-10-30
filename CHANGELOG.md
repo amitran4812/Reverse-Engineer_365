@@ -2,6 +2,19 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.17: Spotfire-style functions in Plot
+
+- Calculated columns and filter formulas in Plot's Analysis tab now cover the functions you'd use in Spotfire. Names aren't case-sensitive, so a formula like `StdDev([Vth]) OVER ([Lot])` works as written. The calculated column window lists them all by category.
+- **Sigma and statistics**: `sigma` (also `stddev`), `var`, `stderr`, `median`, `percentile`, `p10`, `p90`, `q1`, `q3`, `iqr`, the box plot fences `lif`, `uif`, `lav`, `uav`, `lof`, `uof`, `l95` / `u95`, `uniquecount`, `mode`, `first`, `last` and more. `ucl([Vth], 3)` and `lcl([Vth], 3)` give the mean plus or minus 3 sigma, and `zscore([Vth])` says how many sigmas each row is from the mean.
+- **Normal distribution**: `normsinv(p)` turns a probability into sigma (`normsinv(0.99865)` is 3), and `norminv`, `normsdist` and `normdist` work like their spreadsheet namesakes.
+- **OVER**: work out any statistic per group (`avg([Vth]) OVER [Lot]`, `OVER ([Lot], [Wafer])`), as a running total (`sum([Qty]) OVER AllPrevious([Date])`, `AllNext`), or from the previous or next value (`OVER Previous([Date])`, `Next`), combined with `Intersect`.
+- **Ranking**: `rank`, `denserank` and `rankreal`, ascending or `"desc"`, optionally within groups.
+- **Text**: `split([Tag], "_", 2)` keeps the second part of a tag (`-1` keeps the last part). Also `find`, `substitute`, `replace`, `rxreplace`, `rxextract`, `left`, `right`, `mid`, `len`, `upper`, `lower`, `trim`, `repeat`, `concatenate` and `&` to join text.
+- **Logic**: `case when … then … else … end`, `[x] in ("a", "b")`, `[x] is null` / `is not null` and `sn`.
+- **Dates**: `year`, `quarter`, `month`, `week`, `day`, `dayofweek`, `dayofyear`, `hour`, `minute`, `second`, `datepart`, `dateadd`, `datediff`, `date`, `datetime`, `today` and `datetimenow`. A formula that gives a date makes a date column.
+- **Math and conversion**: `log(x, base)`, `power`, `divint`, `ceiling`, `cot`, `degrees`, `radians`, `pi`, `rand`, `randbetween`, `integer`, `real` and `string`.
+- Fixed: column lists that open from a plot's axis picker, or any other drop-down near the bottom of the window, now open upward when there is no room below and scroll, so every column can be picked.
+
 ## 0.2.16: Google Drive sign-in fix
 
 - **Connect Google Drive** works with one click: Work's built-in Google sign-in now carries the right app ID, so you just pick your Google account instead of seeing "OAuth client was not found".
