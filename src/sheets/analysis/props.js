@@ -368,7 +368,7 @@ export function createProps(api) {
       body.append(field('Jitter', slider(num(mk.jitter) ?? 0, 0, 1, 0.05, (val) => put('jitter', val, true))));
       body.append(h('div', 'an-meta', 'Jitter spreads points that sit on top of each other.'));
     }
-    if (s.type === 'line') body.append(field('Line width', slider(num(s.lineWidth) ?? 1.6, 0.5, 6, 0.1, (val) => look((x) => { x.lineWidth = val; }))));
+    if (s.type === 'line') body.append(field('Line width', slider(num(s.lineWidth) ?? 2.2, 0.5, 6, 0.1, (val) => look((x) => { x.lineWidth = val; }))));
   }
 
   function labels(s) {
@@ -423,7 +423,7 @@ export function createProps(api) {
     if (cn.on) {
       body.append(field('Connect by', select(colOptions(() => true, '(one line)'), cn.by || '', (val) => put('by', val || null))));
       body.append(field('Order by', select(colOptions(numeric, '(X axis)'), cn.order || '', (val) => put('order', val || null))));
-      body.append(field('Line width', slider(num(cn.width) ?? 1.4, 0.5, 6, 0.1, (val) => put('width', val, false))));
+      body.append(field('Line width', slider(num(cn.width) ?? 1.8, 0.5, 6, 0.1, (val) => put('width', val, false))));
     }
   }
 

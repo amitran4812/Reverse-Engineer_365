@@ -22,7 +22,8 @@ export const PLOT_TYPES = {
 
 const FIT_COLORS = ['#b3261e', '#6a1b9a', '#00695c', '#e65100'];
 const GRID = '#e8ebef';
-const AXIS = '#9aa1ab';
+const AXIS = '#7d858f';
+const AXIS_W = 1.5;
 const TEXT = '#4a5059';
 const h = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -556,7 +557,7 @@ export class PlotView {
   paintPaths(p, L) {
     const d = this.data;
     const fixed = this.fixedColor();
-    const width = num(this.spec.connect?.width) || 1.4;
+    const width = num(this.spec.connect?.width) || 1.8;
     for (const path of d.paths) {
       const sy = path.axis === 'right' ? L.syR : L.syL;
       const xs = new Float64Array(path.n);
@@ -585,11 +586,11 @@ export class PlotView {
       const label = r.label || `${r.kind === 'mean' ? 'Mean' : r.kind === 'median' ? 'Median' : ''}${r.kind === 'mean' || r.kind === 'median' ? ' ' : ''}${formatValue(v, axis === 'x' ? (d.xType || 'number') : 'number')}`;
       if (axis === 'x') {
         if (at < plot.x || at > plot.x + plot.w) continue;
-        p.line(at, plot.y, at, plot.y + plot.h, { stroke: color, width: 1.4, dash: [5, 4] });
+        p.line(at, plot.y, at, plot.y + plot.h, { stroke: color, width: 1.8, dash: [5, 4] });
         p.text(label, at + 4, plot.y + 12, { size: 10.5, color });
       } else {
         if (at < plot.y || at > plot.y + plot.h) continue;
-        p.line(plot.x, at, plot.x + plot.w, at, { stroke: color, width: 1.4, dash: [5, 4] });
+        p.line(plot.x, at, plot.x + plot.w, at, { stroke: color, width: 1.8, dash: [5, 4] });
         p.text(label, plot.x + plot.w - 4, at - 4, { size: 10.5, color, align: 'right' });
       }
     }
@@ -654,8 +655,8 @@ export class PlotView {
     const { plot } = L;
     const s = this.spec;
     const d = this.data;
-    p.line(plot.x, plot.y + plot.h + 0.5, plot.x + plot.w, plot.y + plot.h + 0.5, { stroke: AXIS });
-    p.line(plot.x - 0.5, plot.y, plot.x - 0.5, plot.y + plot.h, { stroke: AXIS });
+    p.line(plot.x, plot.y + plot.h + 0.5, plot.x + plot.w, plot.y + plot.h + 0.5, { stroke: AXIS, width: AXIS_W });
+    p.line(plot.x - 0.5, plot.y, plot.x - 0.5, plot.y + plot.h, { stroke: AXIS, width: AXIS_W });
     const ax = s.axes || {};
     // X ticks
     if (ax.x?.labels === false) {
@@ -665,7 +666,7 @@ export class PlotView {
       for (const t of ticks) {
         const x = L.sx.map(t.v);
         if (x < plot.x - 1 || x > plot.x + plot.w + 1) continue;
-        p.line(x, plot.y + plot.h, x, plot.y + plot.h + 4, { stroke: AXIS });
+        p.line(x, plot.y + plot.h, x, plot.y + plot.h + 4, { stroke: AXIS, width: AXIS_W });
         p.text(t.label, x, plot.y + plot.h + 16, { size: 11, color: TEXT, align: 'center' });
       }
     } else if (L.xCats) {
@@ -686,7 +687,7 @@ export class PlotView {
       for (const t of ticks) {
         const y = L.syL.map(t.v);
         if (y < plot.y - 1 || y > plot.y + plot.h + 1) continue;
-        p.line(plot.x - 4, y, plot.x, y, { stroke: AXIS });
+        p.line(plot.x - 4, y, plot.x, y, { stroke: AXIS, width: AXIS_W });
         p.text(t.label, plot.x - 7, y + 4, { size: 11, color: TEXT, align: 'right' });
       }
     } else if (L.yCats) {
@@ -698,11 +699,11 @@ export class PlotView {
     }
     if (L.syR) {
       const x0 = plot.x + plot.w;
-      p.line(x0 + 0.5, plot.y, x0 + 0.5, plot.y + plot.h, { stroke: AXIS });
+      p.line(x0 + 0.5, plot.y, x0 + 0.5, plot.y + plot.h, { stroke: AXIS, width: AXIS_W });
       for (const t of L.yRTicks || []) {
         const y = L.syR.map(t.v);
         if (y < plot.y - 1 || y > plot.y + plot.h + 1) continue;
-        p.line(x0, y, x0 + 4, y, { stroke: AXIS });
+        p.line(x0, y, x0 + 4, y, { stroke: AXIS, width: AXIS_W });
         p.text(t.label, x0 + 7, y + 4, { size: 11, color: TEXT });
       }
       const right = (s.y || []).filter((y) => y.axis === 'right').map((y) => y.col).join(', ');
@@ -835,7 +836,7 @@ export class PlotView {
         ys[k] = sy.map(se.y[k]);
       }
       const color = this.seriesColor(se, i);
-      p.polyline(xs, ys, se.n, { stroke: color, width: num(this.spec.lineWidth) || 1.6, alpha: any ? 0.35 : 1 });
+      p.polyline(xs, ys, se.n, { stroke: color, width: num(this.spec.lineWidth) || 2.2, alpha: any ? 0.35 : 1 });
       const r = (num(this.spec.marker?.size) || 5.2) / 2;
       if (this.spec.markers && se.n < 3000) for (let k = 0; k < se.n; k += 1) p.marker(xs[k], ys[k], r, this.spec.marker?.shape, { fill: color, alpha: any ? 0.35 : 1 });
     });
@@ -945,7 +946,7 @@ export class PlotView {
         }
       }
     }
-    p.line(L.plot.x, y0, L.plot.x + L.plot.w, y0, { stroke: AXIS });
+    p.line(L.plot.x, y0, L.plot.x + L.plot.w, y0, { stroke: AXIS, width: AXIS_W });
   }
 
   paintPie(p, L) {
@@ -1094,11 +1095,11 @@ export class PlotView {
       const sy = L.syL;
       const half = width / 2;
       const color = paletteColor(opts.color);
-      p.line(cx, sy.map(st.whiskerLo), cx, sy.map(st.q1), { stroke: opts.stroke || '#555', alpha: opts.alpha });
-      p.line(cx, sy.map(st.q3), cx, sy.map(st.whiskerHi), { stroke: opts.stroke || '#555', alpha: opts.alpha });
-      for (const w of [st.whiskerLo, st.whiskerHi]) p.line(cx - half / 2, sy.map(w), cx + half / 2, sy.map(w), { stroke: opts.stroke || '#555', alpha: opts.alpha });
+      p.line(cx, sy.map(st.whiskerLo), cx, sy.map(st.q1), { stroke: opts.stroke || '#555', width: 1.4, alpha: opts.alpha });
+      p.line(cx, sy.map(st.q3), cx, sy.map(st.whiskerHi), { stroke: opts.stroke || '#555', width: 1.4, alpha: opts.alpha });
+      for (const w of [st.whiskerLo, st.whiskerHi]) p.line(cx - half / 2, sy.map(w), cx + half / 2, sy.map(w), { stroke: opts.stroke || '#555', width: 1.4, alpha: opts.alpha });
       p.rect(cx - half, sy.map(st.q3), width, sy.map(st.q1) - sy.map(st.q3), { fill: color, alpha: (opts.alpha ?? 1) * 0.75 });
-      p.rect(cx - half, sy.map(st.q3), width, sy.map(st.q1) - sy.map(st.q3), { stroke: opts.stroke || '#333', alpha: opts.alpha });
+      p.rect(cx - half, sy.map(st.q3), width, sy.map(st.q1) - sy.map(st.q3), { stroke: opts.stroke || '#333', width: 1.4, alpha: opts.alpha });
       p.line(cx - half, sy.map(st.median), cx + half, sy.map(st.median), { stroke: '#111', width: 2, alpha: opts.alpha });
       const my = sy.map(st.mean);
       p.polygon([[cx, my - 4], [cx + 4, my], [cx, my + 4], [cx - 4, my]], { fill: '#fff', stroke: '#111', alpha: opts.alpha });
@@ -1162,7 +1163,7 @@ export class PlotView {
         xs[k] = L.sx.map(v);
         ys[k] = Number.isFinite(yv) ? Math.max(-1e6, Math.min(1e6, sy.map(yv))) : NaN;
       }
-      p.polyline(xs, ys, n, { stroke: FIT_COLORS[i % FIT_COLORS.length], width: 2.2 });
+      p.polyline(xs, ys, n, { stroke: FIT_COLORS[i % FIT_COLORS.length], width: 2.6 });
     });
   }
 

@@ -13,6 +13,7 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Filters for one visualization**: limit a plot with a formula, give it its own column filters, or have it ignore the filters panel, while the other plots keep the page filters. Right-click a filter to move it onto the selected plot.
 - **Ctrl+D** copies the selected visualization onto a new page right after the current one, with the Properties panel open, so you can switch it to a scatter plot or change anything without touching the original.
 - **Right-click menus** on plots (change type, properties, trellis, color by, markers, connect by, fit curve, marking, copy as picture, export), on the page, on page tabs, on columns, on filters and on the details table.
+- Plot lines, axis lines, curve fits and box-plot whiskers are a little thicker, so charts read more easily.
 - **Keyboard shortcuts** like the ones analysts already know: Ctrl+A mark all, Ctrl+E unmark, Ctrl+I invert, Ctrl+M filter to marked, Ctrl+Shift+M filter out, Ctrl+R reset filters, Ctrl+N new page, Ctrl+Shift+D duplicate page, Ctrl+Tab next page, Ctrl+2 to Ctrl+9 new visualizations, Ctrl+C copy marked rows and more. Press **F1** (or **Shortcuts** on the ribbon) for the full list.
 
 ## 0.2.16: Google Drive sign-in fix
