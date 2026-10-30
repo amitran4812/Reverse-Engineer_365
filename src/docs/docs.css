@@ -109,7 +109,10 @@
 .ink-hint { margin-right: auto; color: var(--muted); font-size: 12px; }
 
 @media print {
+  .doc-canvas.notes-canvas { background: #fff; }
   .doc-page.notes { background: none !important; border-radius: 0; }
+  .ProseMirror { caret-color: transparent; }
+  .ProseMirror .ProseMirror-selectednode, .ProseMirror img.ProseMirror-selectednode { outline: none; }
 }
 
 @media print {
