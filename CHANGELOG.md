@@ -7,6 +7,7 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Upload LaTeX (.zip)** on the Home and New screens opens a zipped LaTeX project, like the ones online LaTeX editors download. Work unpacks it next to the .zip, finds the main `.tex` file and compiles it.
 - The LaTeX file list is now a **Files** pop-up instead of a pane that always took space. Open it from the Files tab beside File, Home and View, or from the Files button in the bottom-left corner. It shows how many files and folders the project has, and **Upload** adds files or a .zip. Pin it if you prefer a pane.
 - Drop a .zip onto the file list to add everything inside it to the project.
+- **Connect Google Drive** with one click: Work now comes with its own Google sign-in, so you just pick your Google account. No setup in Options.
 
 ## 0.2.10: One-click AI sign-in
 
