@@ -255,8 +255,82 @@ async function models(providerId, key) {
   }
 }
 
+// Picture generation for notes. Uses an image model on whichever of the
+// OpenAI or Gemini keys is saved (the chosen AI first). Claude and a ChatGPT
+// sign-in have no image model for apps, so the caller falls back to an
+// SVG drawing when this returns { ok: false, fallback: true }.
+const imageModels = {
+  async openai(key) {
+    try {
+      const res = await fetch(`${PROVIDERS.openai.base()}/models`, { headers: { authorization: `Bearer ${key}` } });
+      const ids = res.ok ? (await res.json()).data.map((m) => m.id).filter((id) => /^gpt-image-/.test(id)).sort() : [];
+      return ids.find((id) => !/mini/.test(id) && /^gpt-image-\d+(\.\d+)?$/.test(id)) || ids[ids.length - 1] || 'gpt-image-1';
+    } catch {
+      return 'gpt-image-1';
+    }
+  },
+  async gemini(key) {
+    const res = await fetch(`${PROVIDERS.gemini.base()}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
+    if (!res.ok) throw await failure(res, 'Gemini');
+    const names = ((await res.json()).models || [])
+      .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent') && /^models\/gemini-.*image/.test(m.name))
+      .map((m) => m.name.replace(/^models\//, ''))
+      .sort()
+      .reverse();
+    return names.find((n) => !/preview|exp/.test(n)) || names[0] || null;
+  },
+};
+
+async function openaiImage(key, prompt) {
+  const model = await imageModels.openai(key);
+  const res = await fetch(`${PROVIDERS.openai.base()}/images/generations`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model, prompt, size: '1536x1024', n: 1 }),
+  });
+  if (!res.ok) throw await failure(res, 'OpenAI');
+  const d = (await res.json()).data?.[0];
+  if (d?.b64_json) return `data:image/png;base64,${d.b64_json}`;
+  if (d?.url) {
+    const img = await fetch(d.url);
+    return `data:image/png;base64,${Buffer.from(await img.arrayBuffer()).toString('base64')}`;
+  }
+  throw new ProviderError(500, 'OpenAI returned no picture.');
+}
+
+async function geminiImage(key, prompt) {
+  const model = await imageModels.gemini(key);
+  if (!model) throw new ProviderError(404, 'Your Gemini key has no picture model.');
+  const res = await fetch(`${PROVIDERS.gemini.base()}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } }),
+  });
+  if (!res.ok) throw await failure(res, 'Gemini');
+  const parts = (await res.json()).candidates?.[0]?.content?.parts || [];
+  const img = parts.find((p) => p.inlineData?.data);
+  if (!img) throw new ProviderError(500, 'Gemini returned no picture. Try describing it differently.');
+  return `data:${img.inlineData.mimeType || 'image/png'};base64,${img.inlineData.data}`;
+}
+
+async function image(prompt) {
+  const text = String(prompt || '').trim().slice(0, 4000);
+  if (!text) return { ok: false, message: 'Describe the picture first.' };
+  const chosen = settings.readRaw().provider;
+  const order = ['openai', 'gemini'].sort((a, b) => (b === chosen) - (a === chosen));
+  const keyed = order.map((id) => ({ id, key: settings.getSecret(`ai-key:${id}`) })).filter((p) => p.key);
+  if (!keyed.length) return { ok: false, fallback: true };
+  const { id, key } = keyed[0];
+  try {
+    const src = id === 'openai' ? await openaiImage(key, text) : await geminiImage(key, text);
+    return { ok: true, src, by: PROVIDERS[id].label };
+  } catch (err) {
+    return { ok: false, message: err instanceof ProviderError ? err.message : `Could not reach ${PROVIDERS[id].label}: ${err?.message || err}` };
+  }
+}
+
 function cancel(id) {
   active.get(id)?.abort();
 }
 
-module.exports = { PROVIDERS, start, cancel, models, openai, gemini };
+module.exports = { PROVIDERS, start, cancel, models, image, openai, gemini };

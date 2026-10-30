@@ -23,7 +23,12 @@ const {
   WidthType,
 } = require('docx');
 const mammoth = require('mammoth');
+const JSZip = require('jszip');
 const { imageSize } = require('./imageSize');
+
+// Notes saved from Write's notes mode carry this keyword, so they reopen as notes.
+const NOTES_KEYWORD = 'Work notes';
+const BOX = { true: '☑', false: '☐' };
 
 const MARGINS = { narrow: 720, normal: 1440, wide: 2160 };
 const HEADINGS = [null, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
@@ -128,6 +133,7 @@ class Converter {
     if (align) props.alignment = align;
     if (ctx.list === 'bullet') props.bullet = { level: ctx.level };
     if (ctx.list === 'ordered') props.numbering = { reference: 'rea-numbered', level: ctx.level, instance: ctx.instance };
+    if (ctx.task) props.indent = { left: 360 * (ctx.level + 1) };
     if (ctx.quote) {
       props.indent = { left: 720 };
       props.border = { left: { style: BorderStyle.SINGLE, size: 12, color: 'B0B7C3', space: 8 } };
@@ -137,16 +143,24 @@ class Converter {
 
   block(node, ctx) {
     switch (node.type) {
-      case 'paragraph':
-        return [new Paragraph({ ...this.paragraphProps(node, ctx), children: inlineChildren(node) })];
+      case 'paragraph': {
+        const children = inlineChildren(node);
+        if (ctx.task) children.unshift(new TextRun(`${ctx.task} `));
+        return [new Paragraph({ ...this.paragraphProps(node, ctx), children })];
+      }
       case 'heading':
         return [new Paragraph({ ...this.paragraphProps(node, ctx), heading: HEADINGS[node.attrs?.level || 1], children: inlineChildren(node) })];
       case 'bulletList':
       case 'orderedList': {
-        const level = ctx.list ? ctx.level + 1 : 0;
+        const level = ctx.list || ctx.task ? ctx.level + 1 : 0;
         const list = node.type === 'bulletList' ? 'bullet' : 'ordered';
         const instance = list === 'ordered' && !ctx.list ? ++this.listInstance : ctx.instance;
-        return (node.content || []).flatMap((item) => this.blocks(item.content, { ...ctx, list, level: Math.min(level, 8), instance }));
+        return (node.content || []).flatMap((item) => this.blocks(item.content, { ...ctx, task: null, list, level: Math.min(level, 8), instance }));
+      }
+      case 'taskList': {
+        // Checklists save as ☐ / ☑ lines, which Work turns back into checklists on open.
+        const level = ctx.task || ctx.list ? Math.min(ctx.level + 1, 8) : 0;
+        return (node.content || []).flatMap((item) => this.blocks(item.content, { ...ctx, list: null, task: BOX[!!item.attrs?.checked], level }));
       }
       case 'blockquote':
         return this.blocks(node.content, { ...ctx, quote: true });
@@ -206,13 +220,14 @@ function numberingConfig() {
   };
 }
 
-async function exportDocx({ json, title, page = {} }) {
+async function exportDocx({ json, title, page = {}, notes = false }) {
   const margin = MARGINS[page.margins] || MARGINS.normal;
   const landscape = page.orientation === 'landscape';
   const children = new Converter().blocks(json?.content);
   const doc = new Document({
     title: title || 'Document',
     creator: 'Work',
+    ...(notes ? { keywords: NOTES_KEYWORD } : {}),
     styles: {
       default: { document: { run: { font: 'Calibri', size: 22 } } },
     },
@@ -230,9 +245,26 @@ async function exportDocx({ json, title, page = {} }) {
   return Packer.toBuffer(doc);
 }
 
+// Runs of "☐ text" / "☑ text" paragraphs become a checklist again.
+function checklists(html) {
+  return html.replace(/(?:<p>[☐☑]\s?[\s\S]*?<\/p>)+/g, (run) => {
+    const items = [...run.matchAll(/<p>([☐☑])\s?([\s\S]*?)<\/p>/g)].map(([, box, text]) => `<li data-type="taskItem" data-checked="${box === '☑'}"><p>${text}</p></li>`);
+    return `<ul data-type="taskList">${items.join('')}</ul>`;
+  });
+}
+
+async function isNotes(buffer) {
+  try {
+    const core = await (await JSZip.loadAsync(buffer)).file('docProps/core.xml')?.async('string');
+    return new RegExp(`<cp:keywords>[^<]*${NOTES_KEYWORD}`).test(core || '');
+  } catch {
+    return false;
+  }
+}
+
 async function importDocx(buffer) {
   const result = await mammoth.convertToHtml({ buffer });
-  return { html: result.value, warnings: result.messages.map((m) => m.message) };
+  return { html: checklists(result.value), notes: await isNotes(buffer), warnings: result.messages.map((m) => m.message) };
 }
 
 module.exports = { exportDocx, importDocx, hex, halfPoints };

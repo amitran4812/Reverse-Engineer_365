@@ -144,8 +144,9 @@ ipcMain.handle('app:launch-info', (e) => ({
   account: profiles.active(),
 }));
 
-ipcMain.handle('app:new', (e, appName) => {
-  openWindow(appName);
+ipcMain.handle('app:new', (e, appName, opts) => {
+  // Write can start as notes.
+  openWindow(appName, appName === 'docs' && opts?.notes ? { path: null, name: 'Notes', notes: true, data: { html: '' } } : null);
 });
 
 ipcMain.handle('app:home', () => {
@@ -429,6 +430,8 @@ ipcMain.handle('latex:open-pdf-external', safe(async (e, main) => {
   return { ok: true };
 }));
 
+ipcMain.handle('notes:image', (e, prompt) => require('./ai').image(prompt));
+ipcMain.handle('notes:fetch-link', (e, url) => require('./links').fetchLink(url));
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
 ipcMain.handle('ai:models', (e, provider, key) => require('./ai').models(provider, key));
 ipcMain.handle('chatgpt:sign-in', async () => {

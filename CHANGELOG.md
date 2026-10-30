@@ -2,6 +2,20 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.15: Notes in Write
+
+- Write has a **Notes mode** for meetings and quick notes. Switch with **Document / Notes** at the top right of the ribbon, or start fresh with **New > Notes** on the start screen. Notes open with a title and today's date, and the new **Notes** tab holds everything below.
+- Every new line is a bullet. **Tab** indents and **Shift+Tab** outdents. Press Enter on an empty bullet for a plain line.
+- **Checklists** you can tick off, **time stamps**, tables, pictures and dividers. Type **/** anywhere for a quick-insert menu.
+- **Draw** with a mouse, finger or stylus: pen, highlighter and eraser, six colours, three sizes, and pen pressure. Double-click a picture to draw on it.
+- **Paper**: plain, lined, grid or dots, in white, sand, mint, sky, lavender or rose.
+- With your connected AI: **Summarize** (key points, decisions and action items), **Action items** as a checklist, **Tidy up** rough notes, and **Link to notes**, which reads a public web page and turns it into notes or a summary. Video and meeting recordings can't be read from a link yet.
+- **Plot** makes a chart from a typed instruction, such as "bar chart of the budget table above" or "y = sin(x) from 0 to 10", drawn with Plot's own charts.
+- **AI Picture** makes a picture from a typed instruction. With an OpenAI or Gemini key saved it uses their image model; with Claude or a ChatGPT sign-in, the AI draws it as an illustration.
+- In the Claude app on the start screen, **Notes** makes notes from your request or attached files, and any document it makes can also open as notes.
+- **Send to Present** is on the Notes tab and in the / menu too, and checklists keep their ☐ / ☑ boxes on the slides.
+- Notes save as normal .docx files: checklists become ☐ / ☑ lines, and the file reopens in Notes mode.
+
 ## 0.2.14: Turn Write documents into presentations
 
 - **Send to Present** on Write's Home and Claude tabs turns your document into a new presentation. Headings, paragraphs, bullet points, quotes, pictures and tables all come along.

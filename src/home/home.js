@@ -2,7 +2,7 @@
 import '../shared/ui.css';
 import './home.css';
 import { icon } from '../shared/icons.js';
-import { APPS, escapeHtml, h, latexTile, latexZipTile, settingsForm } from '../shared/shell.js';
+import { APPS, escapeHtml, h, latexTile, latexZipTile, notesTile, settingsForm } from '../shared/shell.js';
 import { CLOUDS, cloudSettings, openFromCloud } from '../shared/cloud.js';
 import { ClaudePane } from '../shared/claude-pane.js';
 import { MAKE, SYSTEM } from './make.js';
@@ -61,7 +61,7 @@ function claudePane() {
     intro: 'Tell me what you need and I’ll make it: a presentation, a spreadsheet or a document, opened in the right app. Attach PDFs, images, Word or Excel files and I’ll work from them.',
     placeholder: 'Make a 10-slide pitch deck for… / Build a budget for… / Summarize the attached PDF…',
     system: SYSTEM,
-    quick: [MAKE.deck, MAKE.sheet, MAKE.doc],
+    quick: [MAKE.deck, MAKE.sheet, MAKE.doc, MAKE.notes],
     defaultQuick: MAKE.auto,
   });
   return pane;
@@ -97,7 +97,7 @@ async function show(view) {
       t.onclick = () => window.office.newWindow(id);
       tiles.append(t);
     }
-    tiles.append(latexTile(44), latexZipTile(44));
+    tiles.append(notesTile(44), latexTile(44), latexZipTile(44));
     main.append(h('h2', '', 'New'), tiles);
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'open') {

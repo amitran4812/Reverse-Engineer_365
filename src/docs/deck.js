@@ -22,13 +22,18 @@ function inline(node) {
   return (node.content || []).map(inline).join('');
 }
 
+const LISTS = ['bulletList', 'orderedList', 'taskList'];
+
 function listItems(list, depth, out) {
   for (const item of list.content || []) {
+    // Checklist items keep their box.
+    let box = item.type === 'taskItem' ? (item.attrs?.checked ? '☑ ' : '☐ ') : '';
     for (const part of item.content || []) {
-      if (part.type === 'bulletList' || part.type === 'orderedList') listItems(part, depth + 1, out);
+      if (LISTS.includes(part.type)) listItems(part, depth + 1, out);
       else {
         const text = tidy(inline(part));
-        if (text) out.push({ text, depth });
+        if (text) out.push({ text: box + text, depth });
+        box = '';
       }
     }
   }
@@ -49,7 +54,7 @@ export function readDocument(json) {
       } else if (n.type === 'paragraph') {
         if (text) blocks.push({ type: 'para', text });
         for (const c of n.content || []) if (c.type === 'image') walk([c]);
-      } else if (n.type === 'bulletList' || n.type === 'orderedList') {
+      } else if (LISTS.includes(n.type)) {
         const items = listItems(n, 0, []);
         if (items.length) blocks.push({ type: 'list', items });
       } else if (n.type === 'blockquote') {

@@ -58,7 +58,8 @@ const KIND = {
   presentation: { app: 'Present', icon: 'appSlides' },
 };
 
-function make(label, icon, ask, input) {
+function make(label, icon, ask, input, style = null) {
+  const open = (d) => window.office.newWith(style && d.kind === 'document' ? { ...d, style } : d);
   return {
     label,
     icon,
@@ -75,12 +76,17 @@ function make(label, icon, ask, input) {
       const what = d.kind === 'presentation' ? `${d.slides.length} slides` : d.kind === 'spreadsheet' ? `${d.sheets.length} sheet${d.sheets.length === 1 ? '' : 's'}` : 'document';
       return `${d.summary}\n\n**${d.title}** (${what}) is open in ${KIND[d.kind].app}. Save it from there.`;
     },
-    actions: (d) => (KIND[d.kind]
-      ? [{ label: `Open in ${KIND[d.kind].app} again`, icon: KIND[d.kind].icon, once: false, run: async () => {
-        const r = await window.office.newWith(d);
+    actions: (d) => {
+      if (!KIND[d.kind]) return [];
+      const again = { label: `Open in ${KIND[d.kind].app} again`, icon: KIND[d.kind].icon, once: false, run: async () => {
+        const r = await open(d);
         if (r?.error) alert(r.error);
-      } }]
-      : []),
+      } };
+      // A document can also open as notes, or as a document when it was made as notes.
+      if (d.kind !== 'document') return [again];
+      const other = style ? { ...d } : { ...d, style: 'notes' };
+      return [again, { label: style ? 'Open as a document' : 'Open as notes', icon: style ? 'appDocs' : 'notes', once: false, run: () => window.office.newWith(other) }];
+    },
   };
 }
 
@@ -89,4 +95,5 @@ export const MAKE = {
   deck: make('Presentation', 'appSlides', 'Make a presentation (kind "presentation") about:', 'What should the presentation cover? Attach files to build it from…'),
   sheet: make('Spreadsheet', 'appSheets', 'Make a spreadsheet (kind "spreadsheet") for:', 'What should the spreadsheet track or calculate?…'),
   doc: make('Document', 'appDocs', 'Write a document (kind "document"):', 'What should the document say? Attach files to work from…'),
+  notes: make('Notes', 'notes', 'Write notes (kind "document"): a short title heading, then concise bullet points grouped under small headings, with "- [ ]" task lists for action items:', 'What should the notes cover? Attach a transcript, PDF or slides to take notes from…', 'notes'),
 };

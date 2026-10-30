@@ -45,6 +45,73 @@
 .style-tile { display: block; color: #1f2328; height: 26px; line-height: 26px; overflow: hidden; white-space: nowrap; }
 .rb-tile small { font-size: 11px; color: var(--muted); }
 
+/* Checklists (both modes). */
+.ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 4pt; }
+.ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] { padding-left: 18pt; }
+.ProseMirror ul[data-type="taskList"] > li { display: flex; align-items: flex-start; gap: 8px; }
+.ProseMirror ul[data-type="taskList"] > li > label { flex: none; margin-top: 1px; user-select: none; }
+.ProseMirror ul[data-type="taskList"] > li > label input { appearance: none; width: 15px; height: 15px; margin: 0; border: 1.5px solid #8a919c; border-radius: 4px; background: #fff; cursor: pointer; display: grid; place-items: center; }
+.ProseMirror ul[data-type="taskList"] > li > label input:checked { background: var(--accent); border-color: var(--accent); }
+.ProseMirror ul[data-type="taskList"] > li > label input:checked::after { content: ""; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+.ProseMirror ul[data-type="taskList"] > li > div { flex: 1; min-width: 0; }
+.ProseMirror ul[data-type="taskList"] > li[data-checked="true"] > div > p { color: #8a919c; text-decoration: line-through; }
+
+/* The Document / Notes switch at the right of the ribbon tabs. */
+.mode-switch { display: flex; align-self: center; margin-right: 6px; padding: 2px; border-radius: 999px; background: #eceef2; }
+.mode-switch button { display: flex; align-items: center; gap: 5px; border: 0; background: transparent; height: 24px; padding: 0 11px; border-radius: 999px; color: #4a5160; font-size: 12px; cursor: pointer; }
+.mode-switch button:hover { color: #1f2328; }
+.mode-switch button.on { background: #fff; color: var(--accent-dark); font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, .18); }
+
+/* Notes mode: same page, a softer card with ruled, grid or dotted paper. */
+.doc-canvas.notes-canvas { background: #eef0f4; }
+.doc-page.notes { --line: 24px; --rule: #dfe3ea; background-color: var(--note-bg, #fff); background-image: none; border-radius: 14px; box-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .08); }
+.doc-page.notes.paper-lined { background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px), var(--rule) var(--line)); background-position: 0 calc(var(--margin) - 2px); }
+.doc-page.notes.paper-grid { background-image: linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px); background-size: var(--line) var(--line); }
+.doc-page.notes.paper-dots { background-image: radial-gradient(circle, #c9ced8 1.2px, transparent 1.4px); background-size: var(--line) var(--line); }
+.doc-page.notes .ProseMirror { line-height: var(--line); font-size: 11.5pt; }
+.doc-page.notes .ProseMirror p { margin: 0; }
+.doc-page.notes .ProseMirror h1 { font-size: 22pt; font-weight: 600; color: #1f2328; line-height: calc(var(--line) * 2); margin: 0; }
+.doc-page.notes .ProseMirror h2 { font-size: 14pt; font-weight: 600; color: var(--accent-dark); line-height: var(--line); margin: var(--line) 0 0; }
+.doc-page.notes .ProseMirror h3 { font-size: 12pt; line-height: var(--line); margin: var(--line) 0 0; }
+.doc-page.notes .ProseMirror h1 + p em { color: #6b7280; font-style: normal; font-size: 10.5pt; }
+.doc-page.notes .ProseMirror ul, .doc-page.notes .ProseMirror ol { margin: 0; padding-left: 20pt; }
+.doc-page.notes .ProseMirror li::marker { color: var(--accent); }
+.doc-page.notes .ProseMirror li > p { margin: 0; }
+.doc-page.notes .ProseMirror ul[data-type="taskList"] { padding-left: 2pt; }
+.doc-page.notes .ProseMirror ul[data-type="taskList"] > li > label { margin-top: 4px; }
+.doc-page.notes .ProseMirror table { margin: 8px 0; background: #fff; }
+.doc-page.notes .ProseMirror img { border-radius: 8px; margin: 6px 0; cursor: default; }
+.doc-page.notes .ProseMirror .is-empty::before { content: attr(data-placeholder); color: #9aa1ab; float: left; height: 0; pointer-events: none; }
+.doc-page.notes .ProseMirror li .is-empty::before { font-style: normal; }
+
+/* "/" quick-insert menu. */
+.notes-slash { position: fixed; z-index: 900; width: 228px; max-height: 300px; overflow: auto; padding: 4px; background: #fff; border: 1px solid #dfe3ea; border-radius: 10px; box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
+.notes-slash-item { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; padding: 6px 8px; border-radius: 6px; text-align: left; font: 13px var(--ui-font); color: #1f2328; cursor: pointer; }
+.notes-slash-item:hover, .notes-slash-item.on { background: color-mix(in srgb, var(--accent) 12%, #fff); }
+.notes-tint { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #c9ced8; margin-right: 8px; vertical-align: -3px; }
+.notes-busy { display: inline-flex; align-items: center; gap: 5px; color: #5b3aa6; }
+
+/* Drawing pad. */
+.modal.ink-modal { width: min(1060px, 94vw); max-width: none; }
+.ink-hint { user-select: none; }
+.ink-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.ink-btn { display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #343a43; cursor: pointer; font: 12px var(--ui-font); }
+.ink-btn:hover { background: var(--hover); }
+.ink-btn.on { border-color: #c9ced8; background: #f1f3f6; color: var(--accent-dark); }
+.ink-swatch { width: 26px; padding: 0; justify-content: center; }
+.ink-swatch::before { content: ""; width: 16px; height: 16px; border-radius: 50%; background: var(--c); }
+.ink-swatch.on::before { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--c); }
+.ink-size { width: 30px; padding: 0; justify-content: center; }
+.ink-size i { display: block; border-radius: 50%; background: #343a43; }
+.ink-sep { width: 1px; height: 20px; background: #dfe3ea; margin: 0 4px; }
+.ink-stage { border: 1px solid #dfe3ea; border-radius: 10px; overflow: hidden; background: #fff radial-gradient(circle, #dfe3ea 1px, transparent 1.2px) 0 0 / 24px 24px; }
+.ink-canvas { display: block; width: 100%; aspect-ratio: 1000 / 560; touch-action: none; cursor: crosshair; }
+.ink-hint { margin-right: auto; color: var(--muted); font-size: 12px; }
+
+@media print {
+  .doc-page.notes { background: none !important; border-radius: 0; }
+}
+
 @media print {
   .doc-canvas { padding: 0; overflow: visible; }
   .doc-page { box-shadow: none; zoom: 1; width: auto; min-height: 0; padding: 0; background-image: none; }
