@@ -341,6 +341,10 @@ async function openLatexFolder(win, { create = false } = {}) {
   if (res.canceled || !root) return null;
   await require('fs/promises').mkdir(root, { recursive: true });
   await latex.scaffold(root);
+  return openLatexProject(win, root);
+}
+
+async function openLatexProject(win, root) {
   const main = await latex.mainFile(root);
   if (main) settings.addRecent('docs', path.join(root, main));
   openWindow('docs', { app: 'docs', path: main ? path.join(root, main) : null, name: path.basename(root), ext: 'tex', latex: { root, main, open: main } });
@@ -349,6 +353,30 @@ async function openLatexFolder(win, { create = false } = {}) {
 }
 
 ipcMain.handle('latex:open-folder', safe((e, opts) => openLatexFolder(senderWin(e), opts || {})));
+const ZIP_FILTER = [{ name: 'Zipped LaTeX project', extensions: ['zip'] }];
+async function pickZip(win, title) {
+  const res = await dialog.showOpenDialog(win, { title, properties: ['openFile'], filters: ZIP_FILTER });
+  return res.canceled ? null : res.filePaths[0];
+}
+const zipArg = (p) => (typeof p === 'string' && /\.zip$/i.test(p) ? p : null);
+// A .zip of a whole project: unpacked next to the .zip, then opened like a folder.
+ipcMain.handle('latex:open-zip', safe(async (e, zipPath) => {
+  const src = zipArg(zipPath) || await pickZip(senderWin(e), 'Upload a LaTeX project (.zip)');
+  if (!src) return null;
+  const root = latex.zipFolder(src);
+  try {
+    const res = await latex.importZip(src, root);
+    if (!res.added.some((p) => /\.tex$/i.test(p))) throw new Error('There are no .tex files in that .zip.');
+  } catch (err) {
+    await require('fs/promises').rm(root, { recursive: true, force: true });
+    throw err;
+  }
+  return openLatexProject(senderWin(e), root);
+}));
+ipcMain.handle('latex:import-zip', safe(async (e, dir, zipPath) => {
+  const src = zipArg(zipPath) || await pickZip(senderWin(e), 'Add the files in a .zip to this project');
+  return src ? latex.importZip(src, latexRoot(e), dir) : { ok: true, added: [] };
+}));
 ipcMain.handle('latex:list', safe((e) => latex.list(latexRoot(e))));
 ipcMain.handle('latex:sources', safe((e) => latex.sources(latexRoot(e))));
 ipcMain.handle('latex:read', safe((e, rel) => latex.read(latexRoot(e), rel)));

@@ -59,9 +59,9 @@ On Windows the installer registers these types, so **Open with** lists Write, Pl
 
 ## LaTeX projects
 
-Write opens a `.tex` file, or a folder (**File > Open > LaTeX project folder**, or **New > LaTeX project**), as a LaTeX project with three panes:
+Write opens a `.tex` file, or a folder (**File > Open > LaTeX project folder**, or **New > LaTeX project**), as a LaTeX project. A zipped project, such as one downloaded from an online LaTeX editor, opens with **New > Upload LaTeX (.zip)**: Work unpacks it into a folder next to the .zip, finds the main `.tex` file and compiles it. The workspace has an editor, a PDF preview and a Files pop-up:
 
-- **Files**: the project's `.tex`, `.bib`, image and other files, with an outline of the open file's sections. Add files with the paperclip or by dropping them in, drag files between folders, right-click to rename, delete or **Set as main file**. Hide the pane to give the editor more room.
+- **Files**: opens from the **Files** tab next to File, Home and View, or from the **Files** button in the bottom-left corner. It lists the project's `.tex`, `.bib`, image and other files with an outline of the open file's sections. **Upload** adds files, the contents of a .zip, or starts a new project from a .zip; you can also drop files or a .zip onto the list. Drag files between folders, right-click to rename, delete or **Set as main file**. Pin it to keep it open as a pane beside the editor.
 - **Code**: syntax highlighting, and suggestions as you type: `\cite{` lists the keys in your `.bib` files (with author, year and title), `\ref{`, `\eqref{`, `\cref{` and friends list every `\label`, `\begin{` offers environments and fills in the matching `\end`, `\includegraphics{` and `\input{` list project files, and `\` suggests common commands and the ones you defined with `\newcommand`. Ctrl+F finds and replaces, Ctrl+/ comments lines, Ctrl+B and Ctrl+I make bold and italic.
 - **PDF preview**: compiles as you type (or press Ctrl+Enter / Ctrl+S). Errors and warnings show in **Logs** and in the editor margin; click one to jump to the line, or ask the AI to fix them. Double-click the PDF to jump to that spot in the code, and **Show in PDF** (Ctrl+Shift+L) goes the other way.
 

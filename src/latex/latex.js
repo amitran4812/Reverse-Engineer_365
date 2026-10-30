@@ -26,9 +26,9 @@ const api = window.office.latex;
 const prefsKey = `latex:${project.root}`;
 const prefs = (() => {
   try {
-    return { sidebar: true, auto: true, engine: 'auto', sideW: 240, editorFrac: 0.5, closed: [], fontSize: 14, ...JSON.parse(localStorage.getItem(prefsKey) || '{}') };
+    return { dock: false, auto: true, engine: 'auto', sideW: 300, editorFrac: 0.5, closed: [], fontSize: 14, ...JSON.parse(localStorage.getItem(prefsKey) || '{}') };
   } catch {
-    return { sidebar: true, auto: true, engine: 'auto', sideW: 240, editorFrac: 0.5, closed: [], fontSize: 14 };
+    return { dock: false, auto: true, engine: 'auto', sideW: 300, editorFrac: 0.5, closed: [], fontSize: 14 };
   }
 })();
 const savePrefs = () => {
@@ -179,7 +179,7 @@ const homeTab = {
       { type: 'stack', items: [
         { type: 'small', icon: 'newFile', label: 'New file', run: () => newFile('') },
         { type: 'small', icon: 'folder', label: 'New folder', run: () => newFolder('') },
-        { type: 'small', icon: 'attach', label: 'Add files', run: () => uploadTo('') },
+        { type: 'small', icon: 'upload', label: 'Upload', run: (e, b) => uploadMenu(b, '') },
       ] },
       { type: 'big', icon: 'save', label: 'Save All', shortcut: 'Ctrl+S', run: () => shell.save() },
     ] },
@@ -262,7 +262,7 @@ const viewTab = {
   label: 'View',
   groups: [
     { label: 'Panes', items: [
-      { type: 'big', icon: 'sidebar', label: 'Files', run: () => setSidebar(!prefs.sidebar), active: () => prefs.sidebar },
+      { type: 'big', icon: 'folderOpen', label: 'Files', run: () => toggleFiles('top'), active: () => prefs.dock || filesOpen },
       { type: 'big', icon: 'preview', label: 'PDF Preview', run: () => setPreview(prefs.preview === false), active: () => prefs.preview !== false },
       { type: 'big', icon: 'sparkle', label: 'AI Pane', run: () => shell.claude.toggle() },
     ] },
@@ -399,17 +399,18 @@ shell.root.classList.add('app-latex');
 
 const rootEl = h('div', 'tex');
 const side = h('aside', 'tex-side');
-const rail = h('div', 'tex-rail tex-side-rail');
 const splitA = h('div', 'tex-split tex-split-a');
 const edPane = h('section', 'tex-ed-pane');
 const splitB = h('div', 'tex-split tex-split-b');
 const pvPane = h('section', 'tex-pv-pane');
-rootEl.append(rail, side, splitA, edPane, splitB, pvPane);
+rootEl.append(side, splitA, edPane, splitB, pvPane);
 shell.workspace.append(rootEl);
 
-// Side: file tree and outline.
+// Files: a pop-up opened from the Files tab or the corner button, or a pinned
+// pane. It holds the file tree, upload and the outline.
 side.innerHTML = `
   <div class="tex-side-head"><b>Files</b><span class="tex-side-tools"></span></div>
+  <div class="tex-side-summary"></div>
   <div class="tex-tree" tabindex="0"></div>
   <div class="tex-side-head tex-outline-head"><b>Outline</b></div>
   <div class="tex-outline"></div>`;
@@ -423,18 +424,32 @@ const tool = (ic, title, run) => {
   b.onclick = run;
   return b;
 };
+const uploadBtn = h('button', 'tex-upload', `${icon('upload', 16)}<span>Upload</span>${icon('chevronDown', 10)}`);
+uploadBtn.title = 'Add files or a zipped project';
+uploadBtn.onmousedown = (e) => e.preventDefault();
+uploadBtn.onclick = () => uploadMenu(uploadBtn, '');
+const pinBtn = tool('pin', '', () => setDock(!prefs.dock));
 sideTools.append(
+  uploadBtn,
   tool('newFile', 'New file', () => newFile('')),
   tool('folder', 'New folder', () => newFolder('')),
-  tool('attach', 'Add files from your computer', () => uploadTo('')),
   tool('refresh', 'Refresh', () => refreshFiles()),
-  tool('sidebar', 'Hide the file pane', () => setSidebar(false)),
+  pinBtn,
+  tool('close', 'Close', () => (prefs.dock ? setDock(false) : closeFiles())),
 );
-const railBtn = tool('sidebar', 'Show the file pane', () => setSidebar(true));
-rail.append(railBtn, h('span', 'tex-rail-label', 'Files'));
-rail.onclick = (e) => {
-  if (e.target === rail || e.target.classList.contains('tex-rail-label')) setSidebar(true);
-};
+const summaryEl = side.querySelector('.tex-side-summary');
+
+// The same pop-up opens from the ribbon's tab bar and the status bar's corner.
+const filesLabel = () => `${icon('folderOpen', 16)}<span>Files</span><span class="tex-files-count"></span>`;
+const filesTab = h('button', 'rb-tab tex-files-tab', filesLabel());
+filesTab.title = 'Project files and upload';
+filesTab.onclick = () => toggleFiles('top');
+shell.ribbon.tabBar.children[0].after(filesTab);
+const filesCorner = h('button', 'tex-files-corner', filesLabel());
+filesCorner.title = 'Project files and upload';
+filesCorner.onclick = () => toggleFiles('bottom');
+shell.statusLeft.prepend(filesCorner);
+let filesOpen = false;
 
 // Editor pane.
 const edHead = h('div', 'tex-pane-head');
@@ -487,20 +502,46 @@ const pvRail = h('div', 'tex-rail tex-pv-rail');
 pvRail.append(tool('preview', 'Show the preview', () => setPreview(true)), h('span', 'tex-rail-label', 'PDF'));
 rootEl.append(pvRail);
 
-function setSidebar(on) {
-  prefs.sidebar = on;
+function toggleFiles(from) {
+  if (prefs.dock) return setDock(false);
+  if (filesOpen && side.classList.contains(`from-${from}`)) return closeFiles();
+  filesOpen = true;
+  side.classList.toggle('from-top', from === 'top');
+  side.classList.toggle('from-bottom', from === 'bottom');
+  applyLayout();
+  side.querySelector('.tex-node.active')?.scrollIntoView({ block: 'nearest' });
+  treeEl.focus();
+}
+function closeFiles() {
+  if (!filesOpen) return;
+  filesOpen = false;
+  applyLayout();
+}
+function setDock(on) {
+  prefs.dock = on;
+  filesOpen = false;
   savePrefs();
   applyLayout();
 }
+rootEl.addEventListener('pointerdown', (e) => {
+  if (filesOpen && !side.contains(e.target)) closeFiles();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && filesOpen && !document.querySelector('.rb-popup')) closeFiles();
+});
 function setPreview(on) {
   prefs.preview = on;
   savePrefs();
   applyLayout();
 }
 function applyLayout() {
-  rootEl.classList.toggle('no-side', !prefs.sidebar);
+  rootEl.classList.toggle('no-side', !prefs.dock);
+  rootEl.classList.toggle('files-open', filesOpen && !prefs.dock);
+  for (const b of [filesTab, filesCorner]) b.classList.toggle('active', prefs.dock || filesOpen);
+  pinBtn.title = prefs.dock ? 'Unpin: show files as a pop-up' : 'Pin as a pane beside the editor';
+  pinBtn.classList.toggle('on', prefs.dock);
   rootEl.classList.toggle('no-preview', prefs.preview === false);
-  side.style.width = `${prefs.sideW}px`;
+  side.style.width = prefs.dock ? `${Math.max(300, prefs.sideW)}px` : '';
   edPane.style.flex = prefs.preview === false ? '1 1 0' : `${prefs.editorFrac} 1 0`;
   pvPane.style.flex = `${1 - prefs.editorFrac} 1 0`;
   shell.refresh();
@@ -523,7 +564,7 @@ function dragSplit(handle, onMove) {
   });
 }
 dragSplit(splitA, (e) => {
-  prefs.sideW = Math.max(160, Math.min(480, e.clientX - rootEl.getBoundingClientRect().left));
+  prefs.sideW = Math.max(300, Math.min(520, e.clientX - rootEl.getBoundingClientRect().left));
   applyLayout();
 });
 dragSplit(splitB, (e) => {
@@ -578,7 +619,10 @@ function drawTree() {
           prefs.closed = closed ? prefs.closed.filter((p) => p !== f.path) : [...prefs.closed, f.path];
           savePrefs();
           drawTree();
-        } else openFile(f.path);
+        } else {
+          openFile(f.path);
+          closeFiles();
+        }
       };
       row.oncontextmenu = (e) => {
         e.preventDefault();
@@ -605,6 +649,10 @@ function drawTree() {
   };
   walk(tree, 0);
   if (!files.length) treeEl.append(h('div', 'tex-empty-small', 'No files yet.'));
+  const nFiles = files.filter((f) => !f.dir).length;
+  const nDirs = files.length - nFiles;
+  summaryEl.textContent = `${nFiles} file${nFiles === 1 ? '' : 's'}${nDirs ? `, ${nDirs} folder${nDirs === 1 ? '' : 's'}` : ''} · drop files or a .zip here`;
+  for (const el of document.querySelectorAll('.tex-files-count')) el.textContent = nFiles;
 }
 
 treeEl.ondragover = (e) => e.preventDefault();
@@ -621,28 +669,48 @@ async function dropInto(e, dir) {
     if (to !== moved) await renamePath(moved, to);
     return;
   }
-  if (e.dataTransfer.files?.length) {
-    const res = await api.importFiles(e.dataTransfer.files, dir);
+  const dropped = [...(e.dataTransfer.files || [])];
+  if (!dropped.length) return;
+  const zips = dropped.filter((f) => /\.zip$/i.test(f.name));
+  const plain = dropped.filter((f) => !zips.includes(f));
+  const results = [...(plain.length ? [await api.importFiles(plain, dir)] : []), ...(await Promise.all(zips.map((z) => api.importZip(dir, z))))];
+  let added = 0;
+  for (const res of results) {
     if (res?.error) toast(res.error, 'error');
-    else if (res.added.length) toast(`Added ${res.added.length} file${res.added.length === 1 ? '' : 's'}`);
-    await refreshFiles();
+    else added += res.added.length;
   }
+  if (added) toast(`Added ${added} file${added === 1 ? '' : 's'}`);
+  await refreshFiles();
 }
 
 function fileMenu(f, e) {
-  const list = h('div', 'rb-menu');
   const dir = f.dir ? f.path : f.path.split('/').slice(0, -1).join('/');
   const items = [
     ...(f.kind === 'tex' && f.path !== mainFile ? [{ label: 'Set as main file', icon: 'texFile', run: () => setMain(f.path) }] : []),
     ...(f.kind === 'image' ? [{ label: 'Insert into document', icon: 'image', run: () => insertGraphic(f.path) }] : []),
     { label: 'New file here', icon: 'newFile', run: () => newFile(dir) },
     { label: 'New folder here', icon: 'folder', run: () => newFolder(dir) },
-    { label: 'Add files here', icon: 'attach', run: () => uploadTo(dir) },
+    { label: 'Add files here', icon: 'upload', run: () => uploadTo(dir) },
+    { label: 'Add a .zip here', icon: 'zip', run: () => uploadZip(dir) },
     '-',
     { label: 'Rename', icon: 'textbox', run: () => renamePrompt(f) },
     { label: 'Delete', icon: 'trash', run: () => deletePath(f) },
     { label: 'Show in folder', icon: 'open', run: () => api.reveal(f.path) },
   ];
+  popup({ getBoundingClientRect: () => ({ left: e.clientX, bottom: e.clientY }) }, menuList(items));
+}
+
+function uploadMenu(anchor, dir) {
+  popup(anchor, menuList([
+    { label: 'Files from your computer…', icon: 'upload', run: () => uploadTo(dir) },
+    { label: 'Files from a .zip…', icon: 'zip', run: () => uploadZip(dir) },
+    '-',
+    { label: 'New project from a .zip…', icon: 'texFile', run: () => api.openZip().then((r) => r?.error && toast(r.error, 'error')) },
+  ]));
+}
+
+function menuList(items) {
+  const list = h('div', 'rb-menu');
   for (const it of items) {
     if (it === '-') {
       list.append(h('div', 'rb-menu-sep'));
@@ -655,7 +723,7 @@ function fileMenu(f, e) {
     };
     list.append(b);
   }
-  popup({ getBoundingClientRect: () => ({ left: e.clientX, bottom: e.clientY }) }, list);
+  return list;
 }
 
 function setMain(path) {
@@ -694,6 +762,13 @@ async function uploadTo(dir) {
   if (res.added.length) toast(`Added ${res.added.length} file${res.added.length === 1 ? '' : 's'}`);
   await refreshFiles();
   return res.added;
+}
+
+async function uploadZip(dir) {
+  const res = await api.importZip(dir);
+  if (res?.error) return toast(res.error, 'error');
+  if (res.added.length) toast(`Added ${res.added.length} file${res.added.length === 1 ? '' : 's'} from the .zip`);
+  await refreshFiles();
 }
 
 async function renamePrompt(f) {
@@ -964,7 +1039,10 @@ function drawOutline(texts) {
     const row = h('div', 'tex-node tex-outline-item', `<span class="tex-name">${escapeHtml(it.title)}</span>`);
     row.style.paddingLeft = `${10 + (it.level - min) * 12}px`;
     row.title = `${it.kind} · line ${it.line}`;
-    row.onclick = () => openFile(path, it.line);
+    row.onclick = () => {
+      openFile(path, it.line);
+      closeFiles();
+    };
     outlineEl.append(row);
   }
 }
@@ -1194,7 +1272,7 @@ async function insertImageFromComputer() {
 
 const cursorStatus = h('span');
 const statusEngine = h('span');
-shell.statusLeft.append(h('span', '', `${icon('folder', 14)} ${escapeHtml(project.root)}`), cursorStatus);
+shell.statusLeft.append(h('span', 'tex-status-path', `${icon('folder', 14)} ${escapeHtml(project.root)}`), cursorStatus);
 shell.statusRight.append(statusEngine);
 function updateCursorStatus() {
   if (!view) return;
