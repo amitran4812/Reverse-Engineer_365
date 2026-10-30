@@ -11,6 +11,12 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Array formulas spill.** A formula that returns several values (like `=A2:A10*2`, `=ARRAYFORMULA(…)`, `=FILTER(…)` or `=SPLIT(…)`) fills the cells below and to the right. If something is in the way, the cell shows `#REF!`; hover an error to see why.
 - Saving as .xlsx keeps Google-only formulas in the form Google Sheets reads back, so files go back and forth without losing them.
 
+## 0.2.24: Save notes as PDF
+
+- **Save as PDF** is now on Write's **Notes** tab and in the **/** menu, next to Send to Present. It's still under **File > Export** too.
+- PDFs come out on clean white pages. Before, the page margins came out grey in every app, and the cursor showed in Write.
+- If a PDF can't be saved, Write now says why. Before, nothing happened. The most common cause on Windows is that the same PDF is still open in a viewer, so close it and try again, or pick another name.
+
 ## 0.2.21: More Spotfire functions in Plot
 
 - **Statistics**: `valueformax([Vth], [Wafer])` and `valueformin` give one column's value on the row where another is largest or smallest. Also `weightedaverage([Weight], [Value])`, `uniqueconcatenate`, `outliers`, `pctoutliers`, `covariance`, `correlation`, and the `mostcommon` and `countbig` names. All of them work per group with OVER.

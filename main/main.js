@@ -203,13 +203,28 @@ ipcMain.handle('app:export-pdf', async (e, { suggestedName, landscape, pageSize 
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (res.canceled || !res.filePath) return null;
-  const pdf = await win.webContents.printToPDF({
-    printBackground: true,
-    landscape: !!landscape,
-    pageSize: pageSize || 'Letter',
-    margins: pageSize ? { marginType: 'none' } : undefined,
-  });
-  await require('fs/promises').writeFile(res.filePath, pdf);
+  let pdf;
+  // The page margins take the window's grey background colour, so print on white.
+  win.setBackgroundColor('#ffffff');
+  try {
+    pdf = await win.webContents.printToPDF({
+      printBackground: true,
+      landscape: !!landscape,
+      pageSize: pageSize || 'Letter',
+      margins: pageSize ? { marginType: 'none' } : undefined,
+    });
+  } catch (err) {
+    throw new Error(`Couldn’t make the PDF: ${err.message || err}`);
+  } finally {
+    win.setBackgroundColor('#f3f4f7');
+  }
+  try {
+    await require('fs/promises').writeFile(res.filePath, pdf);
+  } catch (err) {
+    // Windows locks a PDF that's open in a viewer.
+    if (['EBUSY', 'EPERM', 'EACCES'].includes(err.code)) throw new Error(`Couldn’t save ${path.basename(res.filePath)}. If it’s open in a PDF viewer, close it and try again, or pick another name.`);
+    throw new Error(`Couldn’t save the PDF: ${err.message || err}`);
+  }
   shell.openPath(res.filePath);
   return res.filePath;
 });
