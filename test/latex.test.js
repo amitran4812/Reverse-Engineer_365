@@ -180,3 +180,37 @@ test('project files stay inside the project folder', async () => {
   fs.rmSync(root, { recursive: true, force: true });
   fs.rmSync(img, { force: true });
 });
+
+test('a project .zip unpacks safely', async () => {
+  const JSZip = require('jszip');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'work-latex-zip-'));
+  const zip = new JSZip();
+  zip.file('paper/main.tex', '\\documentclass{article}');
+  zip.file('paper/refs.bib', '@misc{a, title={A}}');
+  zip.file('paper/figs/plot.png', Buffer.from('89504e470d0a1a0a', 'hex'));
+  zip.file('__MACOSX/paper/._main.tex', 'x');
+  zip.file('paper/.DS_Store', 'x');
+  const zipPath = path.join(tmp, 'My paper.zip');
+  fs.writeFileSync(zipPath, await zip.generateAsync({ type: 'nodebuffer' }));
+  const root = project.zipFolder(zipPath);
+  assert.equal(root, path.join(tmp, 'My paper'));
+  const res = await project.importZip(zipPath, root);
+  assert.deepEqual(res.added.sort(), ['figs/plot.png', 'main.tex', 'refs.bib']);
+  assert.equal(await project.mainFile(root), 'main.tex');
+  assert.equal(project.zipFolder(zipPath), path.join(tmp, 'My paper-2'));
+  assert.deepEqual((await project.importZip(zipPath, root, 'old')).added.sort(), ['old/figs/plot.png', 'old/main.tex', 'old/refs.bib']);
+  assert.deepEqual((await project.importZip(zipPath, root)).added.sort(), ['figs/plot-2.png', 'main-2.tex', 'refs-2.bib']);
+
+  const evil = new JSZip();
+  evil.file('a/ok.tex', 'x');
+  evil.file('b/../../../escape.tex', 'x');
+  const evilPath = path.join(tmp, 'evil.zip');
+  fs.writeFileSync(evilPath, await evil.generateAsync({ type: 'nodebuffer' }));
+  const target = path.join(tmp, 'evil');
+  await project.importZip(evilPath, target).catch((err) => assert.match(err.message, /outside the project/));
+  assert.equal(fs.existsSync(path.join(tmp, 'escape.tex')), false);
+  assert.equal(fs.existsSync(path.join(path.dirname(tmp), 'escape.tex')), false);
+  fs.writeFileSync(path.join(tmp, 'bad.zip'), 'not a zip');
+  await assert.rejects(project.importZip(path.join(tmp, 'bad.zip'), target), /isn’t a .zip/);
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

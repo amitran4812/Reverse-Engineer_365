@@ -141,6 +141,50 @@ async function importPaths(root, paths, dir = '') {
   return { ok: true, added };
 }
 
+// Unpacks a project .zip (the kind online LaTeX editors export) into dest. A
+// single top-level folder is dropped, Mac and Windows clutter is skipped, and
+// every path must stay inside dest. Existing files are kept: clashes get -2.
+const MAX_ZIP_BYTES = 1024 * 1024 * 1024;
+async function importZip(zipPath, dest, dir = '') {
+  const JSZip = require('jszip');
+  const zip = await JSZip.loadAsync(await fsp.readFile(zipPath)).catch(() => {
+    throw new Error('That file isn’t a .zip archive Work can read.');
+  });
+  const clutter = (seg) => seg === '__MACOSX' || seg === '.DS_Store' || seg === 'Thumbs.db' || seg.startsWith('._');
+  let entries = Object.values(zip.files)
+    .filter((f) => !f.dir)
+    .map((f) => ({ f, parts: f.name.replace(/\\/g, '/').split('/').filter((p) => p && p !== '.') }))
+    .filter((e) => e.parts.length && !e.parts.some(clutter));
+  if (!entries.length) throw new Error('The .zip is empty.');
+  if (entries.length > MAX_ENTRIES) throw new Error(`The .zip has more than ${MAX_ENTRIES} files.`);
+  while (entries.every((e) => e.parts.length > 1 && e.parts[0] === entries[0].parts[0])) entries = entries.map((e) => ({ ...e, parts: e.parts.slice(1) }));
+  const target = inside(dest, dir);
+  const added = [];
+  let total = 0;
+  for (const { f, parts } of entries) {
+    let full = inside(target, parts.join('/'));
+    const data = await f.async('nodebuffer');
+    total += data.length;
+    if (total > MAX_ZIP_BYTES) throw new Error('The .zip unpacks to more than 1 GB.');
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    for (let n = 2; fs.existsSync(full); n++) {
+      const ext = path.extname(parts[parts.length - 1]);
+      full = path.join(path.dirname(full), `${path.basename(parts[parts.length - 1], ext)}-${n}${ext}`);
+    }
+    await fsp.writeFile(full, data);
+    added.push(toRel(dest, full));
+  }
+  return { ok: true, added };
+}
+
+// Folder for a project unpacked from a .zip: next to the .zip, named after it.
+function zipFolder(zipPath) {
+  const base = path.join(path.dirname(zipPath), path.basename(zipPath, path.extname(zipPath)).trim() || 'project');
+  let dest = base;
+  for (let n = 2; fs.existsSync(dest); n++) dest = `${base}-${n}`;
+  return dest;
+}
+
 // New project from the template, or nothing if the folder already has .tex files.
 async function scaffold(root) {
   const existing = (await list(root)).filter((f) => f.kind === 'tex');
@@ -433,4 +477,4 @@ async function lastPdf(root, main) {
   return fs.existsSync(file) ? file : null;
 }
 
-module.exports = { inside, list, read, sources, write, create, rename, importPaths, scaffold, mainFile, engines, compile, stop, lastPdf, sourcePath };
+module.exports = { inside, list, read, sources, write, create, rename, importPaths, importZip, zipFolder, scaffold, mainFile, engines, compile, stop, lastPdf, sourcePath };
