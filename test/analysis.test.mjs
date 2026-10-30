@@ -220,6 +220,48 @@ test('spotfire text, logic, conversion and date functions', () => {
   assert.deepEqual(nums('divint(7, 2) + ceiling(1.2) + degrees(pi())'), [185, 185, 185]);
 });
 
+test('more spotfire functions: value-for, weighted, binning, periods, dates, parsing', () => {
+  const day = (m, d) => Date.UTC(2024, m - 1, d);
+  const d = new Dataset({ name: 't', columns: [
+    { name: 'Lot', type: 'string', data: Int32Array.from([0, 0, 0, 1, 1, 1]), dict: ['A', 'B'] },
+    { name: 'Day', type: 'number', data: Float64Array.from([1, 2, 3, 1, 2, 3]) },
+    { name: 'V', type: 'number', data: Float64Array.from([1, 2, 3, 10, 20, 40]) },
+    { name: 'W', type: 'number', data: Float64Array.from([1, 1, 2, 0, 1, 1]) },
+    { name: 'When', type: 'date', data: Float64Array.from([day(1, 31), day(4, 1), day(10, 15), day(12, 30), NaN, day(2, 29)]) },
+    { name: 'Txt', type: 'string', data: Int32Array.from([0, 1, 2, -1, 0, 1]), dict: ['31/01/2024 13:05', '1.234,5', 'yes'] },
+  ] });
+  const ctx = d.exprContext();
+  const nums = (f) => Array.from(evaluateColumn(f, ctx), (x) => (Number.isNaN(x) ? null : Math.round(x * 1e6) / 1e6));
+  const text = (f) => { const v = evaluateColumn(f, ctx); return Array.from(v.codes, (c) => (c < 0 ? null : v.dict[c])); };
+  assert.deepEqual(text('valueformax([V], [Lot])'), Array(6).fill('B'));
+  assert.deepEqual(nums('valueformin([V], [Day]) over [Lot]'), [1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(nums('weightedaverage([W], [V]) over [Lot]'), [2.25, 2.25, 2.25, 30, 30, 30]);
+  assert.deepEqual(text('uniqueconcatenate([Lot])'), Array(6).fill('A, B'));
+  assert.deepEqual(nums('correlation([Day], [Day] * 2)'), Array(6).fill(1));
+  assert.deepEqual(nums('covariance([Day], [V]) over [Lot]'), [1, 1, 1, 15, 15, 15]);
+  assert.deepEqual(nums('pctoftotal([V]) over [Lot]'), [16.666667, 33.333333, 50, 14.285714, 28.571429, 57.142857]);
+  assert.deepEqual(nums('pctdiff([V])'), [null, 100, 50, 233.333333, 100, 100]);
+  assert.deepEqual(nums('outliers([V] ^ 2)'), Array(6).fill(1));
+  assert.deepEqual(nums('pctoutliers([V])'), Array(6).fill(0));
+  assert.deepEqual(nums('sum([V]) over Intersect([Lot], LastPeriods(2, [Day]))'), [1, 3, 5, 10, 30, 60]);
+  assert.deepEqual(nums('sum([V]) over Intersect([Lot], PreviousPeriod([Day]))'), [null, 1, 2, null, 10, 20]);
+  assert.deepEqual(nums('binbyevenintervals([V], 3)'), [1, 1, 1, 1, 14, 27]);
+  assert.deepEqual(nums('binbyspecificlimits([V], 5, 20)'), [1, 1, 1, 5, 20, 20]);
+  assert.deepEqual(nums('binbyevendistribution([V], 2)'), [1, 1, 1, 6.5, 6.5, 6.5]);
+  assert.deepEqual(nums('binbydatetime([When], "Year.Quarter.Month", 2)'), [day(1, 1), day(4, 1), day(10, 1), day(10, 1), null, day(1, 1)]);
+  assert.deepEqual(nums('fiscalyear([When], 10)'), [2024, 2024, 2025, 2025, null, 2024]);
+  assert.deepEqual(nums('fiscalquarter([When], 10)'), [2, 3, 1, 1, null, 2]);
+  assert.deepEqual(nums('yearandweek([When])'), [202405, 202414, 202442, 202501, null, 202409]);
+  assert.deepEqual(nums('totaldays(datediff([When], date("2024-12-31")))'), [335, 274, 77, 1, null, 306]);
+  assert.deepEqual(nums('hours(timespan(1, 5, 30))') , Array(6).fill(5));
+  assert.deepEqual(nums('toepochseconds(date("2024-01-01"))'), Array(6).fill(1704067200));
+  assert.deepEqual(nums('parsedatetime([Txt], "dd/MM/yyyy HH:mm")'), [Date.UTC(2024, 0, 31, 13, 5), null, null, null, Date.UTC(2024, 0, 31, 13, 5), null]);
+  assert.deepEqual(nums('parsereal([Txt])'), [null, 1234.5, null, null, null, 1234.5]);
+  assert.deepEqual(nums('boolean([Txt])'), [null, null, 1, null, null, null]);
+  d.addCalculated('Month', 'datetrunc("month", [When])');
+  assert.equal(d.column('Month').type, 'date');
+});
+
 test('filters, calculated columns and marking work together', () => {
   const d = sample();
   d.addCalculated('z', '[x] * 2');

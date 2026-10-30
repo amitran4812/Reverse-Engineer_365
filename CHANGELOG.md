@@ -2,6 +2,15 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.21: More Spotfire functions in Plot
+
+- **Statistics**: `valueformax([Vth], [Wafer])` and `valueformin` give one column's value on the row where another is largest or smallest. Also `weightedaverage([Weight], [Value])`, `uniqueconcatenate`, `outliers`, `pctoutliers`, `covariance`, `correlation`, and the `mostcommon` and `countbig` names. All of them work per group with OVER.
+- **OVER**: `LastPeriods(3, [Date])` for moving windows, plus `PreviousPeriod`, `NextPeriod` and `All`.
+- **Shortcuts**: `pctoftotal([Qty])` (percent of the total, or of each group's total with OVER) and `pctdiff([Qty])` (percent change from the row before).
+- **Binning**: `binbyevenintervals`, `binbyevendistribution`, `binbyspecificlimits`, `autobinnumeric` and `binbydatetime([Date], "Year.Quarter.Month", 2)`. Each row gets the start of its bin, so bins sort and plot in order.
+- **Dates and time spans**: `datetrunc`, `dayofmonth`, `yearandweek`, `fiscalyear`, `fiscalquarter` and `fiscalmonth` (with the month your fiscal year starts in), `toepochseconds` and `fromepochseconds`. `datediff(from, to)` gives a time span, which you can read with `totaldays`, `totalhours`, `days`, `hours`, `minutes` and `seconds`, or build with `timespan(…)`.
+- **Conversion**: `parsedate([Text], "dd/MM/yyyy")` and `parsedatetime` read dates written in any layout. `parsereal` and `parseinteger` read numbers with thousands separators or a decimal comma, and `boolean` reads yes/no and true/false.
+
 ## 0.2.20: Right-click menus for cells, rows, columns and sheets
 
 - Right-click a cell, a row number or a column letter in Plot to **Cut**, **Copy**, **Insert row above**, **Insert column left**, **Delete row** or **Delete column**, or clear contents or formats. Right-clicking a row number or column letter selects the whole row or column first. Undo (Ctrl+Z) puts deleted rows and columns back.
