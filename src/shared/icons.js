@@ -66,6 +66,7 @@ const P = {
   freeze: '<rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path class="a-s" d="M2.5 7h15M7 2.5v15"/>',
   grid: '<rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 7.5h15M2.5 12.5h15M7.5 2.5v15M12.5 2.5v15"/>',
   fx: '<path class="a-s" d="M9 3.5c-2 0-2.5 1-2.8 3L5 16.5M3.5 8.5h5M11 9l5 6M16 9l-5 6"/>',
+  toPresent: '<rect x="2" y="3" width="13" height="10" rx="1"/><path d="M5 10.5V8.5M8 10.5V6M11 10.5V7.5"/><path class="a-s" d="M11 16.5h7M15.5 14l2.5 2.5-2.5 2.5"/>',
   slideNew: '<rect x="2" y="4" width="13" height="9" rx="1"/><path class="a-s" d="M16 13v6M13 16h6"/>',
   duplicate: '<rect x="2" y="2" width="11" height="8" rx="1"/><rect class="a" x="7" y="8" width="11" height="8" rx="1"/>',
   trash: '<path d="M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12"/><path class="a-s" d="M8.5 8v6M11.5 8v6"/>',

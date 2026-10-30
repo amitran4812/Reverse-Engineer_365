@@ -115,6 +115,7 @@ test('pptx export writes one slide per model slide with text and notes', async (
         { type: 'text', x: 80, y: 160, w: 800, h: 120, style: { fontSize: 54, color: '#ffffff', align: 'center' }, paragraphs: [{ runs: [{ text: 'Hello', bold: true }] }] },
         { type: 'shape', shape: 'ellipse', x: 10, y: 10, w: 50, h: 50, style: { fill: '#4cc9f0' } },
         { type: 'image', x: 0, y: 0, w: 10, h: 10, src: PNG_1x1 },
+        { type: 'table', x: 500, y: 300, w: 300, h: 60, rows: [['Year', 'Sales'], ['2021', '42']], style: { fontSize: 14, fill: '#c2532d', color: '#2b2f36' } },
       ] },
       { elements: [{ type: 'text', x: 60, y: 130, w: 840, h: 370, style: { fontSize: 22, bullets: true }, paragraphs: [{ bullet: true, runs: [{ text: 'One' }] }, { bullet: true, runs: [{ text: 'Two' }] }] }] },
     ],
@@ -125,6 +126,9 @@ test('pptx export writes one slide per model slide with text and notes', async (
   const s1 = await zip.file('ppt/slides/slide1.xml').async('string');
   assert.match(s1, /Hello/);
   assert.match(s1, /15213B/);
+  assert.match(s1, /<a:tbl>/);
+  assert.match(s1, /Sales/);
+  assert.match(s1, /C2532D/);
   const s2 = await zip.file('ppt/slides/slide2.xml').async('string');
   assert.match(s2, /One/);
   assert.match(s2, /buChar/);

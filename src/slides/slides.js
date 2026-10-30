@@ -3,18 +3,10 @@ import './slides.css';
 import { createShell, escapeHtml, h, toast } from '../shared/shell.js';
 import { markdownToHtml, sanitize } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
+import { THEMES } from '../shared/themes.js';
 
 const W = 960;
 const H = 540;
-
-const THEMES = {
-  paper: { label: 'Paper', bg: '#ffffff', text: '#2b2f36', title: '#1f2328', accent: '#c2532d', font: 'Calibri' },
-  slate: { label: 'Slate', bg: '#f1f3f5', text: '#343a40', title: '#1c64c4', accent: '#1c64c4', font: 'Segoe UI' },
-  midnight: { label: 'Midnight', bg: '#15213b', text: '#d9e1f2', title: '#ffffff', accent: '#4cc9f0', font: 'Segoe UI' },
-  sunrise: { label: 'Sunrise', bg: '#fff4e6', text: '#4a2c17', title: '#b7410e', accent: '#f08c00', font: 'Georgia' },
-  forest: { label: 'Forest', bg: '#1f3d2b', text: '#e2efe6', title: '#ffffff', accent: '#9bd35a', font: 'Trebuchet MS' },
-  berry: { label: 'Berry', bg: '#ffffff', text: '#2b2d42', title: '#6a2bb8', accent: '#6a2bb8', font: 'Verdana', band: true },
-};
 
 const LAYOUTS = {
   title: { label: 'Title Slide', make: () => [
@@ -122,6 +114,8 @@ function renderSlideInto(container, s, { interactive = false } = {}) {
       img.src = el.src;
       img.draggable = false;
       node.append(img);
+    } else if (el.type === 'table') {
+      node.append(tableNode(el, t));
     }
     if (interactive) {
       if (el.id === selected) node.classList.add('selected');
@@ -137,6 +131,20 @@ function renderSlideInto(container, s, { interactive = false } = {}) {
   }
   container.append(surface);
   return surface;
+}
+
+function tableNode(el, t) {
+  const table = h('table', 'slide-table');
+  table.style.setProperty('--tb-accent', el.style?.fill || t.accent);
+  table.style.setProperty('--tb-text', el.style?.color || t.text);
+  table.style.fontSize = `${el.style?.fontSize || 14}px`;
+  table.style.fontFamily = el.style?.fontFamily || t.font;
+  (el.rows || []).forEach((row, r) => {
+    const tr = h('tr', r === 0 && el.header !== false ? 'head' : '');
+    for (const v of row) tr.append(h(r === 0 && el.header !== false ? 'th' : 'td', '', escapeHtml(v ?? '')));
+    table.append(tr);
+  });
+  return table;
 }
 
 function fitStage() {
@@ -297,7 +305,7 @@ function cleanHtml(html) {
 
 function startEditing(id) {
   const el = slide().elements.find((e) => e.id === id);
-  if (!el || el.type === 'image') return;
+  if (!el || el.type === 'image' || el.type === 'table') return;
   snapshot();
   selected = id;
   editingId = id;
@@ -669,7 +677,7 @@ function toggleCoach() {
 }
 
 function slideOutline(s, i) {
-  const parts = s.elements.filter((e) => e.type !== 'image').map((e) => `  [${e.role || e.type}] ${plainText(e) || '(empty)'}`);
+  const parts = s.elements.filter((e) => e.type !== 'image').map((e) => `  [${e.role || e.type}] ${(e.type === 'table' ? e.rows.map((r) => r.join(' | ')).join('; ') : plainText(e)) || '(empty)'}`);
   if (s.elements.some((e) => e.type === 'image')) parts.push('  [image]');
   return `Slide ${i + 1} (${LAYOUTS[s.layout]?.label || s.layout})\n${parts.join('\n')}${s.notes ? `\n  [notes] ${s.notes}` : ''}`;
 }
@@ -892,9 +900,9 @@ function exportModel() {
       if (s.layout === 'title' || s.layout === 'section') els.push({ type: 'shape', shape: 'rect', x: s.layout === 'title' ? 430 : 80, y: s.layout === 'title' ? 288 : 290, w: 100, h: 4, style: { fill: t.accent } });
       for (const el of s.elements) {
         if (el.type === 'text' && !el.html) continue;
-        const style = { ...el.style, color: el.type === 'shape' && !el.style?.color ? '#ffffff' : elementColor(el), fill: el.type === 'shape' ? el.style?.fill || t.accent : el.style?.fill, fontFamily: el.style?.fontFamily || t.font };
+        const style = { ...el.style, color: el.type === 'shape' && !el.style?.color ? '#ffffff' : elementColor(el), fill: el.type === 'shape' || el.type === 'table' ? el.style?.fill || t.accent : el.style?.fill, fontFamily: el.style?.fontFamily || t.font };
         if (el.role === 'title' && style.bold === undefined) style.bold = true;
-        els.push({ ...el, style, paragraphs: el.type === 'image' ? undefined : htmlToParagraphs(el.html, style) });
+        els.push({ ...el, style, paragraphs: el.type === 'image' || el.type === 'table' ? undefined : htmlToParagraphs(el.html, style) });
       }
       return { ...s, bg: s.bg || t.bg, elements: els };
     }),
