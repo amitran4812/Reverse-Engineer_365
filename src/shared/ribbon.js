@@ -47,7 +47,14 @@ export function popup(anchor, content) {
   document.body.append(p);
   const w = p.offsetWidth;
   p.style.left = `${Math.max(6, Math.min(r.left, window.innerWidth - w - 6))}px`;
-  p.style.top = `${r.bottom + 2}px`;
+  // Keep the popup inside the window: open upward when there is more room
+  // above the anchor, and cap the height so the rest scrolls.
+  const below = window.innerHeight - r.bottom - 8;
+  const above = r.top - 8;
+  const up = p.offsetHeight > below && above > below;
+  p.style.maxHeight = `${Math.max(120, up ? above : below)}px`;
+  if (up) p.style.bottom = `${window.innerHeight - r.top + 2}px`;
+  else p.style.top = `${Math.min(r.bottom + 2, window.innerHeight - 128)}px`;
   openPopup = p;
   return p;
 }

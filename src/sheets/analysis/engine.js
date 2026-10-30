@@ -3,7 +3,7 @@
 // the raw table; they get what they draw (points, M4-reduced lines, bins).
 
 import { cellText, formatNumber, isoDate } from './columns.js';
-import { evaluateColumn, parse, references } from './expr.js';
+import { evaluateColumn, isDateValue, markDate, parse, references } from './expr.js';
 import { fit } from './fit.js';
 
 export const POINT_CAP = 1_500_000;
@@ -63,7 +63,8 @@ export class Dataset {
       column: (name, letter) => {
         const c = this.column(name, letter);
         if (!c) return undefined;
-        return c.type === 'string' ? { codes: c.data, dict: c.dict } : c.data;
+        if (c.type === 'string') return { codes: c.data, dict: c.dict };
+        return c.type === 'date' ? markDate(c.data) : c.data;
       },
     };
   }
@@ -89,7 +90,7 @@ export class Dataset {
     if (existing && [...refs.cols].some((r) => r.toLowerCase() === name.toLowerCase())) throw new Error('A column can’t refer to itself');
     const v = evaluateColumn(ast, this.exprContext());
     const col = v instanceof Float64Array
-      ? { name, type: 'number', data: v, expr }
+      ? { name, type: isDateValue(v) ? 'date' : 'number', data: v, expr }
       : { name, type: 'string', data: v.codes, dict: v.dict, expr };
     if (existing) this.cols[this.cols.indexOf(existing)] = col;
     else this.cols.push(col);
