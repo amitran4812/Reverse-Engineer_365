@@ -21,7 +21,7 @@ function listen(server, host, port) {
 }
 
 // Opens the provider's sign-in page in the browser and resolves with the token response.
-async function authorize({ authUrl, tokenUrl, clientId, clientSecret, scope, redirectHost, extraParams = {} }) {
+async function authorize({ authUrl, tokenUrl, clientId, clientSecret, scope, redirectHost, redirectPath = '', extraParams = {}, tokenParams = {} }) {
   const verifier = b64url(crypto.randomBytes(32));
   const challenge = b64url(crypto.createHash('sha256').update(verifier).digest());
   const state = b64url(crypto.randomBytes(16));
@@ -40,7 +40,7 @@ async function authorize({ authUrl, tokenUrl, clientId, clientSecret, scope, red
     const ok = code && url.searchParams.get('state') === state;
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(DONE_PAGE(ok, ok ? 'You can close this tab and go back to Work.' : 'Close this tab and try again from Work.'));
-    if (ok) finish.resolve(code);
+    if (ok) finish.resolve({ code, clientId: url.searchParams.get('client_id') });
     else finish.reject(new Error(error || 'Sign-in was cancelled.'));
   };
   const v4 = http.createServer(handler);
@@ -48,7 +48,7 @@ async function authorize({ authUrl, tokenUrl, clientId, clientSecret, scope, red
   const port = await listen(v4, '127.0.0.1', 0);
   // "localhost" may resolve to ::1 in the browser; listen there too when IPv6 is available.
   await listen(v6, '::1', port).catch(() => null);
-  const redirectUri = `http://${redirectHost}:${port}`;
+  const redirectUri = `http://${redirectHost}:${port}${redirectPath}`;
   const timer = setTimeout(() => finish.reject(new Error('Sign-in timed out. Try again.')), 5 * 60 * 1000);
   try {
     const params = new URLSearchParams({
@@ -64,15 +64,19 @@ async function authorize({ authUrl, tokenUrl, clientId, clientSecret, scope, red
     const url = `${authUrl}?${params}`;
     if (process.env.REA_OAUTH_AUTOFOLLOW) fetch(url).catch(() => {}); // tests: a mock auth server redirects straight back
     else await shell.openExternal(url);
-    const code = await result;
-    return await tokenRequest(tokenUrl, {
+    const back = await result;
+    // A provider that registers the app on first sign-in hands back its client id with the code.
+    const issued = back.clientId || clientId;
+    const tokens = await tokenRequest(tokenUrl, {
       grant_type: 'authorization_code',
-      code,
+      code: back.code,
       redirect_uri: redirectUri,
-      client_id: clientId,
+      client_id: issued,
       code_verifier: verifier,
       ...(clientSecret ? { client_secret: clientSecret } : {}),
+      ...tokenParams,
     });
+    return back.clientId ? { client_id: issued, ...tokens } : tokens;
   } finally {
     clearTimeout(timer);
     v4.close();
@@ -91,8 +95,9 @@ async function tokenRequest(tokenUrl, form) {
   return { ...body, expires_at: Date.now() + (body.expires_in || 3600) * 1000 };
 }
 
-function refresh(tokenUrl, { clientId, clientSecret, refreshToken, scope }) {
+function refresh(tokenUrl, { clientId, clientSecret, refreshToken, scope, extra = {} }) {
   return tokenRequest(tokenUrl, {
+    ...extra,
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: clientId,

@@ -150,3 +150,50 @@ test('fits recover their parameters', () => {
   const custom = fit(x, Float64Array.from(x, (v) => 2 * Math.sqrt(v) + 1), { model: 'custom', equation: 'a*sqrt(x)+b' });
   assert.ok(Math.abs(custom.coef[0] - 2) < 1e-4 && Math.abs(custom.coef[1] - 1) < 1e-4);
 });
+
+import { appendRows, joinColumns, matchColumns } from '../src/sheets/analysis/combine.js';
+
+const table = async (text) => parseDelimited(reader(enc(text)));
+
+test('Add Rows matches columns by name, maps the rest and labels the source', async () => {
+  const a = await table('Site,Temp\nA,1\nB,2\n');
+  const b = await table('site,Temperature,Extra\nC,3,x\n');
+  const auto = matchColumns(a.columns, b.columns);
+  assert.deepEqual(auto.map((m) => m.to), ['Site', null, null]);
+  const res = appendRows(a.columns, a.rows, b.columns, b.rows, {
+    mapping: [{ from: 'site', to: 'Site' }, { from: 'Temperature', to: 'Temp' }, { from: 'Extra', to: null }],
+    source: { name: 'File', base: 'a.csv', add: 'b.csv' },
+  });
+  const c = byName(res);
+  assert.equal(res.rows, 3);
+  assert.deepEqual(Array.from(c.Temp.data), [1, 2, 3]);
+  assert.deepEqual([0, 1, 2].map((i) => cellText(c.Site, i)), ['A', 'B', 'C']);
+  assert.equal(cellText(c.Extra, 0), '');
+  assert.equal(cellText(c.Extra, 2), 'x');
+  assert.deepEqual([0, 2].map((i) => cellText(c.File, i)), ['a.csv', 'b.csv']);
+});
+
+test('Add Rows turns a column into text when the files disagree on its type', async () => {
+  const a = await table('id,v\n1,10\n');
+  const b = await table('id,v\nx7,20\n');
+  const c = byName(appendRows(a.columns, a.rows, b.columns, b.rows));
+  assert.equal(c.id.type, 'string');
+  assert.deepEqual([0, 1].map((i) => cellText(c.id, i)), ['1', 'x7']);
+  assert.equal(c.v.type, 'number');
+});
+
+test('Add Columns joins on keys with each join type', async () => {
+  const a = await table('id,name\n1,one\n2,two\n3,three\n');
+  const b = await table('key,score\n2,20\n3,30\n3,31\n4,40\n');
+  const keys = [{ base: 'id', add: 'key' }];
+  const left = joinColumns(a.columns, a.rows, b.columns, b.rows, { keys, how: 'left' });
+  assert.equal(left.rows, 4);
+  assert.deepEqual(Array.from(byName(left).score.data).map((v) => (Number.isNaN(v) ? null : v)), [null, 20, 30, 31]);
+  assert.equal(joinColumns(a.columns, a.rows, b.columns, b.rows, { keys, how: 'inner' }).rows, 3);
+  const full = byName(joinColumns(a.columns, a.rows, b.columns, b.rows, { keys, how: 'full' }));
+  assert.deepEqual(Array.from(full.id.data), [1, 2, 3, 3, 4]);
+  assert.equal(cellText(full.name, 4), '');
+  const right = joinColumns(a.columns, a.rows, b.columns, b.rows, { keys, how: 'right' });
+  assert.equal(right.rows, 4);
+  assert.ok(!byName(right).key);
+});

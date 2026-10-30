@@ -166,7 +166,7 @@ export class ClaudePane {
         this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect Claude</b><p>Sign in with your Anthropic account and paste a key to turn on Claude in Write, Plot and Present. You can use OpenAI or Gemini instead in File > Options.</p></div>`));
         this.setup.append(await settingsForm(() => this.loadSettings()));
       } else {
-        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect ${escapeHtml(s.providerLabel)}</b><p>Add your ${escapeHtml(s.providerLabel)} API key and pick a model.</p></div>`));
+        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect ${escapeHtml(s.providerLabel)}</b><p>${s.provider === 'chatgpt' ? 'Sign in with your ChatGPT account' : `Add your ${escapeHtml(s.providerLabel)} API key`} and pick a model.</p></div>`));
         this.setup.append(await aiSettings(() => this.loadSettings()));
       }
     }
