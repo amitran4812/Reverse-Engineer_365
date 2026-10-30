@@ -1,6 +1,6 @@
-// Plot's analysis workspace: a page of linked visualizations over one big
-// table, with a data panel and plot properties on the left, filters and fit
-// results on the right and the rows underneath. Data lives in a worker.
+// Plot's analysis workspace: pages of linked visualizations over one big
+// table, with a tool rail and data panel on the left, filters and fit results
+// on the right and the details table underneath. Data lives in a worker.
 
 import { icon } from '../../shared/icons.js';
 import { dialog, escapeHtml, h, toast } from '../../shared/shell.js';
@@ -12,6 +12,7 @@ import { FUNCTIONS } from './expr.js';
 import { formatValue } from './axes.js';
 
 const TYPE_ICON = { number: 'colNumber', string: 'colText', date: 'colDate' };
+const AGGED = ['bar', 'pie', 'table'];
 const ROW_H = 22;
 const fmtInt = (n) => Number(n || 0).toLocaleString();
 let plotSeq = 0;
@@ -21,13 +22,16 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   const client = new DataClient();
   const st = {
     info: null,
-    plots: [],
-    views: new Map(),
+    pages: [{ title: 'Page 1', plots: [] }],
+    page: 0,
+    get plots() { return this.pages[this.page].plots; },
+    set plots(v) { this.pages[this.page].plots = v; },
+    steps: [],
     active: null,
     source: null,
     projectPath: null,
     calculated: [],
-    table: { open: true, source: 'filtered', height: 210 },
+    table: { open: true, source: 'auto', height: 210 },
     panels: { left: true, right: true },
     undo: null,
   };
@@ -35,14 +39,16 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   // ---------- DOM ----------
   const root = h('div', 'an-root');
   const main = h('div', 'an-main');
+  const rail = h('nav', 'an-rail');
   const left = h('aside', 'an-side an-left');
   const center = h('section', 'an-center');
   const right = h('aside', 'an-side an-right');
+  const pagesBar = h('div', 'an-pages');
   const page = h('div', 'an-page');
   const empty = h('div', 'an-empty');
   const loading = h('div', 'an-loading', '<div class="an-load-box"><b></b><div class="an-bar"><i></i></div><span></span></div>');
-  center.append(page, empty, loading);
-  main.append(left, center, right);
+  center.append(pagesBar, page, empty, loading);
+  main.append(rail, left, center, right);
   const tableWrap = h('div', 'an-table');
   root.append(main, tableWrap);
   const statusEl = h('span', 'an-status');
@@ -131,7 +137,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     setLoading(`Opening ${src.name}…`, 0);
     try {
       const info = await client.callWith({ onProgress: (p) => setLoading(`Opening ${src.name}…`, p.fraction, p.rows) }, 'load', { handle: src.handle, size: src.size, name: src.name }, opts);
-      st.source = { kind: 'file', path: src.path, name: src.name, ext: src.ext, sheet: opts.sheet ?? null };
+      st.source = { kind: 'file', handle: src, path: src.path, name: src.name, ext: src.ext, sheet: opts.sheet ?? null };
+      st.steps = [];
       await afterLoad(info, restore);
       const secs = (performance.now() - started) / 1000;
       toast(`Opened ${fmtInt(info.rows)} rows × ${info.columns.length} columns in ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`);
@@ -150,6 +157,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     try {
       const info = await client.call('fromRows', sheet.matrix, sheet.name);
       st.source = { kind: 'sheet', name: sheet.name, rows: sheet.matrix };
+      st.steps = [];
       await afterLoad(info);
     } catch (err) {
       toast(err.message, 'error');
@@ -162,6 +170,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     st.calculated = [];
     st.undo = null;
     if (restore) {
+      if (restore.steps?.length) await replaySteps(restore.steps, restore.stepHandles || []);
       for (const c of restore.calculated || []) {
         try {
           st.info = (await client.call('addCalculated', c.name, c.expr)).info;
@@ -171,14 +180,29 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
         }
       }
       if (restore.filters) st.info = await client.call('restoreFilters', restore.filters).catch(() => st.info);
-      clearPlots();
-      for (const spec of restore.plots || []) addPlot(spec, { quiet: true });
+      restorePages(restore.pages || [{ title: 'Page 1', plots: restore.plots || [] }], restore.page || 0);
       if (restore.table) Object.assign(st.table, restore.table);
     } else {
       const cols = new Set(info.columns.map((c) => c.name));
-      const keep = st.plots.filter((v) => [v.spec.x, ...(v.spec.y || []).map((s) => s.col)].filter(Boolean).every((n) => cols.has(n)));
-      for (const v of st.plots) if (!keep.includes(v)) removePlot(v, { quiet: true });
-      if (!st.plots.length) defaultPlots();
+      const fits = (v) => [v.spec.x, v.spec.color, ...(v.spec.y || []).map((s) => s.col)].filter(Boolean).every((n) => cols.has(n));
+      st.pages.forEach((pg, i) => {
+        for (const v of [...pg.plots]) if (!fits(v)) {
+          if (i === st.page) removePlot(v, { quiet: true });
+          else {
+            pg.plots = pg.plots.filter((x) => x !== v);
+            v.destroy();
+          }
+        }
+      });
+      if (!st.pages.some((pg) => pg.plots.length)) {
+        st.pages = [{ title: 'Page 1', plots: [] }];
+        st.page = 0;
+        defaultPlots();
+      }
+    }
+    if (!restore) {
+      openFilters.clear();
+      for (const c of st.info.columns.slice(0, 8)) openFilters.add(c.name);
     }
     root.classList.add('has-data');
     renderAll();
@@ -216,6 +240,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       case 'histogram': return { type, x: yNum || xNum, color: null };
       case 'box': return { type, x: texts[0]?.name || null, y: [{ col: yNum }] };
       case 'heatmap': return { type, x: xNum, y: [{ col: yNum }], bins: 40 };
+      case 'pie': return { type, x: texts[0]?.name || xNum, y: [], agg: 'count' };
+      case 'table': return { type, x: texts[0]?.name || null, color: texts[1]?.name || null, y: yNum ? [{ col: yNum }] : [], agg: yNum ? 'mean' : 'count' };
       default: return { type: 'scatter', x: xNum, y: [{ col: yNum }] };
     }
   }
@@ -263,6 +289,109 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     page.style.gridTemplateRows = `repeat(${Math.max(1, Math.ceil(n / colsN))}, minmax(220px, 1fr))`;
   }
 
+  // ---------- pages ----------
+  function renderPages() {
+    pagesBar.innerHTML = '';
+    st.pages.forEach((pg, i) => {
+      const tab = h('button', `an-page-tab${i === st.page ? ' on' : ''}`, `<span>${escapeHtml(pg.title)}</span>`);
+      tab.title = 'Double-click to rename; right-click for more';
+      tab.onclick = () => switchPage(i);
+      tab.ondblclick = () => renamePage(i);
+      tab.oncontextmenu = (e) => {
+        e.preventDefault();
+        pageMenu(i, tab);
+      };
+      pagesBar.append(tab);
+    });
+    const add = h('button', 'an-page-add', icon('plus', 14));
+    add.title = 'New page';
+    add.onclick = () => addPage();
+    pagesBar.append(add);
+  }
+
+  function pageMenu(i, anchor) {
+    const m = h('div', 'rb-menu');
+    const item = (label, ic, run, enabled = true) => {
+      const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${label}</span>`);
+      b.disabled = !enabled;
+      b.onclick = () => {
+        closePopup();
+        run();
+      };
+      m.append(b);
+    };
+    item('Rename…', 'textbox', () => renamePage(i));
+    item('Duplicate page', 'duplicate', () => addPage(st.pages[i]));
+    item('Move left', 'prevSlide', () => movePage(i, -1), i > 0);
+    item('Move right', 'nextSlide', () => movePage(i, 1), i < st.pages.length - 1);
+    item('Delete page', 'trash', () => deletePage(i), st.pages.length > 1);
+    popup(anchor, m);
+  }
+
+  function showPage(i) {
+    for (const v of st.plots) v.el.remove();
+    st.page = Math.max(0, Math.min(st.pages.length - 1, i));
+    for (const v of st.plots) page.append(v.el);
+    layoutPage();
+    st.active = null;
+    setActive(st.plots[0] || null);
+    renderPages();
+  }
+
+  function switchPage(i) {
+    if (i === st.page) return;
+    showPage(i);
+    refreshPlots();
+  }
+
+  function addPage(copyFrom = null) {
+    const n = st.pages.length + 1;
+    st.pages.push({ title: copyFrom ? `${copyFrom.title} (copy)` : `Page ${n}`, plots: [] });
+    const specs = copyFrom ? copyFrom.plots.map((v) => ({ ...JSON.parse(JSON.stringify(v.spec)), id: undefined })) : [];
+    showPage(st.pages.length - 1);
+    for (const spec of specs) addPlot(spec, { quiet: true });
+    refreshPlots();
+    renderProps();
+  }
+
+  async function renamePage(i) {
+    const got = await dialog({ title: 'Page name', fields: [{ name: 'title', label: 'Name', value: st.pages[i].title }] });
+    if (got?.title.trim()) {
+      st.pages[i].title = got.title.trim().slice(0, 60);
+      renderPages();
+    }
+  }
+
+  function movePage(i, d) {
+    const [pg] = st.pages.splice(i, 1);
+    st.pages.splice(i + d, 0, pg);
+    if (st.page === i) st.page = i + d;
+    else if (st.page === i + d) st.page = i;
+    renderPages();
+  }
+
+  function deletePage(i) {
+    if (st.pages.length < 2) return;
+    for (const v of st.pages[i].plots) v.destroy();
+    st.pages.splice(i, 1);
+    const next = i < st.page ? st.page - 1 : Math.min(st.page, st.pages.length - 1);
+    showPage(next);
+    refreshPlots();
+  }
+
+  function restorePages(pages, current) {
+    for (const pg of st.pages) for (const v of pg.plots) v.destroy();
+    st.pages = pages.map((pg) => ({ title: pg.title || 'Page', plots: [] }));
+    if (!st.pages.length) st.pages = [{ title: 'Page 1', plots: [] }];
+    pages.forEach((pg, i) => {
+      st.page = i;
+      for (const spec of pg.plots || []) addPlot(spec, { quiet: true });
+      for (const v of st.plots) v.el.remove();
+    });
+    st.page = Math.min(current, st.pages.length - 1);
+    showPage(st.page);
+  }
+
   function setActive(view) {
     if (st.active === view) return;
     st.active?.el.classList.remove('active');
@@ -296,7 +425,73 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       afterMark();
     },
     clearMark: () => clearMark(),
+    axisMenu: (v, key, anchor) => axisMenu(v, key, anchor),
+    axisPick: (v, key, name) => axisPick(v, key, name),
   };
+
+  // Applies a column chosen on a plot's axis selector.
+  function axisPick(v, key, name, agg = undefined) {
+    setActive(v);
+    const col = st.info?.columns.find((c) => c.name === name);
+    setProp((x) => {
+      if (key === 'x') x.x = name || null;
+      else if (key === 'color') x.color = name || null;
+      else if (key === 'value') {
+        x.y = name ? [{ col: name }] : [];
+        if (agg) x.agg = agg;
+        else if (!name) x.agg = 'count';
+        else if (!x.agg || x.agg === 'count') x.agg = col?.type === 'string' ? 'count' : 'mean';
+      } else if (key === 'y') {
+        const i = x.y.findIndex((y) => (y.axis || 'left') === 'left');
+        if (i >= 0) x.y[i] = { ...x.y[i], col: name };
+        else x.y.unshift({ col: name });
+      }
+    });
+  }
+
+  function axisMenu(v, key, anchor) {
+    const s = v.spec;
+    const m = h('div', 'rb-menu an-axis-menu');
+    const numericOnly = (key === 'y') || (key === 'x' && s.type === 'histogram');
+    const optional = key === 'color' || key === 'value' || (key === 'x' && ['bar', 'box', 'table'].includes(s.type));
+    const current = key === 'x' ? s.x : key === 'color' ? s.color : s.y?.[0]?.col;
+    if (key === 'value') {
+      const aggs = h('div', 'an-agg-row');
+      for (const a of AGGS) {
+        const b = h('button', `an-agg${(s.y?.[0]?.col ? s.agg : 'count') === a.value ? ' on' : ''}`, escapeHtml(a.label));
+        b.onclick = () => {
+          closePopup();
+          axisPick(v, key, a.value === 'count' && !s.y?.[0]?.col ? null : s.y?.[0]?.col || null, a.value);
+        };
+        aggs.append(b);
+      }
+      m.append(aggs);
+    }
+    const search = h('input', 'an-axis-search');
+    search.placeholder = 'Find a column…';
+    m.append(search);
+    const list = h('div', 'an-axis-list');
+    const fill = () => {
+      list.innerHTML = '';
+      const q = search.value.trim().toLowerCase();
+      const opts = [];
+      if (optional) opts.push({ name: null, label: key === 'value' ? '(row count)' : '(none)' });
+      for (const c of st.info.columns) if ((!numericOnly || c.type !== 'string') && (!q || c.name.toLowerCase().includes(q))) opts.push({ name: c.name, label: c.name, c });
+      for (const o of opts) {
+        const b = h('button', `rb-menu-item${(o.name || null) === (current || null) ? ' on' : ''}`, `${o.c ? icon(o.c.expr ? 'colCalc' : TYPE_ICON[o.c.type], 14) : icon('close', 14)}<span>${escapeHtml(o.label)}</span>`);
+        b.onclick = () => {
+          closePopup();
+          axisPick(v, key, o.name);
+        };
+        list.append(b);
+      }
+    };
+    search.oninput = fill;
+    fill();
+    m.append(list);
+    popup(anchor, m);
+    setTimeout(() => search.focus(), 0);
+  }
 
   function refreshPlots(except = null) {
     for (const v of st.plots) if (v !== except) v.fetch();
@@ -304,7 +499,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
 
   async function afterMark() {
     refreshPlots();
-    if (st.table.source === 'marked') tableReset();
+    if (st.table.source !== 'filtered') tableReset();
     else tableRender();
     renderStatus();
     shell.refresh?.();
@@ -462,8 +657,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     const numeric = (c) => c.type !== 'string';
     const typeSel = select(Object.entries(PLOT_TYPES).map(([value, t]) => ({ value, label: t.label })), s.type, (t) => setProp((x) => {
       x.type = t;
-      if (t === 'bar' && !x.agg) x.agg = x.y?.[0]?.col ? 'mean' : 'count';
-      if (['bar', 'box', 'heatmap', 'histogram'].includes(t)) x.y = (x.y || []).slice(0, 1);
+      if (AGGED.includes(t) && !x.agg) x.agg = x.y?.[0]?.col ? 'mean' : 'count';
+      if (['bar', 'box', 'heatmap', 'histogram', 'pie', 'table'].includes(t)) x.y = (x.y || []).slice(0, 1);
       if (t === 'histogram') x.y = [];
     }));
     propsHost.append(field('Type', typeSel));
@@ -476,9 +671,10 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       v.draw();
     };
     propsHost.append(field('Title', title));
-    const xOptional = s.type === 'bar' || s.type === 'box';
+    const xOptional = ['bar', 'box', 'table'].includes(s.type);
     const xFilter = s.type === 'histogram' ? numeric : () => true;
-    propsHost.append(droppable(field(s.type === 'bar' || s.type === 'box' ? 'Category (X)' : 'X axis', select(colOptions(xFilter, xOptional ? '(none)' : null), s.x || '', (val) => setProp((x) => { x.x = val || null; }))), (name) => setProp((x) => { x.x = name; })));
+    const xLabel = { bar: 'Category (X)', box: 'Category (X)', pie: 'Slices', table: 'Rows' }[s.type] || 'X axis';
+    propsHost.append(droppable(field(xLabel, select(colOptions(xFilter, xOptional ? '(none)' : null), s.x || '', (val) => setProp((x) => { x.x = val || null; }))), (name) => setProp((x) => { x.x = name; })));
     if (s.type === 'scatter' || s.type === 'line') {
       const box = h('div', 'an-series');
       s.y.forEach((ys, i) => {
@@ -505,20 +701,21 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       box.append(add);
       propsHost.append(droppable(field('Y axis', box), (name) => setProp((x) => { x.y.push({ col: name }); })));
     } else if (s.type !== 'histogram') {
-      const yFilter = s.type === 'bar' ? () => true : numeric;
-      propsHost.append(droppable(field(s.type === 'bar' ? 'Value (Y)' : 'Y axis', select(colOptions(yFilter, s.type === 'bar' ? '(row count)' : null), s.y?.[0]?.col || '', (val) => setProp((x) => {
+      const agged = AGGED.includes(s.type);
+      const yFilter = agged ? () => true : numeric;
+      propsHost.append(droppable(field(agged ? (s.type === 'bar' ? 'Value (Y)' : 'Value') : 'Y axis', select(colOptions(yFilter, agged ? '(row count)' : null), s.y?.[0]?.col || '', (val) => setProp((x) => {
         x.y = val ? [{ col: val }] : [];
-        if (x.type === 'bar' && !val) x.agg = 'count';
-        if (x.type === 'bar' && val && x.agg === 'count') x.agg = 'mean';
+        if (AGGED.includes(x.type) && !val) x.agg = 'count';
+        if (AGGED.includes(x.type) && val && x.agg === 'count') x.agg = 'mean';
       }))), (name) => setProp((x) => { x.y = [{ col: name }]; })));
     }
-    if (s.type === 'bar' && s.y?.[0]?.col) propsHost.append(field('Aggregation', select(AGGS, s.agg || 'sum', (val) => setProp((x) => { x.agg = val; }))));
+    if (AGGED.includes(s.type) && s.y?.[0]?.col) propsHost.append(field('Aggregation', select(AGGS, s.agg || 'sum', (val) => setProp((x) => { x.agg = val; }))));
     if (s.type === 'heatmap') {
       propsHost.append(field('Color by value', select(colOptions(numeric, '(row count)'), s.z || '', (val) => setProp((x) => { x.z = val || null; if (val && !x.agg) x.agg = 'mean'; }))));
       if (s.z) propsHost.append(field('Aggregation', select(AGGS.filter((a) => a.value !== 'median' && a.value !== 'std'), s.agg || 'mean', (val) => setProp((x) => { x.agg = val; }))));
     }
-    if (['scatter', 'line', 'bar', 'histogram'].includes(s.type) && (s.y || []).length <= 1) {
-      propsHost.append(droppable(field('Color by', select(colOptions(() => true, '(none)'), s.color || '', (val) => setProp((x) => { x.color = val || null; }))), (name) => setProp((x) => { x.color = name; })));
+    if (['scatter', 'line', 'bar', 'histogram', 'table'].includes(s.type) && (s.y || []).length <= 1) {
+      propsHost.append(droppable(field(s.type === 'table' ? 'Columns' : 'Color by', select(colOptions(() => true, '(none)'), s.color || '', (val) => setProp((x) => { x.color = val || null; }))), (name) => setProp((x) => { x.color = name; })));
     }
     if (s.type === 'box') propsHost.append(check('Color each box', !!s.color, (on) => setProp((x) => { x.color = on ? x.x : null; })));
     if (s.type === 'histogram' || s.type === 'heatmap') {
@@ -1113,8 +1310,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   function renderTableHead() {
     tableHead.innerHTML = '';
     if (!st.info) return;
-    const title = h('b', '', 'Rows');
-    const src = select([{ value: 'filtered', label: 'Rows that pass the filters' }, { value: 'marked', label: 'Marked rows' }], st.table.source, (v) => {
+    const title = h('b', '', `${icon('details', 14)} Details`);
+    const src = select([{ value: 'auto', label: 'Marked rows, or all when none are marked' }, { value: 'marked', label: 'Marked rows' }, { value: 'filtered', label: 'Rows that pass the filters' }], st.table.source, (v) => {
       st.table.source = v;
       tableReset();
     });
@@ -1125,6 +1322,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     close.onclick = () => togglePanel('table');
     tableHead.append(title, src, h('span', 'an-table-count'), h('span', 'an-spacer'), exp, close);
   }
+
+  const tableSource = () => (st.table.source === 'auto' ? (st.info?.marked ? 'marked' : 'filtered') : st.table.source);
 
   function tableReset() {
     tableTop = 0;
@@ -1138,10 +1337,11 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     if (!st.info || !st.table.open) return;
     const token = ++tableToken;
     const count = visibleRows() + 1;
-    const res = await client.call('rows', tableTop, count, st.table.source).catch(() => null);
+    const source = tableSource();
+    const res = await client.call('rows', tableTop, count, source).catch(() => null);
     if (!res || token !== tableToken) return;
     tableTotal = res.total;
-    tableHead.querySelector('.an-table-count').textContent = `${fmtInt(res.total)} rows`;
+    tableHead.querySelector('.an-table-count').textContent = `${fmtInt(res.total)} ${source === 'marked' ? 'marked ' : ''}rows`;
     const scrollH = Math.min(MAX_SCROLL, res.total * ROW_H + ROW_H);
     tableSpacer.style.height = `${scrollH}px`;
     if (colWidths.length !== res.columns.length) colWidths = res.columns.map((c, j) => Math.max(70, Math.min(260, Math.max(c.length, ...res.rows.map((r) => String(r[j] ?? '').length)) * 7 + 22)));
@@ -1150,7 +1350,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     res.rows.forEach((r, k) => {
       html += `<div class="an-row${res.marked[k] ? ' marked' : ''}" data-id="${res.ids[k]}" style="grid-template-columns:${tpl}"><span class="n">${fmtInt(res.ids[k] + 1)}</span>${r.map((v) => `<span>${escapeHtml(v)}</span>`).join('')}</div>`;
     });
-    if (!res.total) html += `<div class="an-table-empty">${st.table.source === 'marked' ? 'No rows are marked. Drag across a plot to mark rows.' : 'No rows pass the filters.'}</div>`;
+    if (!res.total) html += `<div class="an-table-empty">${source === 'marked' ? 'No rows are marked. Drag across a plot to mark rows.' : 'No rows pass the filters.'}</div>`;
     tableRows.innerHTML = html;
     tableRows.style.width = `${64 + colWidths.reduce((a, b) => a + b, 0)}px`;
   }
@@ -1260,10 +1460,12 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   function projectState() {
     return {
       app: 'Plot analysis',
-      version: 1,
+      version: 2,
       source: st.source?.kind === 'file' ? { path: st.source.path, name: st.source.name, ext: st.source.ext, sheet: st.source.sheet } : st.source ? { rows: st.source.rows, name: st.source.name } : null,
+      steps: st.steps.map((x) => ({ kind: x.kind, name: x.name, opts: x.opts, source: { path: x.source.path, name: x.source.name, ext: x.source.ext, sheet: x.source.sheet } })),
       calculated: st.calculated,
-      plots: st.plots.map((v) => v.spec),
+      pages: st.pages.map((pg) => ({ title: pg.title, plots: pg.plots.map((v) => v.spec) })),
+      page: st.page,
       table: { open: st.table.open, source: st.table.source, height: st.table.height },
     };
   }
@@ -1284,8 +1486,9 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     return true;
   }
 
-  async function restoreProject({ project, projectPath, handle }) {
+  async function restoreProject({ project, projectPath, handle, stepHandles = [] }) {
     st.projectPath = projectPath;
+    project = { ...project, stepHandles };
     if (project.source?.rows) {
       const info = await client.call('fromRows', project.source.rows, project.source.name || 'Sheet');
       st.source = { kind: 'sheet', name: project.source.name, rows: project.source.rows };
@@ -1298,6 +1501,315 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     }
     await loadSource(handle, { sheet: project.source?.sheet ?? null, restore: project });
     await refitAll();
+  }
+
+  // ---------- tool rail ----------
+  const VIZ_MENU = [
+    ['scatter', 'chartScatter', 'Scatter'], ['line', 'chartLine', 'Line'], ['bar', 'chartBar', 'Bar'],
+    ['histogram', 'chartHist', 'Histogram'], ['box', 'chartBox', 'Box plot'], ['heatmap', 'chartHeat', 'Heat map'],
+    ['pie', 'chartPie', 'Pie'], ['table', 'chartTable', 'Cross table'], ['multi', 'chartMulti', 'Two-axis line'],
+  ];
+
+  function vizMenu(anchor) {
+    const m = h('div', 'rb-menu an-viz-menu');
+    m.append(h('div', 'an-viz-menu-head', 'Add a visualization'));
+    const grid = h('div', 'an-viz-grid');
+    for (const [type, ic, label] of VIZ_MENU) {
+      const b = h('button', 'an-viz-pick', `${icon(ic, 26)}<span>${label}</span>`);
+      b.onclick = () => {
+        closePopup();
+        addPlot(newSpec(type));
+      };
+      grid.append(b);
+    }
+    m.append(grid);
+    popup(anchor, m);
+  }
+
+  function dataMenu(anchor) {
+    const m = h('div', 'rb-menu');
+    const item = (label, ic, run, enabled = true, note = '') => {
+      const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${label}${note ? `<small>${note}</small>` : ''}</span>`);
+      b.disabled = !enabled;
+      b.onclick = () => {
+        closePopup();
+        run();
+      };
+      m.append(b);
+    };
+    item('Open data file…', 'database', () => openData());
+    item('Use this sheet’s data', 'table', () => useSheet());
+    item('Add rows…', 'addRows', () => addData('rows'), !!st.info, 'Stack another file under this data');
+    item('Add columns…', 'addColumns', () => addData('columns'), !!st.info, 'Join another file on matching keys');
+    item('Data tables…', 'dataTables', () => dataTables(), !!st.info, 'Sources and the steps applied to them');
+    popup(anchor, m);
+  }
+
+  function renderRail() {
+    rail.innerHTML = '';
+    const btn = (ic, tip, run, on = null) => {
+      const b = h('button', `an-rail-btn${on?.() ? ' on' : ''}`, icon(ic, 20));
+      b.title = tip;
+      b.onclick = () => run(b);
+      rail.append(b);
+      return b;
+    };
+    btn('database', 'Files and data', (b) => dataMenu(b));
+    btn('vizTypes', 'Add a visualization', (b) => vizMenu(b));
+    rail.append(h('span', 'an-rail-sep'));
+    btn('panelLeft', 'Data panel', () => togglePanel('left'), () => st.panels.left);
+    btn('filter', 'Filters', () => togglePanel('right'), () => st.panels.right);
+    btn('details', 'Details table', () => togglePanel('table'), () => st.table.open);
+    rail.append(h('span', 'an-rail-sep'));
+    btn('fitCurve', 'Fit a curve to the selected plot', (b) => fitMenu(b));
+    btn('sparkle', 'Ask Claude to build plots and filters', () => shell.claude?.runQuick(aiQuick));
+    rail.append(h('span', 'an-spacer'));
+    btn('save', 'Save the analysis', () => saveProject());
+  }
+
+  // ---------- combining data ----------
+  async function pickSide() {
+    const picked = await window.office.data.openDialog();
+    if (picked?.error) {
+      toast(picked.error, 'error');
+      return null;
+    }
+    if (!picked) return null;
+    return readSide(picked);
+  }
+
+  async function readSide(src, sheet = null) {
+    let opts = { ext: src.ext };
+    if ((src.ext === 'xlsx' || src.ext === 'xlsm') && sheet == null) {
+      const sheets = await client.call('sheets', { handle: src.handle, size: src.size, name: src.name });
+      if (sheets.length > 1) {
+        const pick = await dialog({ title: 'Choose a sheet', fields: [{ name: 'sheet', label: 'Sheet', type: 'select', options: sheets.map((x, i) => ({ value: String(i), label: x.name })) }], ok: 'Open' });
+        if (!pick) return null;
+        sheet = Number(pick.sheet);
+      }
+    }
+    if (sheet != null) opts = { ...opts, sheet };
+    setLoading(`Reading ${src.name}…`, 0);
+    try {
+      const side = await client.callWith({ onProgress: (p) => setLoading(`Reading ${src.name}…`, p.fraction, p.rows) }, 'loadSide', { handle: src.handle, size: src.size, name: src.name }, opts);
+      return { side, source: { handle: src, path: src.path, name: src.name, ext: src.ext, sheet: opts.sheet ?? null } };
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  const ownColumns = () => st.info.columns.filter((c) => !c.expr);
+
+  function rowsDialogBody(side) {
+    const body = h('div', 'an-combine');
+    body.append(h('p', 'muted', `${escapeHtml(side.name)} has ${fmtInt(side.rows)} rows. Match each of its columns to a column here; unmatched columns become new columns.`));
+    const table = h('div', 'an-map');
+    table.append(h('div', 'an-map-row an-map-head', '<span>Column in the new file</span><span>Goes into</span>'));
+    const options = [{ value: '\u0000new', label: '(new column)' }, { value: '\u0000skip', label: '(leave out)' }, ...ownColumns().map((c) => ({ value: c.name, label: c.name }))];
+    const selects = side.match.map((m) => {
+      const col = side.columns.find((c) => c.name === m.from);
+      const row = h('div', 'an-map-row', `<span>${icon(TYPE_ICON[col.type], 13)} ${escapeHtml(m.from)}</span>`);
+      const sel = select(options, m.to ?? '\u0000new', () => {});
+      row.append(sel);
+      table.append(row);
+      return { from: m.from, sel };
+    });
+    body.append(table);
+    const src = h('div', 'an-combine-source');
+    const on = h('input');
+    on.type = 'checkbox';
+    on.checked = true;
+    const name = h('input');
+    name.value = 'Source';
+    const a = h('input');
+    a.value = st.steps.length ? 'Original data' : st.info.name;
+    const b = h('input');
+    b.value = side.name;
+    const label = h('label', 'an-check');
+    label.append(on, document.createTextNode(' Add a column that tells which file each row came from'));
+    src.append(label, field('Column name', name), field('Label for the rows already here', a), field('Label for the new rows', b));
+    body.append(src);
+    body.read = () => ({
+      mapping: selects.map(({ from, sel }) => ({ from, to: sel.value === '\u0000new' ? null : sel.value === '\u0000skip' ? '' : sel.value })),
+      source: on.checked ? { name: name.value.trim() || 'Source', base: a.value || 'Original', add: b.value || side.name } : null,
+    });
+    return body;
+  }
+
+  function columnsDialogBody(side) {
+    const body = h('div', 'an-combine');
+    body.append(h('p', 'muted', `${escapeHtml(side.name)} has ${fmtInt(side.rows)} rows. Rows are matched where the key columns have equal values.`));
+    const keysBox = h('div', 'an-keys');
+    const mine = ownColumns();
+    const keyRow = (k = {}) => {
+      const row = h('div', 'an-key-row');
+      const guess = k.base || mine.find((c) => side.columns.some((x) => x.name.toLowerCase() === c.name.toLowerCase()))?.name || mine[0]?.name;
+      const a = select(mine.map((c) => ({ value: c.name, label: c.name })), guess, () => {});
+      const otherGuess = k.add || side.columns.find((x) => x.name.toLowerCase() === String(guess).toLowerCase())?.name || side.columns[0].name;
+      const b = select(side.columns.map((c) => ({ value: c.name, label: c.name })), otherGuess, () => {});
+      const rm = h('button', 'btn an-x', icon('close', 12));
+      rm.type = 'button';
+      rm.title = 'Remove this key';
+      rm.onclick = () => {
+        if (keysBox.querySelectorAll('.an-key-row').length > 1) row.remove();
+      };
+      row.append(a, h('span', 'an-key-eq', '='), b, rm);
+      row.read = () => ({ base: a.value, add: b.value });
+      keysBox.append(row);
+    };
+    keysBox.append(h('div', 'an-map-row an-map-head', '<span>Column here</span><span>Column in the new file</span>'));
+    keyRow();
+    const more = h('button', 'btn an-small', `${icon('plus', 12)} Add key column`);
+    more.type = 'button';
+    more.onclick = () => {
+      keyRow();
+      keysBox.append(more);
+    };
+    keysBox.append(more);
+    body.append(h('b', '', 'Match rows on'), keysBox);
+    const how = select(Object.entries(side.joins).map(([value, label]) => ({ value, label })), 'left', () => {});
+    body.append(field('Join', how));
+    const list = h('div', 'an-values an-bring');
+    const checks = side.columns.map((c) => {
+      const l = h('label', 'an-value an-bring-col');
+      const box = h('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      l.append(box, h('span', '', `${icon(TYPE_ICON[c.type], 12)} ${escapeHtml(c.name)}`));
+      list.append(l);
+      return { name: c.name, box };
+    });
+    body.append(h('b', '', 'Columns to add'), list);
+    const syncKeys = () => {
+      const used = new Set([...keysBox.querySelectorAll('.an-key-row')].map((r) => r.read().add));
+      for (const c of checks) c.box.closest('label').hidden = used.has(c.name);
+    };
+    keysBox.addEventListener('change', syncKeys);
+    keysBox.addEventListener('click', () => setTimeout(syncKeys, 0));
+    syncKeys();
+    body.read = () => {
+      const keys = [...keysBox.querySelectorAll('.an-key-row')].map((r) => r.read());
+      return { keys, how: how.value, include: checks.filter((c) => c.box.checked).map((c) => c.name) };
+    };
+    return body;
+  }
+
+  async function addData(kind) {
+    if (!st.info) return toast('Open a data file first');
+    let got;
+    try {
+      got = await pickSide();
+    } catch (err) {
+      return toast(err.message, 'error');
+    }
+    if (!got) return undefined;
+    const body = kind === 'rows' ? rowsDialogBody(got.side) : columnsDialogBody(got.side);
+    const ok = await dialog({ title: kind === 'rows' ? `Add rows from ${got.side.name}` : `Add columns from ${got.side.name}`, body, wide: true, ok: kind === 'rows' ? 'Add rows' : 'Add columns' });
+    if (!ok) {
+      client.call('dropSide').catch(() => {});
+      return undefined;
+    }
+    const opts = body.read();
+    const step = { kind, source: got.source, opts, name: got.side.name };
+    try {
+      await applyStep(step);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    return undefined;
+  }
+
+  async function applyStep(step, { quiet = false } = {}) {
+    const before = st.info.rows;
+    const beforeCols = st.info.columns.length;
+    const res = await client.call(step.kind === 'rows' ? 'addRows' : 'addColumns', step.opts);
+    st.info = res.info;
+    step.summary = step.kind === 'rows'
+      ? `+${fmtInt(res.info.rows - before)} rows`
+      : `${res.info.columns.length - beforeCols >= 0 ? '+' : ''}${res.info.columns.length - beforeCols} columns, ${JOINS_SHORT[step.opts.how] || step.opts.how} join on ${step.opts.keys.map((k) => k.base).join(', ')} → ${fmtInt(res.info.rows)} rows`;
+    st.steps.push(step);
+    if (quiet) return;
+    renderAll();
+    refreshPlots();
+    renderFilters();
+    toast(step.kind === 'rows' ? `Added ${fmtInt(res.info.rows - before)} rows from ${step.name}` : `Added columns from ${step.name}; ${fmtInt(res.info.rows)} rows now`);
+  }
+  const JOINS_SHORT = { left: 'left', inner: 'inner', right: 'right', full: 'full' };
+
+  // Reopens the original data and runs the steps again (project restore, step removal).
+  async function replaySteps(steps, handles = []) {
+    st.steps = [];
+    for (const [i, step] of steps.entries()) {
+      const src = step.source.handle || handles[i];
+      if (!src) {
+        toast(`Can't find ${step.source.name || 'a file'} that this analysis adds data from`, 'error');
+        continue;
+      }
+      try {
+        const got = await readSide(src, step.source.sheet);
+        if (!got) continue;
+        await applyStep({ ...step, source: { ...step.source, handle: src } }, { quiet: true });
+      } catch (err) {
+        toast(`${step.name}: ${err.message}`, 'error');
+      }
+    }
+  }
+
+  async function removeStep(i) {
+    const keep = st.steps.filter((_, k) => k !== i);
+    const src = st.source;
+    try {
+      if (src.kind === 'sheet') st.info = await client.call('fromRows', src.rows, src.name);
+      else {
+        setLoading(`Opening ${src.name}…`, 0);
+        st.info = await client.callWith({ onProgress: (p) => setLoading(`Opening ${src.name}…`, p.fraction, p.rows) }, 'load', { handle: src.handle.handle, size: src.handle.size, name: src.name }, { ext: src.ext, sheet: src.sheet ?? undefined });
+        setLoading(null);
+      }
+      await replaySteps(keep);
+      for (const c of st.calculated) st.info = (await client.call('addCalculated', c.name, c.expr).catch(() => ({ info: st.info }))).info;
+    } catch (err) {
+      setLoading(null);
+      toast(err.message, 'error');
+    }
+    renderAll();
+    refreshPlots();
+    renderFilters();
+  }
+
+  async function dataTables() {
+    if (!st.info) return;
+    const body = h('div', 'an-tables');
+    const src = st.source;
+    const list = h('div', 'an-steps');
+    list.append(h('div', 'an-step', `${icon('database', 16)}<div><b>${escapeHtml(src?.name || st.info.name)}</b><small>${src?.kind === 'sheet' ? 'From the sheet' : escapeHtml(src?.path || '')}</small></div>`));
+    st.steps.forEach((step, i) => {
+      const row = h('div', 'an-step', `${icon(step.kind === 'rows' ? 'addRows' : 'addColumns', 16)}<div><b>${step.kind === 'rows' ? 'Add rows' : 'Add columns'} from ${escapeHtml(step.name)}</b><small>${escapeHtml(step.summary || '')}</small></div>`);
+      const rm = h('button', 'btn an-small', 'Remove');
+      rm.type = 'button';
+      rm.onclick = () => {
+        body.closest('form')?.requestSubmit();
+        removeStep(i);
+      };
+      row.append(rm);
+      list.append(row);
+    });
+    for (const c of st.calculated) list.append(h('div', 'an-step', `${icon('colCalc', 16)}<div><b>Calculated column ${escapeHtml(c.name)}</b><small><code>${escapeHtml(c.expr)}</code></small></div>`));
+    body.append(list, h('p', 'muted', `Result: ${fmtInt(st.info.rows)} rows × ${st.info.columns.length} columns.`));
+    const actions = h('div', 'an-tables-actions');
+    const addR = h('button', 'btn', `${icon('addRows', 14)} Add rows…`);
+    const addC = h('button', 'btn', `${icon('addColumns', 14)} Add columns…`);
+    addR.type = addC.type = 'button';
+    addR.onclick = () => {
+      body.closest('form')?.requestSubmit();
+      addData('rows');
+    };
+    addC.onclick = () => {
+      body.closest('form')?.requestSubmit();
+      addData('columns');
+    };
+    actions.append(addR, addC);
+    body.append(actions);
+    await dialog({ title: 'Data tables', body, wide: true, ok: 'Close', cancel: null });
   }
 
   // ---------- panels ----------
@@ -1318,6 +1830,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       st.panels[which] = !st.panels[which];
       applyPanels();
     }
+    renderRail();
     shell.refresh?.();
   }
 
@@ -1331,6 +1844,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   }
 
   function renderAll() {
+    renderRail();
+    renderPages();
     renderLeft();
     renderRight();
     renderTableHead();
@@ -1395,7 +1910,7 @@ ${plots}
     const made = [];
     for (const p of plan.plots || []) {
       const ys = [...(p.y || []).map((col) => ({ col })), ...(p.rightAxis || []).map((col) => ({ col, axis: 'right' }))];
-      const spec = { type: p.type, title: p.title || null, x: p.x || null, y: ys, color: p.color || null, agg: p.agg || (p.type === 'bar' ? (ys.length ? 'mean' : 'count') : undefined), bins: p.bins || null, z: p.value || null, logX: !!p.logX, logY: !!p.logY };
+      const spec = { type: p.type, title: p.title || null, x: p.x || null, y: ys, color: p.color || null, agg: p.agg || (['bar', 'pie', 'table'].includes(p.type) ? (ys.length ? 'mean' : 'count') : undefined), bins: p.bins || null, z: p.value || null, logX: !!p.logX, logY: !!p.logY };
       const v = addPlot(spec, { quiet: true });
       if (v) made.push(v);
     }
@@ -1455,7 +1970,7 @@ ${plots}
         items: {
           type: 'object',
           properties: {
-            type: { type: 'string', enum: ['scatter', 'line', 'bar', 'histogram', 'box', 'heatmap'] },
+            type: { type: 'string', enum: ['scatter', 'line', 'bar', 'histogram', 'box', 'heatmap', 'pie', 'table'] },
             title: { type: 'string' },
             x: { type: 'string', description: 'X column (category column for bar and box; empty for none).' },
             y: { type: 'array', items: { type: 'string' }, description: 'Y columns on the left axis. Empty for histogram, or for a bar chart of row counts.' },
@@ -1498,7 +2013,7 @@ ${plots}
       'You are helping in the analysis workspace of Plot. The open dataset is described in <analysis>. Answer the request below by returning a plan.',
       'Use exact column names from <columns>. Formulas refer to columns as [Column name] and support + - * / ^, comparisons, and, or, not, if(c, a, b), abs, sqrt, exp, ln, log10, round, min, max, mean, std, cumsum, diff, lag, movavg and contains.',
       'Only create plots, filters, calculated columns or fits the request asks for or clearly needs; leave lists empty otherwise. For a plain question, answer it in reply and leave everything else empty.',
-      'Plot types: scatter and line (x and y numeric or date; a line can take several y columns and rightAxis for a second y axis), bar (category x and an aggregated y, or row counts), histogram (one numeric x), box (numeric y grouped by an optional category x) and heatmap (x and y, optional value).',
+      'Plot types: scatter and line (x and y numeric or date; a line can take several y columns and rightAxis for a second y axis), bar (category x and an aggregated y, or row counts), histogram (one numeric x), box (numeric y grouped by an optional category x), heatmap (x and y, optional value), pie (slices by category x, sized by an aggregated y or row counts) and table (a cross table: rows by category x, columns by the color column, cells an aggregated y or counts).',
       'Fit models: linear, poly (with degree), exp, expdecay, power, log, gauss, lorentz, boltzmann, logistic, michaelis, custom (with equation). Fits only apply to scatter or line plots.',
     ].join('\n'),
     format: PLAN_SCHEMA,
@@ -1529,6 +2044,11 @@ ${plots}
             ...(sendToSheet ? [{ label: 'Marked rows to a new sheet', icon: 'table', run: () => toSheet('marked') }, { label: 'Filtered rows to a new sheet', icon: 'table', run: () => toSheet('filtered') }] : []),
           ] },
         ] },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'addRows', label: 'Add Rows', title: 'Stack another file under this data', run: () => addData('rows'), enabled: needData },
+          { type: 'small', icon: 'addColumns', label: 'Add Columns', title: 'Join another file on matching key columns', run: () => addData('columns'), enabled: needData },
+          { type: 'small', icon: 'dataTables', label: 'Data Tables', title: 'Sources and the steps applied to them', run: () => dataTables(), enabled: needData },
+        ] },
       ] },
       { label: 'Visualizations', items: [
         { type: 'big', icon: 'chartScatter', label: 'Scatter', run: () => addPlot(newSpec('scatter')), enabled: needData },
@@ -1539,7 +2059,12 @@ ${plots}
           { type: 'small', icon: 'chartBox', label: 'Box Plot', run: () => addPlot(newSpec('box')), enabled: needData },
           { type: 'small', icon: 'chartHeat', label: 'Heat Map', run: () => addPlot(newSpec('heatmap')), enabled: needData },
         ] },
-        { type: 'big', icon: 'chartMulti', label: 'Multi-Axis', title: 'Line plot with a second Y axis', run: () => addPlot(newSpec('multi')), enabled: needData },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'chartPie', label: 'Pie', run: () => addPlot(newSpec('pie')), enabled: needData },
+          { type: 'small', icon: 'chartTable', label: 'Cross Table', run: () => addPlot(newSpec('table')), enabled: needData },
+          { type: 'small', icon: 'chartMulti', label: 'Two-Axis Line', title: 'Line plot with a second Y axis', run: () => addPlot(newSpec('multi')), enabled: needData },
+        ] },
+        { type: 'big', icon: 'slideNew', label: 'New Page', title: 'Add a page of visualizations', run: () => addPage(), enabled: needData },
       ] },
       { label: 'Filter & Mark', items: [
         { type: 'stack', items: [
@@ -1564,7 +2089,7 @@ ${plots}
         { type: 'stack', items: [
           { type: 'small', icon: 'panelLeft', label: 'Data Panel', run: () => togglePanel('left'), active: () => st.panels.left },
           { type: 'small', icon: 'panel', label: 'Filters', run: () => togglePanel('right'), active: () => st.panels.right },
-          { type: 'small', icon: 'panelBottom', label: 'Rows', run: () => togglePanel('table'), active: () => st.table.open },
+          { type: 'small', icon: 'details', label: 'Details', run: () => togglePanel('table'), active: () => st.table.open },
         ] },
       ] },
       { label: 'AI', items: [{ type: 'big', icon: 'sparkle', label: 'Ask AI', title: 'Describe the plots or filters you want', run: () => shell.claude?.runQuick(aiQuick) }] },
@@ -1579,7 +2104,14 @@ ${plots}
     onShow?.();
     const handle = analysis.path ? await window.office.data.launch() : null;
     if (handle?.error) return toast(handle.error, 'error');
-    if (analysis.project) return restoreProject({ project: analysis.project, projectPath: analysis.projectPath, handle });
+    if (analysis.project) {
+      const stepHandles = [];
+      for (let i = 0; i < (analysis.project.steps || []).length; i += 1) {
+        const got = await window.office.data.launch(i);
+        stepHandles.push(got && !got.error ? got : null);
+      }
+      return restoreProject({ project: analysis.project, projectPath: analysis.projectPath, handle, stepHandles });
+    }
     if (handle) return loadSource(handle);
     return undefined;
   }

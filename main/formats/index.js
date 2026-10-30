@@ -70,7 +70,8 @@ async function analysisLaunch(file, ext, name, size) {
   if (ext === 'workplot') {
     const project = JSON.parse(await fs.readFile(file, 'utf8'));
     const source = resolveSource(file, project.source);
-    return { app: 'sheets', path: null, name, ext, data: BLANK.sheets(), analysis: { project, projectPath: file, path: source } };
+    const steps = (project.steps || []).map((st) => resolveSource(file, st.source));
+    return { app: 'sheets', path: null, name, ext, data: BLANK.sheets(), analysis: { project, projectPath: file, path: source, steps } };
   }
   if (ANALYSIS_ALWAYS.includes(ext) || size > (ANALYSIS_OVER[ext] ?? Infinity)) {
     return { app: 'sheets', path: null, name: name.replace(/\.[^.]+$/, ''), ext, data: BLANK.sheets(), analysis: { path: file } };

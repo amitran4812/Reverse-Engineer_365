@@ -253,8 +253,9 @@ const safe = (fn) => async (e, ...args) => {
 };
 // Plot's analysis workspace: data files by handle, exports.
 ipcMain.handle('data:open-dialog', safe((e) => data.openDialog(senderWin(e), e.sender.id)));
-ipcMain.handle('data:launch', safe((e) => {
-  const file = launches.get(e.sender.id)?.file?.analysis?.path;
+ipcMain.handle('data:launch', safe((e, step) => {
+  const a = launches.get(e.sender.id)?.file?.analysis;
+  const file = Number.isInteger(step) ? a?.steps?.[step] : a?.path;
   return file ? data.register(e.sender.id, file) : null;
 }));
 ipcMain.handle('data:from-paths', safe((e, paths) => Promise.all((Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string' && p).slice(0, 1).map((p) => data.register(e.sender.id, p)))));

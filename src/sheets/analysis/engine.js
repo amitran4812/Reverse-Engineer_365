@@ -290,11 +290,12 @@ export class Dataset {
       const x = this.need(spec.x).data;
       return this.applyMark((i) => x[i] >= sel.x0 && x[i] <= sel.x1, mode);
     }
-    if (t === 'bar' || t === 'box') {
-      if (!spec.x) return this.applyMark(() => true, mode);
-      const k = this.keyFor(spec.x);
+    if (t === 'bar' || t === 'box' || t === 'pie' || t === 'table') {
+      const k = spec.x ? this.keyFor(spec.x) : null;
+      const g = sel.groups && spec.color && t !== 'pie' ? this.keyFor(spec.color) : null;
       const cats = new Set(sel.cats);
-      return this.applyMark((i) => cats.has(k.keys[i]), mode);
+      const groups = g ? new Set(sel.groups) : null;
+      return this.applyMark((i) => (!k || cats.has(k.keys[i])) && (!g || groups.has(g.keys[i])), mode);
     }
     if (t === 'heatmap') {
       const kx = this.keyFor(spec.x, { bins: spec.bins || 40, force: true });
@@ -739,6 +740,8 @@ export class Dataset {
       case 'scatter': return this.scatter(spec, view, size);
       case 'line': return this.line(spec, view, size);
       case 'bar': return this.aggregate(spec);
+      case 'pie': return { ...this.aggregate({ ...spec, color: null, sort: spec.sort || 'value' }), kind: 'pie' };
+      case 'table': return { ...this.aggregate(spec), kind: 'table' };
       case 'histogram': return this.histogram(spec);
       case 'box': return this.box(spec);
       case 'heatmap': return this.heatmap(spec);

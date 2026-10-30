@@ -15,6 +15,8 @@ export const PLOT_TYPES = {
   histogram: { label: 'Histogram', icon: 'chartHist' },
   box: { label: 'Box', icon: 'chartBox' },
   heatmap: { label: 'Heat map', icon: 'chartHeat' },
+  pie: { label: 'Pie', icon: 'chartPie' },
+  table: { label: 'Cross table', icon: 'chartTable' },
 };
 
 const FIT_COLORS = ['#b3261e', '#6a1b9a', '#00695c', '#e65100'];
@@ -36,6 +38,8 @@ export function autoTitle(spec) {
     case 'bar': return ys.length ? `${aggLabel(spec.agg)} of ${ys[0]} by ${spec.x || 'all rows'}` : `Rows by ${spec.x || '…'}`;
     case 'box': return `${ys[0] || '…'}${spec.x ? ` by ${spec.x}` : ''}`;
     case 'heatmap': return `${ys[0] || '…'} vs ${spec.x || '…'}${spec.z ? ` (${aggLabel(spec.agg || 'mean')} of ${spec.z})` : ''}`;
+    case 'pie': return ys.length ? `${aggLabel(spec.agg)} of ${ys[0]} by ${spec.x || '…'}` : `Rows by ${spec.x || '…'}`;
+    case 'table': return `${ys.length ? `${aggLabel(spec.agg)} of ${ys[0]}` : 'Rows'} by ${[spec.x, spec.color].filter(Boolean).join(' and ') || 'all rows'}`;
     default: return `${ys.join(', ') || '…'} vs ${spec.x || '…'}`;
   }
 }
@@ -45,6 +49,8 @@ export const AGGS = [
   { value: 'min', label: 'Min' }, { value: 'max', label: 'Max' }, { value: 'std', label: 'Std. deviation' },
 ];
 const aggLabel = (a) => AGGS.find((x) => x.value === a)?.label || 'Sum';
+const AGG_SHORT = { count: 'Count', sum: 'Sum', mean: 'Avg', median: 'Median', min: 'Min', max: 'Max', std: 'StdDev' };
+const STRIP = { pie: true, table: true };
 
 export class PlotView {
   constructor(spec, ctx) {
@@ -84,7 +90,8 @@ export class PlotView {
     this.brush = h('div', 'viz-brush');
     this.tip = h('div', 'viz-tip');
     this.msg = h('div', 'viz-msg');
-    this.body.append(this.back, this.glCanvas, this.front, this.brush, this.tip, this.msg);
+    this.selectors = h('div', 'viz-selectors');
+    this.body.append(this.back, this.glCanvas, this.front, this.brush, this.selectors, this.tip, this.msg);
     this.el.append(head, this.body);
     this.el.addEventListener('mousedown', () => ctx.activate?.(this), true);
     this.setTool('mark');
@@ -129,8 +136,8 @@ export class PlotView {
   async fetch() {
     const token = ++this.token;
     const s = this.spec;
-    if (!s.x && s.type !== 'box' && s.type !== 'bar') return this.showMessage('Choose a column for the X axis in Plot properties.');
-    if (['scatter', 'line', 'box', 'heatmap'].includes(s.type) && !s.y?.[0]?.col) return this.showMessage('Choose a column for the Y axis in Plot properties.');
+    if (!s.x && !['box', 'bar', 'table'].includes(s.type)) return this.showMessage(s.type === 'pie' ? 'Choose a column for the slices.' : 'Choose a column for the X axis.');
+    if (['scatter', 'line', 'box', 'heatmap'].includes(s.type) && !s.y?.[0]?.col) return this.showMessage('Choose a column for the Y axis.');
     const { w, h: ht } = this.size();
     const L = this.layoutGuess();
     try {
@@ -190,6 +197,8 @@ export class PlotView {
     const s = this.spec;
     const kind = data?.kind;
     const L = { W, H, kind };
+    if (kind === 'pie') return this.layoutPie(L, data);
+    if (kind === 'table') return this.layoutTable(L, data);
     const top = 12;
     let legend = null;
     let legendW = 0;
@@ -296,8 +305,47 @@ export class PlotView {
     return L;
   }
 
+  layoutPie(L, data) {
+    const legend = this.legendItems(data);
+    const legendW = legend ? Math.min(200, Math.max(...legend.items.map((it) => textWidth(it.label, 11)), textWidth(legend.title || '', 11)) + 30) : 0;
+    const w = Math.max(40, L.W - legendW - 24);
+    const r = Math.max(10, Math.min(w, L.H - 24) / 2 - 4);
+    const values = Array.from(data.values, (v) => (Number.isFinite(v) && v > 0 ? v : 0));
+    const total = values.reduce((a, b) => a + b, 0) || 1;
+    let a = -Math.PI / 2;
+    const slices = values.map((v, i) => {
+      const a0 = a;
+      a += (v / total) * Math.PI * 2;
+      return { i, v, a0, a1: a, share: v / total };
+    });
+    return { ...L, plot: { x: 12, y: 12, w, h: L.H - 24 }, legend, legendW, pie: { cx: 12 + w / 2, cy: L.H / 2, r, slices, total } };
+  }
+
+  layoutTable(L, data) {
+    const ng = data.groups ? data.groups.length : 1;
+    const f = (v) => (Number.isFinite(v) ? formatValue(v, 'number') : '');
+    const rowHeadW = Math.min(220, Math.max(textWidth(this.spec.x || '', 11.5) + 12, ...data.labels.map((l) => textWidth(l, 11.5) + 14), 60));
+    const colWs = Array.from({ length: ng }, (_, g) => {
+      let w = textWidth(data.groups ? data.groups[g] : this.valueTitle(data), 11.5) + 16;
+      for (let c = 0; c < data.labels.length; c += 1) w = Math.max(w, textWidth(f(data.values[c * ng + g]), 11.5) + 16);
+      return Math.min(180, Math.max(56, w));
+    });
+    const rowH = 21;
+    const headH = data.groups ? 42 : 22;
+    const rows = Math.max(0, Math.floor((L.H - headH - 22) / rowH));
+    const top = Math.max(0, Math.min(this.tableTop || 0, data.labels.length - rows));
+    this.tableTop = top;
+    return { ...L, plot: { x: 0, y: 0, w: L.W, h: L.H }, table: { rowHeadW, colWs, rowH, headH, rows, top, ng, x0: 6, y0: 4 } };
+  }
+
+  valueTitle(data) {
+    return data.agg === 'count' ? 'Count' : `${aggLabel(data.agg)}(${data.valueName})`;
+  }
+
   legendItems(data) {
     const s = this.spec;
+    if (data.kind === 'pie') return { type: 'items', title: s.x, items: data.labels.slice(0, 40).map((label, i) => ({ label, color: paletteColor(data.cats[i]) })) };
+    if (data.kind === 'table') return null;
     if (data.kind === 'heatmap' || data.kind === 'density') return { type: 'ramp', title: data.kind === 'density' ? 'Rows' : data.valueName };
     if (data.colorMode === 'continuous') return { type: 'ramp', title: s.color, range: data.colorRange, colorType: data.colorType };
     if (data.legend?.length) return { type: 'items', title: s.color, items: data.legend.slice(0, 40).map((label, i) => ({ label, color: paletteColor(i) })) };
@@ -335,12 +383,16 @@ export class PlotView {
     const front = new CanvasPainter(this.front.getContext('2d'), dpr);
     back.clear(w, ht, '#fff');
     front.clear(w, ht);
+    back.screen = true;
+    front.screen = true;
     if (!this.data) {
       this.points?.draw({ width: Math.round(w * dpr), height: Math.round(ht * dpr), rect: { x: 0, y: 0, w: 0, h: 0 }, sx: null, sy: {} });
+      this.placeSelectors(null, w, ht);
       return;
     }
-    const L = this.layout(w, ht);
+    const L = this.layout(w, ht - (STRIP[this.spec.type] ? 28 : 0));
     this.lastLayout = L;
+    this.placeSelectors(L, w, ht);
     this.paintBack(back, L);
     if (this.data.kind === 'points') {
       if (this.points) this.points.draw(this.glFrame(L, dpr));
@@ -381,6 +433,15 @@ export class PlotView {
   paintFront(p, L) {
     const d = this.data;
     const { plot } = L;
+    if (d.kind === 'pie') {
+      this.paintPie(p, L);
+      this.paintLegend(p, L);
+      return;
+    }
+    if (d.kind === 'table') {
+      this.paintTable(p, L);
+      return;
+    }
     p.clip(plot.x, plot.y, plot.w, plot.h);
     if (d.kind === 'density') this.paintDensity(p, L);
     if (d.kind === 'lines') this.paintLines(p, L);
@@ -452,8 +513,9 @@ export class PlotView {
       const right = (s.y || []).filter((y) => y.axis === 'right').map((y) => y.col).join(', ');
       p.text(right, L.W - L.legendW - (L.legendW ? 8 : 0) - 4, plot.y + plot.h / 2, { size: 11, color: TEXT, weight: 600, align: 'center', rotate: 90 });
     }
-    // Axis titles
-    const xTitle = d.kind === 'box' || d.kind === 'bars' ? s.x || '' : s.x || '';
+    // Axis titles (on screen these are the axis selectors)
+    if (p.screen) return;
+    const xTitle = s.x || '';
     p.text(`${xTitle}${s.logX ? ' (log)' : ''}`, plot.x + plot.w / 2, L.H - 6, { size: 11.5, color: TEXT, weight: 600, align: 'center' });
     let yTitle;
     if (d.kind === 'histogram') yTitle = { count: 'Count', percent: 'Percent', density: 'Density' }[d.normalize];
@@ -467,8 +529,8 @@ export class PlotView {
     if (!lg || !L.legendW) return;
     const x = L.W - L.legendW;
     let y = L.plot.y + 4;
-    if (lg.title) {
-      p.text(lg.title, x, y + 9, { size: 11, weight: 600, color: TEXT });
+    if (lg.title || p.screen) {
+      if (!p.screen) p.text(lg.title, x, y + 9, { size: 11, weight: 600, color: TEXT });
       y += 18;
     }
     if (lg.type === 'items') {
@@ -530,7 +592,8 @@ export class PlotView {
     });
     for (const ms of d.markedSeries) {
       const sy = ms.axis === 'right' ? L.syR : L.syL;
-      for (let k = 0; k < ms.n; k += 1) p.circle(L.sx.map(ms.x[k]), sy.map(ms.y[k]), 2.4, { fill: MARK });
+      const r = ms.n > 600 ? 1.2 : 2.4;
+      for (let k = 0; k < ms.n; k += 1) p.circle(L.sx.map(ms.x[k]), sy.map(ms.y[k]), r, { fill: MARK });
     }
   }
 
@@ -627,6 +690,116 @@ export class PlotView {
       }
     }
     p.line(L.plot.x, y0, L.plot.x + L.plot.w, y0, { stroke: AXIS });
+  }
+
+  paintPie(p, L) {
+    const d = this.data;
+    const { cx, cy, r, slices } = L.pie;
+    const any = !!d.marked;
+    const wedge = (a0, a1, rad) => {
+      const pts = [[cx, cy]];
+      const n = Math.max(2, Math.ceil(((a1 - a0) / (Math.PI * 2)) * 120));
+      for (let k = 0; k <= n; k += 1) {
+        const a = a0 + ((a1 - a0) * k) / n;
+        pts.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]);
+      }
+      return pts;
+    };
+    for (const sl of slices) {
+      if (!sl.v) continue;
+      const color = paletteColor(d.cats[sl.i]);
+      p.polygon(wedge(sl.a0, sl.a1, r), { fill: color, alpha: any ? 0.32 : 1, stroke: '#fff' });
+      const m = any ? d.marked[sl.i] : 0;
+      if (m > 0) {
+        const a1 = sl.a0 + (sl.a1 - sl.a0) * Math.min(1, m / sl.v);
+        p.polygon(wedge(sl.a0, a1, r), { fill: color, stroke: MARK });
+      }
+    }
+    for (const sl of slices) {
+      if (sl.share < 0.04) continue;
+      const a = (sl.a0 + sl.a1) / 2;
+      const label = `${Math.round(sl.share * 1000) / 10}%`;
+      p.text(label, cx + Math.cos(a) * r * 0.66, cy + Math.sin(a) * r * 0.66 + 4, { size: 11, color: '#fff', weight: 600, align: 'center' });
+    }
+  }
+
+  paintTable(p, L) {
+    const d = this.data;
+    const t = L.table;
+    const s = this.spec;
+    const f = (v) => (Number.isFinite(v) ? formatValue(v, 'number') : '');
+    const x0 = t.x0;
+    let y = t.y0;
+    const totalW = t.rowHeadW + t.colWs.reduce((a, b) => a + b, 0);
+    const head = '#f3f4f6';
+    const line = '#e1e4e8';
+    p.rect(x0, y, totalW, t.headH, { fill: head });
+    if (d.groups) {
+      p.text(s.color || '', x0 + t.rowHeadW + 6, y + 15, { size: 11.5, weight: 600, color: TEXT });
+      p.line(x0 + t.rowHeadW, y + 21, x0 + totalW, y + 21, { stroke: line });
+    }
+    p.text(s.x || '', x0 + 6, y + t.headH - 7, { size: 11.5, weight: 600, color: TEXT });
+    let cx = x0 + t.rowHeadW;
+    t.colWs.forEach((w, g) => {
+      const label = d.groups ? d.groups[g] : this.valueTitle(d);
+      p.text(label.length > 26 ? `${label.slice(0, 25)}…` : label, cx + w - 6, y + t.headH - 7, { size: 11.5, weight: 600, color: TEXT, align: 'right' });
+      p.line(cx + 0.5, y + (d.groups ? 21 : 0), cx + 0.5, y + t.headH, { stroke: line });
+      cx += w;
+    });
+    y += t.headH;
+    const shown = Math.min(d.labels.length - t.top, t.rows);
+    for (let c = t.top; c < t.top + shown; c += 1) {
+      const label = d.labels[c];
+      p.rect(x0, y, t.rowHeadW, t.rowH, { fill: '#fafbfc' });
+      p.text(label.length > 30 ? `${label.slice(0, 29)}…` : label, x0 + 6, y + 14.5, { size: 11.5, color: TEXT });
+      cx = x0 + t.rowHeadW;
+      t.colWs.forEach((w, g) => {
+        const k = c * t.ng + g;
+        const m = d.marked?.[k];
+        if (m) {
+          p.rect(cx, y, w, t.rowH, { fill: '#e7eaef' });
+          p.rect(cx, y + 1, 3, t.rowH - 2, { fill: MARK });
+        }
+        p.text(f(d.values[k]), cx + w - 6, y + 14.5, { size: 11.5, color: '#1f2328', align: 'right', weight: m ? 600 : 400 });
+        p.line(cx + 0.5, y, cx + 0.5, y + t.rowH, { stroke: line });
+        cx += w;
+      });
+      p.line(x0, y + t.rowH + 0.5, x0 + totalW, y + t.rowH + 0.5, { stroke: line });
+      y += t.rowH;
+    }
+    p.rect(x0, t.y0, totalW, y - t.y0, { stroke: '#cfd4da' });
+    if (d.labels.length > shown) p.text(`Rows ${(t.top + 1).toLocaleString()}–${(t.top + shown).toLocaleString()} of ${d.labels.length.toLocaleString()}; scroll to see more`, x0 + 4, y + 15, { size: 10.5, color: '#8a9099' });
+    if (d.truncated) p.text(`Showing the ${d.labels.length} largest of ${(d.labels.length + d.truncated).toLocaleString()} categories`, x0 + 4, y + 30, { size: 10.5, color: '#8a9099' });
+  }
+
+  // Which cross-table cell is under a point: { c, g } with -1 for a header.
+  tableCell(L, at) {
+    const t = L.table;
+    const col = () => {
+      let cx = t.x0 + t.rowHeadW;
+      if (at.x < cx) return at.x >= t.x0 ? -1 : null;
+      for (let g = 0; g < t.ng; g += 1) {
+        if (at.x < cx + t.colWs[g]) return g;
+        cx += t.colWs[g];
+      }
+      return null;
+    };
+    const g = col();
+    if (g == null) return null;
+    const rel = at.y - t.y0 - t.headH;
+    if (rel < 0) return at.y >= t.y0 ? { c: -1, g } : null;
+    const c = Math.floor(rel / t.rowH);
+    return c < Math.min(this.data.labels.length - t.top, t.rows) ? { c: t.top + c, g } : null;
+  }
+
+  pieSlice(L, at) {
+    const { cx, cy, r, slices } = L.pie;
+    const dx = at.x - cx;
+    const dy = at.y - cy;
+    if (dx * dx + dy * dy > r * r) return null;
+    let a = Math.atan2(dy, dx);
+    if (a < -Math.PI / 2) a += Math.PI * 2;
+    return slices.find((sl) => sl.v && a >= sl.a0 && a < sl.a1) || null;
   }
 
   paintHistogram(p, L) {
@@ -751,6 +924,91 @@ export class PlotView {
     });
   }
 
+  // ---------- axis selectors ----------
+  selectorSlots() {
+    const s = this.spec;
+    const ys = (s.y || []).filter((y) => (y.axis || 'left') === 'left').map((y) => y.col).filter(Boolean);
+    const value = s.y?.[0]?.col ? `${AGG_SHORT[s.agg || 'sum'] || 'Sum'}(${s.y[0].col})` : 'Count()';
+    const colorable = ['scatter', 'line', 'bar', 'histogram'].includes(s.type) && (s.y || []).length <= 1;
+    switch (s.type) {
+      case 'pie': return { strip: [['x', 'Slices', s.x], ['value', 'Size', value]] };
+      case 'table': return { strip: [['x', 'Rows', s.x || '(none)'], ['color', 'Columns', s.color || '(none)'], ['value', 'Cell values', value]] };
+      case 'bar': return { x: s.x || '(none)', y: value, yKey: 'value', color: colorable };
+      case 'histogram': return { x: s.x, y: null, color: colorable };
+      case 'box': return { x: s.x || '(none)', y: ys[0] };
+      case 'heatmap': return { x: s.x, y: ys[0] };
+      default: return { x: s.x, y: ys.join(', '), color: colorable };
+    }
+  }
+
+  placeSelectors(L, W, H) {
+    const box = this.selectors;
+    box.innerHTML = '';
+    const slots = this.selectorSlots();
+    const pick = (key, label, cls) => {
+      const b = h('button', `viz-sel ${cls}`, `<span>${esc(label || 'Choose…')}</span>${icon('chevronDown', 10)}`);
+      b.title = 'Click to choose a column';
+      b.onmousedown = (e) => e.stopPropagation();
+      b.onclick = (e) => {
+        e.stopPropagation();
+        this.ctx.axisMenu?.(this, key, b);
+      };
+      this.dropTarget(b, key);
+      box.append(b);
+      return b;
+    };
+    if (slots.strip) {
+      const strip = h('div', 'viz-strip');
+      for (const [key, label, value] of slots.strip) {
+        strip.append(h('span', 'viz-strip-label', esc(label)));
+        const b = pick(key, value, 'in-strip');
+        strip.append(b);
+      }
+      box.append(strip);
+      return;
+    }
+    const plot = L?.plot || { x: 46, y: 12, w: W - 60, h: H - 54 };
+    const xb = pick('x', slots.x, 'x');
+    xb.style.left = `${plot.x + plot.w / 2}px`;
+    xb.style.top = `${H - 21}px`;
+    if (slots.y !== null && slots.y !== undefined) {
+      const yb = pick(slots.yKey || 'y', slots.y, 'y');
+      yb.style.left = '2px';
+      yb.style.top = `${plot.y + plot.h / 2}px`;
+    }
+    if (slots.color) {
+      const s = this.spec;
+      const cb = pick('color', s.color ? s.color : 'Color by', `color${s.color ? '' : ' faint'}`);
+      if (L?.legendW) {
+        cb.style.left = `${W - L.legendW - 4}px`;
+        cb.style.top = `${plot.y}px`;
+        cb.style.maxWidth = `${L.legendW + 2}px`;
+      } else {
+        cb.style.right = '6px';
+        cb.style.top = '4px';
+      }
+    }
+  }
+
+  // Columns from the data panel can be dropped straight on a selector.
+  dropTarget(el, key) {
+    el.addEventListener('dragover', (e) => {
+      if ([...e.dataTransfer.types].includes('text/x-column')) {
+        e.preventDefault();
+        el.classList.add('drop');
+      }
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drop'));
+    el.addEventListener('drop', (e) => {
+      el.classList.remove('drop');
+      const name = e.dataTransfer.getData('text/x-column');
+      if (name) {
+        e.preventDefault();
+        this.ctx.axisPick?.(this, key, name);
+      }
+    });
+  }
+
   // ---------- interaction ----------
   bind() {
     const body = this.body;
@@ -800,6 +1058,13 @@ export class PlotView {
     });
     body.addEventListener('mouseleave', () => this.hideTip());
     body.addEventListener('wheel', (e) => {
+      if (this.data?.kind === 'table') {
+        e.preventDefault();
+        this.tableTop = (this.tableTop || 0) + Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 40));
+        this.hideTip();
+        this.draw();
+        return;
+      }
       if (!this.lastLayout || !['points', 'density', 'lines', 'histogram'].includes(this.data?.kind)) return;
       e.preventDefault();
       const at = local(e);
@@ -907,13 +1172,16 @@ export class PlotView {
     let x1 = Math.max(d.start.x, d.at.x);
     let y0 = Math.min(d.start.y, d.at.y);
     let y1 = Math.max(d.start.y, d.at.y);
+    if (kind === 'pie') return;
     const xOnly = d.tool === 'mark' && ['bars', 'histogram', 'box'].includes(kind);
     if (xOnly) {
       y0 = L.plot.y;
       y1 = L.plot.y + L.plot.h;
     }
-    x0 = Math.max(L.plot.x, x0);
-    x1 = Math.min(L.plot.x + L.plot.w, x1);
+    if (kind !== 'table') {
+      x0 = Math.max(L.plot.x, x0);
+      x1 = Math.min(L.plot.x + L.plot.w, x1);
+    }
     Object.assign(this.brush.style, { display: 'block', left: `${x0}px`, top: `${y0}px`, width: `${Math.max(0, x1 - x0)}px`, height: `${Math.max(0, y1 - y0)}px` });
     this.brush.classList.toggle('zoom', d.tool === 'zoom');
   }
@@ -965,6 +1233,19 @@ export class PlotView {
       for (let i = Math.max(0, i0); i <= Math.min(n - 1, i1); i += 1) cats.push(ids[i]);
       if (!cats.length) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
       sel = { cats };
+    } else if (kind === 'pie') {
+      const sl = this.pieSlice(L, d.at);
+      if (!sl) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
+      sel = { cats: [this.data.cats[sl.i]] };
+    } else if (kind === 'table') {
+      const a = this.tableCell(L, d.start);
+      const b = this.tableCell(L, d.at);
+      if (!a || !b) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
+      const dd = this.data;
+      const span = (u, v, n) => (u < 0 || v < 0 ? [...Array(n).keys()] : Array.from({ length: Math.abs(v - u) + 1 }, (_, k) => Math.min(u, v) + k));
+      const cs = span(a.c, b.c, dd.labels.length);
+      const gs = a.g < 0 || b.g < 0 ? null : span(a.g, b.g, dd.groups ? dd.groups.length : 1);
+      sel = { cats: cs.map((c) => dd.cats[c]), groups: gs && dd.groups ? gs.map((g) => dd.groupIds[g]) : undefined };
     } else if (kind === 'heatmap') {
       const dd = this.data;
       const cellX = (px) => (dd.xEdges ? dd.xEdges.findIndex((v, k) => k < dd.nx && dd.xEdges[k + 1] > L.sx.invert(px)) : Math.floor((px - L.plot.x) / L.xBand.w));
@@ -1086,6 +1367,15 @@ export class PlotView {
       if (st) {
         const f = (v) => esc(formatValue(v, 'number'));
         html = `<b>${esc(st.label)}</b><br>n ${st.n.toLocaleString()}<br>max ${f(st.max)}<br>Q3 ${f(st.q3)}<br>median ${f(st.median)}<br>mean ${f(st.mean)}<br>Q1 ${f(st.q1)}<br>min ${f(st.min)}${st.outlierCount ? `<br>${st.outlierCount.toLocaleString()} outliers` : ''}`;
+      }
+    } else if (d.kind === 'pie') {
+      const sl = this.pieSlice(L, at);
+      if (sl) html = `<b>${esc(d.labels[sl.i])}</b><br>${esc(formatValue(sl.v, 'number'))} (${Math.round(sl.share * 1000) / 10}%)${d.marked?.[sl.i] ? `<br><span class="k">marked</span> ${esc(formatValue(d.marked[sl.i], 'number'))}` : ''}`;
+    } else if (d.kind === 'table') {
+      const cell = this.tableCell(L, at);
+      if (cell && cell.c >= 0 && cell.g >= 0) {
+        const k = cell.c * L.table.ng + cell.g;
+        html = `<b>${esc(d.labels[cell.c])}${d.groups ? ` · ${esc(d.groups[cell.g])}` : ''}</b><br>${esc(this.valueTitle(d))}: ${esc(formatValue(d.values[k], 'number'))}<br>Rows: ${Number(d.counts[k] || 0).toLocaleString()}`;
       }
     } else if (d.kind === 'heatmap') {
       const a = d.xEdges ? d.xEdges.findIndex((e, k) => k < d.nx && d.xEdges[k + 1] > L.sx.invert(at.x)) : Math.floor((at.x - plot.x) / L.xBand.w);
