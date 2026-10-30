@@ -204,13 +204,28 @@ ipcMain.handle('app:export-pdf', async (e, { suggestedName, landscape, pageSize 
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (res.canceled || !res.filePath) return null;
-  const pdf = await win.webContents.printToPDF({
-    printBackground: true,
-    landscape: !!landscape,
-    pageSize: pageSize || 'Letter',
-    margins: pageSize ? { marginType: 'none' } : undefined,
-  });
-  await require('fs/promises').writeFile(res.filePath, pdf);
+  let pdf;
+  // The page margins take the window's grey background colour, so print on white.
+  win.setBackgroundColor('#ffffff');
+  try {
+    pdf = await win.webContents.printToPDF({
+      printBackground: true,
+      landscape: !!landscape,
+      pageSize: pageSize || 'Letter',
+      margins: pageSize ? { marginType: 'none' } : undefined,
+    });
+  } catch (err) {
+    throw new Error(`Couldn’t make the PDF: ${err.message || err}`);
+  } finally {
+    win.setBackgroundColor('#f3f4f7');
+  }
+  try {
+    await require('fs/promises').writeFile(res.filePath, pdf);
+  } catch (err) {
+    // Windows locks a PDF that's open in a viewer.
+    if (['EBUSY', 'EPERM', 'EACCES'].includes(err.code)) throw new Error(`Couldn’t save ${path.basename(res.filePath)}. If it’s open in a PDF viewer, close it and try again, or pick another name.`);
+    throw new Error(`Couldn’t save the PDF: ${err.message || err}`);
+  }
   shell.openPath(res.filePath);
   return res.filePath;
 });
@@ -304,6 +319,7 @@ ipcMain.handle('accounts:rename', safe((e, id, name) => profiles.rename(id, name
 ipcMain.handle('accounts:remove', safe((e, id) => profiles.remove(id)));
 ipcMain.handle('accounts:open', safe((e, id) => profiles.open(id)));
 ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
+ipcMain.handle('web:data', safe(async (e, kind, params) => ({ value: await require('./webdata').data(kind, params) })));
 
 ipcMain.handle('settings:get', () => settings.publicSettings());
 ipcMain.handle('settings:set', (e, patch) => {

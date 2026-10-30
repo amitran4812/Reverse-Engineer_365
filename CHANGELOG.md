@@ -2,7 +2,7 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.23: Your own PowerPoint templates
+## 0.2.27: Your own PowerPoint templates
 
 - **Upload your own templates.** On Present's **Design** tab, **Upload Template** takes a PowerPoint template or presentation (.pptx, .potx, .pptm or .potm). Work keeps it, so it shows up next to Paper, Slate and the others from then on, in every Present window.
 - **They show up in Send to Present too.** The template picker in Plot's and Write's **Send to Present** lists your uploaded templates, with an **Upload…** tile to add one right there. The slides it makes use that template.
@@ -10,6 +10,30 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Saving as .pptx puts the template's background and pictures on the slide master, so the deck looks the same in PowerPoint. A saved presentation keeps its template's look even on a computer that doesn't have the template.
 - To remove an uploaded template, point at it in the picker and click **×**, or pick it in Present and click **Remove Template**. Presentations already made with it aren't changed.
 - Older .ppt files can't be read; open them in PowerPoint and save them as .pptx first.
+
+## 0.2.25: Google Sheets formulas in Plot
+
+- **Google Sheets files open without errors.** Formulas Google Sheets writes in a special wrapped form (GOOGLEFINANCE, ARRAYFORMULA, QUERY, SPLIT and other Google-only functions) now open as the real formula. Until live data arrives, or when you're offline, cells show the value saved in the file instead of an error.
+- **GOOGLEFINANCE works**: current price and other attributes (`"price"`, `"change"`, `"changepct"`, `"high52"`, `"name"`, `"currency"`…) for tickers like `NASDAQ:GOOG`, `NSE:INFY` or `CURRENCY:USDINR`, and price history with a start date, end date or number of days, daily or weekly. Prices refresh every minute while the sheet is open.
+- **IMPORTRANGE** reads from another Google Sheet through your Google Drive sign-in. **IMPORTDATA**, **IMPORTHTML**, **IMPORTXML** and **IMPORTFEED** read files, tables, lists and feeds from the web. **GOOGLETRANSLATE** and **DETECTLANGUAGE** work too.
+- **Every Google Sheets function, built in.** Plot now has over 500 functions you can type in any cell, from `+` and `SUM` up: math, text, dates, lookup, statistics and distributions, finance and bonds, engineering, database functions, `REGEXMATCH`/`REGEXEXTRACT`/`REGEXREPLACE`, `SPLIT`, `JOIN`, `FILTER`, `SORT`, `SORTN`, `UNIQUE`, `QUERY`, `SEQUENCE`, `LET`, `LAMBDA`, `MAP`, `REDUCE`, `BYROW`, `XLOOKUP` and more. Formulas → Functions → **All functions…** lists them.
+- **Array formulas spill.** A formula that returns several values (like `=A2:A10*2`, `=ARRAYFORMULA(…)`, `=FILTER(…)` or `=SPLIT(…)`) fills the cells below and to the right. If something is in the way, the cell shows `#REF!`; hover an error to see why.
+- Saving as .xlsx keeps Google-only formulas in the form Google Sheets reads back, so files go back and forth without losing them.
+
+## 0.2.24: Save notes as PDF
+
+- **Save as PDF** is now on Write's **Notes** tab and in the **/** menu, next to Send to Present. It's still under **File > Export** too.
+- PDFs come out on clean white pages. Before, the page margins came out grey in every app, and the cursor showed in Write.
+- If a PDF can't be saved, Write now says why. Before, nothing happened. The most common cause on Windows is that the same PDF is still open in a viewer, so close it and try again, or pick another name.
+
+## 0.2.21: More Spotfire functions in Plot
+
+- **Statistics**: `valueformax([Vth], [Wafer])` and `valueformin` give one column's value on the row where another is largest or smallest. Also `weightedaverage([Weight], [Value])`, `uniqueconcatenate`, `outliers`, `pctoutliers`, `covariance`, `correlation`, and the `mostcommon` and `countbig` names. All of them work per group with OVER.
+- **OVER**: `LastPeriods(3, [Date])` for moving windows, plus `PreviousPeriod`, `NextPeriod` and `All`.
+- **Shortcuts**: `pctoftotal([Qty])` (percent of the total, or of each group's total with OVER) and `pctdiff([Qty])` (percent change from the row before).
+- **Binning**: `binbyevenintervals`, `binbyevendistribution`, `binbyspecificlimits`, `autobinnumeric` and `binbydatetime([Date], "Year.Quarter.Month", 2)`. Each row gets the start of its bin, so bins sort and plot in order.
+- **Dates and time spans**: `datetrunc`, `dayofmonth`, `yearandweek`, `fiscalyear`, `fiscalquarter` and `fiscalmonth` (with the month your fiscal year starts in), `toepochseconds` and `fromepochseconds`. `datediff(from, to)` gives a time span, which you can read with `totaldays`, `totalhours`, `days`, `hours`, `minutes` and `seconds`, or build with `timespan(…)`.
+- **Conversion**: `parsedate([Text], "dd/MM/yyyy")` and `parsedatetime` read dates written in any layout. `parsereal` and `parseinteger` read numbers with thousands separators or a decimal comma, and `boolean` reads yes/no and true/false.
 
 ## 0.2.20: Right-click menus for cells, rows, columns and sheets
 

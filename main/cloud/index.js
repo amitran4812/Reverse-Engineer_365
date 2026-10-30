@@ -167,6 +167,18 @@ function sheet(local, op, args) {
   return withToken('google', (t) => sheetsLive[op](t, b.id, args));
 }
 
+// IMPORTRANGE reads other spreadsheets with the Google Drive sign-in.
+async function importRange(key, range) {
+  if (!settings.getSecret('cloud:google')) throw new Error('IMPORTRANGE needs Google Drive: connect it in File > Options.');
+  try {
+    return await withToken('google', (t) => sheetsLive.importRange(t, key, range));
+  } catch (err) {
+    if (err.status === 403 || err.status === 404) throw new Error('You need access to that spreadsheet to import from it.');
+    if (err.status === 400) throw new Error(`"${range}" isn't a valid range in that spreadsheet.`);
+    throw err;
+  }
+}
+
 // Sharing the cloud copy of the file open at `local`.
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 async function share(local, op, args = {}) {
@@ -189,4 +201,4 @@ async function share(local, op, args = {}) {
   throw new Error(`Unknown share operation: ${op}`);
 }
 
-module.exports = { status, connect, disconnect, list, download, bindingFor, uploadBack, saveNew, sheet, share };
+module.exports = { status, connect, disconnect, list, download, bindingFor, uploadBack, saveNew, sheet, share, importRange };

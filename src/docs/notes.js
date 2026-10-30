@@ -278,6 +278,7 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
     { label: 'Action items', icon: 'checklist', keys: ['ai', 'todo'], run: () => ai().runQuick(QUICK.actions) },
     { label: 'Notes from a link', icon: 'webNotes', keys: ['url', 'web', 'ai'], run: linkToNotes },
     { label: 'Send to Present', icon: 'toPresent', keys: ['slides', 'deck', 'presentation'], run: toPresent },
+    { label: 'Save as PDF', icon: 'pdf', keys: ['pdf', 'export', 'download'], run: () => shell().exportPdf() },
   ];
 
   const menu = { el: null, items: [], index: 0, range: null, dismissed: null };
@@ -389,7 +390,8 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
           { type: 'small', icon: 'webNotes', label: 'Link to notes', run: linkToNotes },
         ] },
       ] },
-      { label: 'Present', items: [
+      { label: 'Share', items: [
+        { type: 'big', icon: 'pdf', label: 'Save as PDF', title: 'Save these notes as a PDF', run: () => shell().exportPdf() },
         { type: 'big', icon: 'toPresent', label: 'Send to Present', title: 'Turn these notes into a presentation', run: toPresent },
       ] },
       { label: 'Page', items: [

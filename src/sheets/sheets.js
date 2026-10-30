@@ -2,7 +2,8 @@ import '../shared/ui.css';
 import './sheets.css';
 import './analysis/analysis.css';
 import cellref from '../../common/cellref.js';
-import { computeBook, format, isError } from './engine.js';
+import { FUNCTION_NAMES, computeBook, format, isError } from './engine.js';
+import { createWeb } from './formula/web.js';
 import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
@@ -30,6 +31,13 @@ const sheet = () => book.sheets[book.active];
 const cellAt = (r, c) => sheet().cells[refName(r, c)];
 const selRect = () => rect(sel.a, sel.f);
 const valueAt = (r, c) => values[sheet().name]?.get(refName(r, c));
+
+// Live data for GOOGLEFINANCE, IMPORTRANGE and the other IMPORT functions; answers recalculate the sheet.
+const web = createWeb((kind, params) => window.office.web.data(kind, params), () => refreshCells());
+const compute = (b) => computeBook(b, { web });
+setInterval(() => {
+  if (web.takeUsed() && document.visibilityState === 'visible') refreshCells();
+}, 60_000);
 
 // ---------- DOM ----------
 const wrap = h('div', 'sheet-wrap');
@@ -114,8 +122,9 @@ function renderCell(r, c) {
   const v = valueAt(r, c);
   const s = data?.s || {};
   let fmt = s;
-  if (!s.fmt && typeof v === 'number' && /^=.*\b(TODAY|DATE|EDATE|EOMONTH)\(/i.test(data?.v || '')) fmt = { ...s, fmt: 'date' };
-  cell.textContent = data ? format(v, fmt) : '';
+  const hint = values.formats?.[sheet().name]?.get(refName(r, c));
+  if (!s.fmt && typeof v === 'number' && (hint || /^=.*\b(TODAY|DATE|EDATE|EOMONTH|WORKDAY|WORKDAY\.INTL|DATEVALUE|TO_DATE|EPOCHTODATE)\(/i.test(data?.v || ''))) fmt = { ...s, fmt: hint || 'date' };
+  cell.textContent = data || v != null ? format(v, fmt) : '';
   const st = cell.style;
   st.fontWeight = s.b ? '700' : '';
   st.fontStyle = s.i ? 'italic' : '';
@@ -123,10 +132,14 @@ function renderCell(r, c) {
   st.color = s.color || '';
   st.background = s.bg || '';
   const err = isError(v);
+  // Errors explain themselves on hover; live data that's still on its way says so.
+  const loading = err && v?.pending && v.message === 'Loading data…';
+  if (loading) cell.textContent = 'Loading…';
+  cell.title = err && typeof v === 'object' && v.message ? v.message : '';
   st.textAlign = s.align || (err || typeof v === 'boolean' ? 'center' : typeof v === 'number' ? 'right' : 'left');
   cell.classList.toggle('wrap', !!s.wrap);
   cell.classList.toggle('bordered', !!s.border);
-  cell.classList.toggle('err', err);
+  cell.classList.toggle('err', err && !loading);
 }
 
 function renderAll() {
@@ -136,8 +149,10 @@ function renderAll() {
 
 // Recalculate and repaint cells whose content might have changed.
 function refreshCells(prevRefs = []) {
-  values = computeBook(book);
-  const refs = new Set([...Object.keys(sheet().cells), ...prevRefs]);
+  const before = values[sheet().name];
+  values = compute(book);
+  // Array results spill into cells that have no content of their own, so repaint those too.
+  const refs = new Set([...Object.keys(sheet().cells), ...prevRefs, ...(before?.keys() || []), ...(values[sheet().name]?.keys() || [])]);
   for (const ref of refs) {
     const p = parseRef(ref);
     if (p) renderCell(p.row, p.col);
@@ -1267,7 +1282,7 @@ async function pickCombineSource() {
   return {
     name: sheets.length > 1 ? `${got.name} (${s.name})` : got.name,
     short: sheets.length > 1 ? `${short} ${s.name}` : short,
-    table: tableOf(regionMatrix(s, computeBook(got.data)[s.name], usedRange(s))),
+    table: tableOf(regionMatrix(s, compute(got.data)[s.name], usedRange(s))),
   };
 }
 
@@ -1500,6 +1515,12 @@ const FMTS = [
   { value: 'date', label: 'Date' },
 ];
 const FUNCS = ['SUM', 'AVERAGE', 'COUNT', 'MAX', 'MIN', 'IF', 'VLOOKUP', 'XLOOKUP', 'SUMIF', 'COUNTIF', 'ROUND', 'CONCAT', 'TODAY', 'IFERROR', 'PMT'];
+const SHEETS_FUNCS = ['GOOGLEFINANCE', 'QUERY', 'FILTER', 'SORT', 'UNIQUE', 'ARRAYFORMULA', 'SPLIT', 'IMPORTRANGE', 'REGEXEXTRACT'];
+
+async function allFunctions() {
+  const v = await dialog({ title: 'Insert a function', fields: [{ name: 'fn', label: `Function (${FUNCTION_NAMES.length} available)`, type: 'select', options: FUNCTION_NAMES.map((f) => ({ value: f, label: f })) }], ok: 'Insert' });
+  if (v?.fn) startEdit(`=${v.fn}(`);
+}
 
 const homeTab = {
   id: 'home',
@@ -1593,7 +1614,7 @@ const formulasTab = {
     { label: 'Function Library', items: [
       { type: 'big', icon: 'fx', label: 'Insert Function', run: () => startEdit('=') },
       { type: 'big', icon: 'sum', label: 'AutoSum', run: () => autoSum('SUM') },
-      { type: 'menu', big: true, icon: 'fx', label: 'Functions', items: FUNCS.map((f) => ({ label: f, run: () => insertFunction(f) })) },
+      { type: 'menu', big: true, icon: 'fx', label: 'Functions', items: [...FUNCS.map((f) => ({ label: f, run: () => insertFunction(f) })), ...SHEETS_FUNCS.map((f) => ({ label: f, run: () => startEdit(`=${f}(`) })), { label: 'All functions…', run: allFunctions }] },
     ] },
     { label: 'Claude', items: [
       { type: 'big', icon: 'wand', label: 'Write Formula', run: () => shell.claude.runQuick(QUICK.formula) },
@@ -1663,12 +1684,19 @@ const shell = await createShell({
   getSaveData: () => {
     if (editing) commitEdit();
     const out = JSON.parse(JSON.stringify(book));
+    const saved = (v) => (v == null ? '' : typeof v === 'object' ? format(v) : v);
     for (const s of out.sheets) {
       const vals = values[s.name];
       for (const [ref, cell] of Object.entries(s.cells)) {
         const v = vals?.get(ref);
-        if (String(cell.v).startsWith('=')) cell.r = v == null ? '' : typeof v === 'object' ? format(v) : v;
+        if (String(cell.v).startsWith('=')) cell.r = saved(v);
       }
+      // Values array results spilled into, so files keep them (Google Sheets reads them back as one array).
+      const spilled = {};
+      for (const [ref, v] of vals || []) if (!s.cells[ref]?.v && v != null) spilled[ref] = saved(v);
+      s.spilled = spilled;
+      s.spillAnchors = (values.spills?.[s.name] || []).map(([anchor]) => anchor);
+      delete s.spillCache;
     }
     return out;
   },
@@ -1686,7 +1714,7 @@ const shell = await createShell({
     placeholder: 'Ask Claude about this sheet…',
     system: [
       'You are Claude, built into Plot, a spreadsheet app. The current sheet is given as a Markdown table with column letters and row numbers; formula cells are shown as "=FORMULA → result".',
-      'Formulas use Excel syntax and A1 references. Supported functions include SUM, AVERAGE, COUNT, COUNTA, COUNTIF(S), SUMIF(S), AVERAGEIF(S), MINIFS, MAXIFS, MIN, MAX, MEDIAN, STDEV, LARGE, SMALL, RANK, IF, IFS, SWITCH, CHOOSE, IFERROR, AND, OR, NOT, VLOOKUP, HLOOKUP, XLOOKUP, INDEX, MATCH, ROUND, ROUNDUP, ROUNDDOWN, ABS, SQRT, POWER, MOD, INT, CONCAT, CONCATENATE, TEXTJOIN, TEXT, VALUE, LEFT, RIGHT, MID, LEN, TRIM, UPPER, LOWER, PROPER, SUBSTITUTE, TODAY, NOW, DATE, YEAR, MONTH, DAY, PMT, FV, PV, NPV.',
+      'Formulas use Google Sheets / Excel syntax and A1 references, and every Google Sheets function works, including array formulas that spill (ARRAYFORMULA, FILTER, SORT, UNIQUE, SPLIT, SEQUENCE, QUERY), LET and LAMBDA with MAP/REDUCE/BYROW, REGEXMATCH/REGEXEXTRACT/REGEXREPLACE, and live data with GOOGLEFINANCE, IMPORTRANGE, IMPORTDATA, IMPORTHTML and IMPORTXML.',
       'When you give a formula the user can insert, put the formula alone in a ```excel code block. When you give tabular data, use a Markdown table. Be concise.',
     ].join('\n'),
     context: () => {
@@ -1719,6 +1747,12 @@ function liveState(state, text) {
 
 const cellsOf = (s) => Object.fromEntries(Object.entries(s.cells).filter(([, c]) => c.v !== '' && c.v != null).map(([ref, c]) => [ref, String(c.v)]));
 
+// A live sheet's current formula results and spilled array values stand in while live data loads.
+function takeRemoteValues(local, r) {
+  local.spillCache = r.spill || {};
+  for (const [ref, v] of Object.entries(r.cache || {})) if (local.cells[ref]) local.cells[ref].r = v;
+}
+
 function setCellValue(s, ref, v) {
   if (v === '' || v == null) {
     if (s.cells[ref]?.s && Object.keys(s.cells[ref].s).length) s.cells[ref].v = '';
@@ -1749,6 +1783,7 @@ async function liveStart() {
       local.name = r.title;
       const lc = cellsOf(local);
       for (const ref of new Set([...Object.keys(lc), ...Object.keys(r.cells)])) if ((lc[ref] ?? '') !== (r.cells[ref] ?? '')) setCellValue(local, ref, r.cells[ref] ?? '');
+      takeRemoteValues(local, r);
       live.base.set(r.gid, { title: r.title, cells: { ...r.cells } });
     });
     book.sheets.splice(remote.length);
@@ -1822,6 +1857,7 @@ async function livePull() {
         if (!local) {
           local = { name: r.title, cells: {}, cols: {}, gid: r.gid };
           for (const [ref, v] of Object.entries(r.cells)) setCellValue(local, ref, v);
+          takeRemoteValues(local, r);
           book.sheets.push(local);
           changed = true;
         }
@@ -1839,6 +1875,8 @@ async function livePull() {
             changed = true;
           }
         }
+        if (JSON.stringify(local.spillCache || {}) !== JSON.stringify(r.spill || {})) changed = true;
+        takeRemoteValues(local, r);
       }
       live.base.set(r.gid, { title: r.title, cells: { ...r.cells } });
     }
