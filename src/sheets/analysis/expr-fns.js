@@ -96,6 +96,13 @@ export const REDUCERS = {
   // Adjacent values: the most extreme values still inside the inner fences.
   lav: (v) => { const f = fences(v); const lim = f.q1 - 1.5 * f.iqr; return f.s.find((x) => x >= lim) ?? NaN; },
   uav: (v) => { const f = fences(v); const lim = f.q3 + 1.5 * f.iqr; return f.s.findLast((x) => x <= lim) ?? NaN; },
+  outliers: (v) => {
+    const f = fences(v);
+    const lo = f.q1 - 1.5 * f.iqr;
+    const hi = f.q3 + 1.5 * f.iqr;
+    return v.length ? v.filter((x) => x < lo || x > hi).length : 0;
+  },
+  pctoutliers: (v) => (v.length ? (100 * REDUCERS.outliers(v)) / v.length : NaN),
   first: (v) => (v.length ? v[0] : NaN),
   last: (v) => (v.length ? v[v.length - 1] : NaN),
   mode,
@@ -221,6 +228,75 @@ export function parseDate(s) {
   const iso = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$/.test(t) ? `${t.replace(' ', 'T')}${t.length > 10 ? 'Z' : ''}` : t;
   const ms = Date.parse(iso);
   return Number.isNaN(ms) ? NaN : ms;
+}
+
+// Start of the year, quarter, month, week (Monday), day, hour, minute or
+// second that ms falls in.
+export function dateTrunc(part, ms) {
+  if (!Number.isFinite(ms)) return NaN;
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  switch (part) {
+    case 'year': return Date.UTC(y, 0, 1);
+    case 'quarter': return Date.UTC(y, m - (m % 3), 1);
+    case 'month': return Date.UTC(y, m, 1);
+    case 'week': return Math.floor(ms / DAY) * DAY - (((d.getUTCDay() + 6) % 7) * DAY);
+    case 'day':
+    case 'dayofyear':
+    case 'dayofweek': return Math.floor(ms / DAY) * DAY;
+    case 'hour': return Math.floor(ms / 3600000) * 3600000;
+    case 'minute': return Math.floor(ms / 60000) * 60000;
+    case 'second': return Math.floor(ms / 1000) * 1000;
+    default: return ms;
+  }
+}
+
+// Fiscal year, quarter and month for a year that starts in startMonth (1-12).
+// The fiscal year is named after the calendar year it ends in.
+export function fiscalPart(part, ms, startMonth = 1) {
+  if (!Number.isFinite(ms)) return NaN;
+  const d = new Date(ms);
+  const shift = (((d.getUTCMonth() - (startMonth - 1)) % 12) + 12) % 12;
+  if (part === 'year') return d.getUTCFullYear() + (startMonth > 1 && d.getUTCMonth() >= startMonth - 1 ? 1 : 0);
+  if (part === 'quarter') return Math.floor(shift / 3) + 1;
+  return shift + 1;
+}
+
+// Reads text with a .NET style date pattern such as "dd/MM/yyyy HH:mm".
+export function parseDateWith(text, pattern) {
+  const t = String(text).trim();
+  if (!pattern) return parseDate(t);
+  const fields = [];
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const re = String(pattern).replace(/yyyy|yy|MMMM|MMM|MM|M|dd|d|HH|H|hh|h|mm|m|ss|s|fff|tt|[.*+?^${}()|[\]\\]/g, (tok) => {
+    const map = {
+      yyyy: '(\\d{4})', yy: '(\\d{2})', MMMM: '([A-Za-z]+)', MMM: '([A-Za-z]{3})', MM: '(\\d{2})', M: '(\\d{1,2})', dd: '(\\d{2})', d: '(\\d{1,2})',
+      HH: '(\\d{2})', H: '(\\d{1,2})', hh: '(\\d{2})', h: '(\\d{1,2})', mm: '(\\d{2})', m: '(\\d{1,2})', ss: '(\\d{2})', s: '(\\d{1,2})', fff: '(\\d{3})', tt: '([AaPp][Mm])',
+    };
+    if (!map[tok]) return `\\${tok}`;
+    fields.push(tok);
+    return map[tok];
+  });
+  const m = new RegExp(`^${re}$`).exec(t);
+  if (!m) return NaN;
+  const v = { y: 1970, mo: 0, d: 1, h: 0, mi: 0, s: 0, ms: 0, pm: null };
+  fields.forEach((f, i) => {
+    const x = m[i + 1];
+    if (f === 'yyyy') v.y = Number(x);
+    else if (f === 'yy') v.y = 2000 + Number(x);
+    else if (f === 'MMMM' || f === 'MMM') v.mo = MONTHS.indexOf(x.slice(0, 3).toLowerCase());
+    else if (f[0] === 'M') v.mo = Number(x) - 1;
+    else if (f[0] === 'd') v.d = Number(x);
+    else if (f[0] === 'H' || f[0] === 'h') v.h = Number(x);
+    else if (f[0] === 'm') v.mi = Number(x);
+    else if (f[0] === 's') v.s = Number(x);
+    else if (f === 'fff') v.ms = Number(x);
+    else if (f === 'tt') v.pm = /p/i.test(x);
+  });
+  if (v.mo < 0) return NaN;
+  if (v.pm !== null) v.h = (v.h % 12) + (v.pm ? 12 : 0);
+  return Date.UTC(v.y, v.mo, v.d, v.h, v.mi, v.s, v.ms);
 }
 
 export const startOfDay = (ms) => (Number.isFinite(ms) ? Math.floor(ms / DAY) * DAY : NaN);

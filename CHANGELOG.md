@@ -5,8 +5,17 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 ## 0.2.24: Save notes as PDF
 
 - **Save as PDF** is now on Write's **Notes** tab and in the **/** menu, next to Send to Present. It's still under **File > Export** too.
-- PDFs come out on clean white pages. Before, the margins came out grey and the cursor showed.
+- PDFs come out on clean white pages. Before, the page margins came out grey in every app, and the cursor showed in Write.
 - If a PDF can't be saved, Write now says why. Before, nothing happened. The most common cause on Windows is that the same PDF is still open in a viewer, so close it and try again, or pick another name.
+
+## 0.2.21: More Spotfire functions in Plot
+
+- **Statistics**: `valueformax([Vth], [Wafer])` and `valueformin` give one column's value on the row where another is largest or smallest. Also `weightedaverage([Weight], [Value])`, `uniqueconcatenate`, `outliers`, `pctoutliers`, `covariance`, `correlation`, and the `mostcommon` and `countbig` names. All of them work per group with OVER.
+- **OVER**: `LastPeriods(3, [Date])` for moving windows, plus `PreviousPeriod`, `NextPeriod` and `All`.
+- **Shortcuts**: `pctoftotal([Qty])` (percent of the total, or of each group's total with OVER) and `pctdiff([Qty])` (percent change from the row before).
+- **Binning**: `binbyevenintervals`, `binbyevendistribution`, `binbyspecificlimits`, `autobinnumeric` and `binbydatetime([Date], "Year.Quarter.Month", 2)`. Each row gets the start of its bin, so bins sort and plot in order.
+- **Dates and time spans**: `datetrunc`, `dayofmonth`, `yearandweek`, `fiscalyear`, `fiscalquarter` and `fiscalmonth` (with the month your fiscal year starts in), `toepochseconds` and `fromepochseconds`. `datediff(from, to)` gives a time span, which you can read with `totaldays`, `totalhours`, `days`, `hours`, `minutes` and `seconds`, or build with `timespan(…)`.
+- **Conversion**: `parsedate([Text], "dd/MM/yyyy")` and `parsedatetime` read dates written in any layout. `parsereal` and `parseinteger` read numbers with thousands separators or a decimal comma, and `boolean` reads yes/no and true/false.
 
 ## 0.2.20: Right-click menus for cells, rows, columns and sheets
 
