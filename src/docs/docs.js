@@ -11,6 +11,7 @@ import './docs.css';
 import { createShell, dialog, h, toast } from '../shared/shell.js';
 import { markdownToHtml } from '../shared/claude-pane.js';
 import { popup } from '../shared/ribbon.js';
+import { sendToPresent } from './to-present.js';
 
 const FONTS = ['Calibri', 'Arial', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New', 'Consolas'];
 const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
@@ -225,6 +226,9 @@ const homeTab = {
         { type: 'small', icon: 'replace', label: 'Replace', shortcut: 'Ctrl+H', run: () => findReplace(true) },
       ] },
     ] },
+    { label: 'Present', items: [
+      { type: 'big', icon: 'toPresent', label: 'Send to Present', title: 'Turn this document into a presentation', run: () => toPresent() },
+    ] },
     { label: 'Claude', items: [
       { type: 'big', icon: 'sparkle', label: 'Ask Claude', title: 'Open Claude (Ctrl+J)', run: () => shell.claude.toggle() },
     ] },
@@ -337,9 +341,12 @@ const claudeTab = {
       { type: 'big', icon: 'proofread', label: 'Proofread', run: () => shell.claude.runQuick(QUICK.proofread) },
       { type: 'big', icon: 'translate', label: 'Translate', run: () => shell.claude.runQuick(QUICK.translate) },
     ] },
+    { label: 'Present', items: [{ type: 'big', icon: 'toPresent', label: 'Send to Present', title: 'Turn this document into a presentation', run: () => toPresent() }] },
     { label: 'Chat', items: [{ type: 'big', icon: 'chat', label: 'Open Claude', run: () => shell.claude.toggle() }] },
   ],
 };
+
+const toPresent = () => sendToPresent({ editor, name: shell.state.name, showAi: () => shell.claude.show() });
 
 const shell = await createShell({
   app: 'docs',

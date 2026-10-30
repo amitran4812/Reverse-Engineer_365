@@ -87,8 +87,22 @@ async function loadAll(files) {
   return out;
 }
 
+// Pictures from an open document, as data URLs, kept as one attachment.
+function fromImages(list) {
+  const out = [];
+  for (const [i, im] of (Array.isArray(list) ? list : []).slice(0, 20).entries()) {
+    const m = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(im?.src || ''));
+    if (!m || m[2].length * 0.75 > MAX_IMAGE) continue;
+    out.push({ type: 'text', text: `Picture ${i + 1}${im.name ? `: ${String(im.name).slice(0, 120)}` : ''}` }, { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } });
+  }
+  if (!out.length) return null;
+  const id = `att_${crypto.randomBytes(8).toString('hex')}`;
+  store.set(id, { name: 'pictures', kind: 'image', size: 0, blocks: out });
+  return id;
+}
+
 function blocks(ids) {
   return (ids || []).flatMap((id) => store.get(id)?.blocks || []);
 }
 
-module.exports = { EXTENSIONS, loadAll, blocks };
+module.exports = { EXTENSIONS, loadAll, fromImages, blocks };

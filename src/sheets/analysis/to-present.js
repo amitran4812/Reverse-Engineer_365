@@ -3,7 +3,7 @@
 // presentation with everything on one slide.
 
 import { dialog, escapeHtml, h, toast } from '../../shared/shell.js';
-import { THEMES } from '../../shared/themes.js';
+import { themePicker } from '../../shared/themes.js';
 import { PLOT_TYPES, autoTitle } from './plot.js';
 import { buildSlide, planSlide } from './slide.js';
 
@@ -25,25 +25,6 @@ function check(label, checked, extra = '') {
   box.checked = checked;
   l.append(box, h('span', '', label), ...(extra ? [h('em', '', extra)] : []));
   return { el: l, box };
-}
-
-function themePicker(value) {
-  const wrap = h('div', 'an-themes');
-  let current = THEMES[value] ? value : 'paper';
-  for (const [id, t] of Object.entries(THEMES)) {
-    const b = h('button', `an-theme${id === current ? ' on' : ''}`, `
-      <span class="an-theme-art" style="background:${t.bg}">${t.band ? `<i class="band" style="background:${t.accent}"></i>` : ''}<i class="t" style="background:${t.title}"></i><i class="a" style="background:${t.accent}"></i><i class="b" style="background:${t.text}"></i><i class="b2" style="background:${t.text}"></i></span>
-      <span>${escapeHtml(t.label)}</span>`);
-    b.type = 'button';
-    b.title = `${t.label} template`;
-    b.onclick = () => {
-      current = id;
-      for (const x of wrap.children) x.classList.toggle('on', x === b);
-    };
-    wrap.append(b);
-  }
-  wrap.read = () => current;
-  return wrap;
 }
 
 function yearHint(columns) {
