@@ -177,14 +177,43 @@ const sheetsLive = {
     const params = new URLSearchParams({ valueRenderOption: 'FORMULA', dateTimeRenderOption: 'FORMATTED_STRING', majorDimension: 'ROWS' });
     for (const t of tabs) params.append('ranges', `'${t.title.replace(/'/g, "''")}'`);
     const r = tabs.length ? await call(token, `${g.sheetsApi}/spreadsheets/${encodeURIComponent(id)}/values:batchGet?${params}`) : { valueRanges: [] };
+    // Which cells hold formulas (and their current results) and which were filled by an array result.
+    const fields = 'sheets(properties/sheetId,data(startRow,startColumn,rowData/values(userEnteredValue,effectiveValue)))';
+    const grid = tabs.length ? await call(token, `${g.sheetsApi}/spreadsheets/${encodeURIComponent(id)}?includeGridData=true&fields=${encodeURIComponent(fields)}`).catch(() => null) : null;
+    const gridOf = new Map((grid?.sheets || []).map((x) => [x.properties?.sheetId, x.data || []]));
     return tabs.map((t, i) => {
       const cells = {};
       (r.valueRanges?.[i]?.values || []).forEach((row, ri) => row.forEach((v, ci) => {
         if (v === '' || v == null) return;
         cells[cellName(ri, ci)] = typeof v === 'boolean' ? (v ? 'TRUE' : 'FALSE') : String(v);
       }));
-      return { gid: t.sheetId, title: t.title, cells };
+      const cache = {};
+      const spill = {};
+      for (const block of gridOf.get(t.sheetId) || []) {
+        (block.rowData || []).forEach((row, ri) => (row.values || []).forEach((c, ci) => {
+          const e = c.effectiveValue;
+          const v = e ? (e.numberValue ?? e.stringValue ?? e.boolValue) : undefined;
+          if (v === undefined) return;
+          const ref = cellName((block.startRow || 0) + ri, (block.startColumn || 0) + ci);
+          if (c.userEnteredValue?.formulaValue) cache[ref] = v;
+          else if (!c.userEnteredValue) {
+            spill[ref] = v;
+            delete cells[ref];
+          }
+        }));
+      }
+      return { gid: t.sheetId, title: t.title, cells, cache, spill };
     });
+  },
+
+  // IMPORTRANGE: values of a range in any spreadsheet the account can open.
+  async importRange(token, key, range) {
+    const params = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'SERIAL_NUMBER', majorDimension: 'ROWS' });
+    const r = await call(token, `${google.sheetsApi}/spreadsheets/${encodeURIComponent(key)}/values/${encodeURIComponent(range)}?${params}`);
+    const rows = r.values || [];
+    if (!rows.length) return [[null]];
+    const w = Math.max(...rows.map((x) => x.length));
+    return rows.map((x) => Array.from({ length: w }, (_, i) => (x[i] === '' || x[i] === undefined ? null : x[i])));
   },
 
   // changes: [{ title, ref, v }] with v '' to clear a cell.

@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('office', {
     sheet: (local, op, args) => ipcRenderer.invoke('cloud:sheet', local, op, args),
     share: (local, op, args) => ipcRenderer.invoke('cloud:share', local, op, args),
   },
+  // Live data for formulas (GOOGLEFINANCE, IMPORT*): resolves to { value } or { error }.
+  web: {
+    data: (kind, params) => ipcRenderer.invoke('web:data', kind, params),
+  },
   latex: {
     openFolder: (opts) => ipcRenderer.invoke('latex:open-folder', opts),
     openZip: (file) => ipcRenderer.invoke('latex:open-zip', file ? webUtils.getPathForFile(file) : null),
