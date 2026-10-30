@@ -2,6 +2,10 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.16: Google Drive sign-in fix
+
+- **Connect Google Drive** works with one click: Work's built-in Google sign-in now carries the right app ID, so you just pick your Google account instead of seeing "OAuth client was not found".
+
 ## 0.2.15: Notes in Write
 
 - Write has a **Notes mode** for meetings and quick notes. Switch with **Document / Notes** at the top right of the ribbon, or start fresh with **New > Notes** on the start screen. Notes open with a title and today's date, and the new **Notes** tab holds everything below.
