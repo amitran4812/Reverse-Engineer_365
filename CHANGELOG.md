@@ -11,6 +11,12 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Dates and time spans**: `datetrunc`, `dayofmonth`, `yearandweek`, `fiscalyear`, `fiscalquarter` and `fiscalmonth` (with the month your fiscal year starts in), `toepochseconds` and `fromepochseconds`. `datediff(from, to)` gives a time span, which you can read with `totaldays`, `totalhours`, `days`, `hours`, `minutes` and `seconds`, or build with `timespan(…)`.
 - **Conversion**: `parsedate([Text], "dd/MM/yyyy")` and `parsedatetime` read dates written in any layout. `parsereal` and `parseinteger` read numbers with thousands separators or a decimal comma, and `boolean` reads yes/no and true/false.
 
+## 0.2.20: Right-click menus for cells, rows, columns and sheets
+
+- Right-click a cell, a row number or a column letter in Plot to **Cut**, **Copy**, **Insert row above**, **Insert column left**, **Delete row** or **Delete column**, or clear contents or formats. Right-clicking a row number or column letter selects the whole row or column first. Undo (Ctrl+Z) puts deleted rows and columns back.
+- Right-click a sheet tab in Plot for **Rename**, **Duplicate**, **Move left**, **Move right** and **Delete**. Before, you got a small dialog where Delete was easy to miss.
+- **Delete sheet** is also on the Home tab (Cells) and the Insert tab (Sheets). A sheet with data asks first, and Undo (Ctrl+Z) brings it back.
+
 ## 0.2.19: Spotfire-style visualization settings in Plot
 
 - Every visualization in Plot's **Analyze** workspace has a full **Properties** panel (Alt+Enter, the gear on the plot, or **Properties** on the ribbon) with tabs for General, Data, X axis, Y axis, Colors, Markers, Labels, Legend, Trellis, Line connection, Lines & curves and Tooltip. Changes show up as you make them.
