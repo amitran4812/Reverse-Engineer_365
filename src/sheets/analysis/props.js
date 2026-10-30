@@ -10,18 +10,19 @@ import { MARKER_SHAPES } from './engine.js';
 const TYPE_ICON = { number: 'colNumber', string: 'colText', date: 'colDate' };
 const SHAPE_LABELS = { circle: 'Circle', square: 'Square', diamond: 'Diamond', triangle: 'Triangle', triangleDown: 'Triangle (down)', plus: 'Plus', cross: 'Cross' };
 const XY = ['scatter', 'line'];
-const AXES = ['scatter', 'line', 'bar', 'histogram', 'box', 'heatmap'];
+const AXES = ['scatter', 'line', 'bar', 'histogram', 'box', 'heatmap', 'waterfall', 'combo'];
+const AGGED = ['bar', 'pie', 'table', 'waterfall', 'treemap', 'kpi', 'combo'];
 
 export const PROP_TABS = [
   { id: 'general', label: 'General', icon: 'settings' },
-  { id: 'data', label: 'Data', icon: 'filter' },
+  { id: 'data', label: 'Data', icon: 'filter', when: (s) => s.type !== 'text' },
   { id: 'x', label: 'X axis', icon: 'chartLine', when: (s) => AXES.includes(s.type) },
   { id: 'y', label: 'Y axis', icon: 'up', when: (s) => AXES.includes(s.type) && s.type !== 'histogram' },
-  { id: 'color', label: 'Colors', icon: 'theme' },
+  { id: 'color', label: 'Colors', icon: 'theme', when: (s) => s.type !== 'text' },
   { id: 'marker', label: 'Markers', icon: 'chartScatter', when: (s) => XY.includes(s.type) },
-  { id: 'labels', label: 'Labels', icon: 'label', when: (s) => ['scatter', 'bar', 'histogram', 'pie'].includes(s.type) },
-  { id: 'legend', label: 'Legend', icon: 'bullets', when: (s) => s.type !== 'table' },
-  { id: 'trellis', label: 'Trellis', icon: 'grid', when: (s) => s.type !== 'table' },
+  { id: 'labels', label: 'Labels', icon: 'label', when: (s) => ['scatter', 'bar', 'histogram', 'pie', 'waterfall'].includes(s.type) },
+  { id: 'legend', label: 'Legend', icon: 'bullets', when: (s) => !['table', 'text', 'kpi', 'treemap'].includes(s.type) },
+  { id: 'trellis', label: 'Trellis', icon: 'grid', when: (s) => !['table', 'text'].includes(s.type) },
   { id: 'connect', label: 'Line connection', icon: 'chartMulti', when: (s) => s.type === 'scatter' },
   { id: 'lines', label: 'Lines & curves', icon: 'fitCurve', when: (s) => [...XY, 'histogram', 'bar', 'box'].includes(s.type) },
   { id: 'tooltip', label: 'Tooltip', icon: 'chat', when: (s) => XY.includes(s.type) },
@@ -161,18 +162,9 @@ export function createProps(api) {
   };
 
   function general(s) {
-    body.append(field('Visualization type', select(Object.entries(PLOT_TYPES).map(([value, t]) => ({ value, label: t.label })), s.type, (t) => set((x) => {
-      x.type = t;
-      if (['bar', 'pie', 'table'].includes(t) && !x.agg) x.agg = x.y?.[0]?.col ? 'mean' : 'count';
-      if (['bar', 'box', 'heatmap', 'histogram', 'pie', 'table'].includes(t)) x.y = (x.y || []).slice(0, 1);
-      if (t === 'histogram') x.y = [];
-      if (XY.includes(t) && !x.y?.length) {
-        const y = cols().find((c) => numeric(c) && c.name !== x.x);
-        if (y) x.y = [{ col: y.name }];
-      }
-    }))));
+    body.append(field('Visualization type', select(Object.entries(PLOT_TYPES).map(([value, t]) => ({ value, label: t.label })), s.type, (t) => api.changeType(t))));
     body.append(field('Title', input(s.title || '', (val) => look((x) => { x.title = val.trim() || null; }), { placeholder: autoTitle(s) })));
-    if (['bar', 'pie', 'table'].includes(s.type) && s.y?.[0]?.col) body.append(field('Aggregation', select(AGGS, s.agg || 'sum', (val) => set((x) => { x.agg = val; }))));
+    if (AGGED.includes(s.type) && s.y?.[0]?.col) body.append(field('Aggregation', select(AGGS, s.agg || 'sum', (val) => set((x) => { x.agg = val; }))));
     if (s.type === 'bar') {
       body.append(field('Order', select([{ value: 'name', label: 'By category' }, { value: 'value', label: 'By value (largest first)' }], s.sort || 'name', (val) => set((x) => { x.sort = val; }))));
       if (s.color) body.append(check('Stacked bars', s.stacked, (on) => look((x) => { x.stacked = on; })));
@@ -295,7 +287,7 @@ export function createProps(api) {
   }
 
   function axisY(s) {
-    if (XY.includes(s.type)) {
+    if (XY.includes(s.type) || s.type === 'combo') {
       const box = h('div', 'an-series');
       s.y.forEach((ys, i) => {
         const row = h('div', 'an-series-row');
@@ -319,7 +311,7 @@ export function createProps(api) {
       });
       box.append(add);
       body.append(field('Columns', box));
-    } else if (s.type === 'bar') {
+    } else if (s.type === 'bar' || s.type === 'waterfall') {
       body.append(field('Value', select(colOptions(() => true, '(row count)'), s.y?.[0]?.col || '', (val) => set((x) => {
         x.y = val ? [{ col: val }] : [];
         x.agg = val ? (x.agg && x.agg !== 'count' ? x.agg : 'mean') : 'count';
