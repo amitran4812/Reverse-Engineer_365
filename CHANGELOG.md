@@ -2,6 +2,20 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.19: Spotfire-style visualization settings in Plot
+
+- Every visualization in Plot's **Analyze** workspace has a full **Properties** panel (Alt+Enter, the gear on the plot, or **Properties** on the ribbon) with tabs for General, Data, X axis, Y axis, Colors, Markers, Labels, Legend, Trellis, Line connection, Lines & curves and Tooltip. Changes show up as you make them.
+- **Trellis** splits a plot into small panels, one per category of a column, or into a grid of rows and columns. All panels share the same axes, and you can mark points in any panel.
+- **Markers**: pick a shape (circle, square, diamond, triangles, plus, cross), a size, size by a column, shape by a column, opacity, a fixed color, and jitter for points that sit on top of each other.
+- **Line connection** joins a scatter plot's points with lines, one line per category of the "connect by" column, in the order of any column.
+- **Axes**: your own title, a fixed range, log scale, reverse, and gridlines or tick labels on or off.
+- **Labels** on points (marked or all, from any column) and values on bars, histograms and pie slices. **Legend** on the right or at the bottom, or hidden. **Reference lines** at a value, the average or the median. Choose which columns the **tooltip** shows.
+- **Filters for one visualization**: limit a plot with a formula, give it its own column filters, or have it ignore the filters panel, while the other plots keep the page filters. Right-click a filter to move it onto the selected plot.
+- **Ctrl+D** copies the selected visualization onto a new page right after the current one, with the Properties panel open, so you can switch it to a scatter plot or change anything without touching the original.
+- **Right-click menus** on plots (change type, properties, trellis, color by, markers, connect by, fit curve, marking, copy as picture, export), on the page, on page tabs, on columns, on filters and on the details table.
+- Plot lines, axis lines, curve fits and box-plot whiskers are a little thicker, so charts read more easily.
+- **Keyboard shortcuts** like the ones analysts already know: Ctrl+A mark all, Ctrl+E unmark, Ctrl+I invert, Ctrl+M filter to marked, Ctrl+Shift+M filter out, Ctrl+R reset filters, Ctrl+N new page, Ctrl+Shift+D duplicate page, Ctrl+Tab next page, Ctrl+2 to Ctrl+9 new visualizations, Ctrl+C copy marked rows and more. Press **F1** (or **Shortcuts** on the ribbon) for the full list.
+
 ## 0.2.17: Spotfire-style functions in Plot
 
 - Calculated columns and filter formulas in Plot's Analysis tab now cover the functions you'd use in Spotfire. Names aren't case-sensitive, so a formula like `StdDev([Vth]) OVER ([Lot])` works as written. The calculated column window lists them all by category.

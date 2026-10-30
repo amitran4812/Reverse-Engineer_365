@@ -12,6 +12,24 @@ export function textWidth(s, size = 12, weight = 400) {
   return measureCtx.measureText(String(s)).width;
 }
 
+// Outline of a marker shape around (x, y); null means a circle.
+export function markerPoints(shape, x, y, r) {
+  const t = r * 0.3;
+  switch (shape) {
+    case 'square': return [[x - r * 0.85, y - r * 0.85], [x + r * 0.85, y - r * 0.85], [x + r * 0.85, y + r * 0.85], [x - r * 0.85, y + r * 0.85]];
+    case 'diamond': return [[x, y - r * 1.1], [x + r * 1.1, y], [x, y + r * 1.1], [x - r * 1.1, y]];
+    case 'triangle': return [[x, y - r * 1.1], [x + r, y + r * 0.75], [x - r, y + r * 0.75]];
+    case 'triangleDown': return [[x, y + r * 1.1], [x + r, y - r * 0.75], [x - r, y - r * 0.75]];
+    case 'plus': return [[x - t, y - r], [x + t, y - r], [x + t, y - t], [x + r, y - t], [x + r, y + t], [x + t, y + t], [x + t, y + r], [x - t, y + r], [x - t, y + t], [x - r, y + t], [x - r, y - t], [x - t, y - t]];
+    case 'cross': {
+      const pts = markerPoints('plus', 0, 0, r * 1.05);
+      const c = Math.SQRT1_2;
+      return pts.map(([a, b]) => [x + (a - b) * c, y + (a + b) * c]);
+    }
+    default: return null;
+  }
+}
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -114,6 +132,12 @@ export class CanvasPainter {
     c.globalAlpha = 1;
   }
 
+  marker(x, y, r, shape, o = {}) {
+    const pts = markerPoints(shape, x, y, r);
+    if (pts) this.polygon(pts, o);
+    else this.circle(x, y, r, o);
+  }
+
   text(s, x, y, o = {}) {
     const c = this.ctx;
     c.save();
@@ -195,6 +219,12 @@ export class SvgPainter {
 
   circle(x, y, r, o = {}) {
     this.parts.push(`<circle cx="${r2(x)}" cy="${r2(y)}" r="${r2(r)}"${this.attrs(o)}/>`);
+  }
+
+  marker(x, y, r, shape, o = {}) {
+    const pts = markerPoints(shape, x, y, r);
+    if (pts) this.polygon(pts, o);
+    else this.circle(x, y, r, o);
   }
 
   text(s, x, y, o = {}) {

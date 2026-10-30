@@ -157,6 +157,11 @@ const ops = {
     return ds.info();
   },
   plotData: (spec, view, size) => ds.plotData(spec, view, size),
+  trellis: (spec) => ds.trellis(spec),
+  markAll: (mode) => {
+    ds.applyMark(() => true, mode);
+    return ds.info();
+  },
   fit: (spec, fitSpec) => ds.fit(spec, fitSpec),
   rows: (start, count, source) => ds.rows(start, count, source),
   row: (i) => ds.row(i),
