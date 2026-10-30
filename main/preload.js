@@ -77,7 +77,7 @@ contextBridge.exposeInMainWorld('office', {
   },
   data: {
     openDialog: () => ipcRenderer.invoke('data:open-dialog'),
-    launch: () => ipcRenderer.invoke('data:launch'),
+    launch: (step) => ipcRenderer.invoke('data:launch', step),
     fromFiles: (files) => ipcRenderer.invoke('data:from-paths', [...files].map((f) => webUtils.getPathForFile(f))),
     read: (handle, offset, length) => ipcRenderer.invoke('data:read', handle, offset, length),
     saveBytes: (req) => ipcRenderer.invoke('data:save-bytes', req),

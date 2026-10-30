@@ -140,6 +140,13 @@ const P = {
   database: '<ellipse cx="10" cy="4.5" rx="6.5" ry="2.3"/><path d="M3.5 4.5v11c0 1.3 2.9 2.3 6.5 2.3s6.5-1 6.5-2.3v-11"/><path class="a-s" d="M3.5 8.2c0 1.3 2.9 2.3 6.5 2.3s6.5-1 6.5-2.3M3.5 11.9c0 1.3 2.9 2.3 6.5 2.3s6.5-1 6.5-2.3"/>',
   colNumber: '<path class="a-s" d="M7.5 3L6 17M14 3l-1.5 14M3.5 7.5h13M3 12.5h13"/>',
   colText: '<path class="a-s" d="M3 16l3.5-11L10 16M4.2 12.5h4.6"/><path d="M12.5 10a2.4 2.4 0 014.5 1.2V16M17 13.2c-1.4-.4-4.7-.6-4.7 1.3 0 1.6 3 1.7 4.7-.4"/>',
+  chartPie: '<circle cx="10" cy="10" r="7"/><path class="a" d="M10 10V3a7 7 0 016.7 9.1z"/>',
+  chartTable: '<rect x="2.5" y="3.5" width="15" height="13" rx="1"/><path d="M2.5 7.5h15M7 3.5v13"/><path class="a-s" d="M10 10.5h1.5M14 10.5h1M10 13.5h1M14 13.5h1.5"/>',
+  addRows: '<rect x="3" y="2.5" width="10" height="8" rx="1"/><path d="M3 6.5h10"/><path class="a-s" d="M3 13.5h7M3 16.5h7M15 12v6M12 15h6"/>',
+  addColumns: '<rect x="2.5" y="3" width="8" height="12" rx="1"/><path d="M6.5 3v12"/><path class="a-s" d="M13.5 3v8M16.5 3v8M15 13v6M12 16h6"/>',
+  dataTables: '<rect x="2.5" y="2.5" width="11" height="8" rx="1"/><path d="M2.5 5.5h11M6.5 2.5v8"/><rect class="a-s" x="6.5" y="9.5" width="11" height="8" rx="1"/>',
+  vizTypes: '<rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1"/><rect x="11" y="2.5" width="6.5" height="6.5" rx="1"/><rect x="2.5" y="11" width="6.5" height="6.5" rx="1"/><path class="a-s" d="M14.25 11.5v5.5M11.5 14.25H17"/>',
+  details: '<rect x="2.5" y="3.5" width="15" height="13" rx="1"/><path d="M2.5 7.5h15"/><path class="a-s" d="M5 10.5h10M5 13.5h7"/>',
   colDate: '<rect x="2.5" y="4" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M6.5 2.5v3M13.5 2.5v3"/><path class="a-s" d="M6 11h2M9.5 11h2M13 11h1M6 14h2M9.5 14h2"/>',
   colCalc: '<path class="a-s" d="M10.5 3.5c-2 0-2.3 1-2.6 3L6.6 16.5M5 8.5h5M12 10l4.5 5M16.5 10L12 15"/>',
   // App marks: original glyphs, not based on any vendor logo.

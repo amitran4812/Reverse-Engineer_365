@@ -2,6 +2,17 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.9: Combine files and a new look for Plot analysis
+
+- **Add rows**: stack another CSV, Parquet or Excel file under your data. Columns are matched by name, and you can map the rest yourself. A Source column records which file each row came from.
+- **Add columns**: join another file on one or more key columns, with a left, inner, right or full join, and pick which of its columns to bring in.
+- **Data tables** lists the original file and every step applied to it, including added rows, added columns and calculated columns. You can remove any step, and saved analyses replay the steps when you reopen them.
+- **Pages**: an analysis can have several pages of plots. Use the tabs above the plots to add, rename, duplicate, reorder or delete pages.
+- Change a plot right on its axes: click the X or Y axis name, or **Color by**, to pick a column or an aggregation. You can also drag a column from the data panel onto an axis.
+- New **Pie** and **Cross table** visualizations. Click a slice or a cell to mark those rows everywhere.
+- A tool rail on the left opens data files, the visualization picker, the data panel, filters, the details table, curve fitting and Claude.
+- The details table follows your marking. Filters for the first columns are open as soon as a file loads.
+
 ## 0.2.8: Sign in with ChatGPT, keys fill in by themselves
 
 - **Sign in with ChatGPT**: if you have ChatGPT Plus or Pro, click Sign in with ChatGPT in File > Options > AI assistant and use your plan for every AI feature. No API key needed.
