@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('office', {
   },
   latex: {
     openFolder: (opts) => ipcRenderer.invoke('latex:open-folder', opts),
+    openZip: (file) => ipcRenderer.invoke('latex:open-zip', file ? webUtils.getPathForFile(file) : null),
+    importZip: (dir, file) => ipcRenderer.invoke('latex:import-zip', dir, file ? webUtils.getPathForFile(file) : null),
     list: () => ipcRenderer.invoke('latex:list'),
     sources: () => ipcRenderer.invoke('latex:sources'),
     read: (rel) => ipcRenderer.invoke('latex:read', rel),

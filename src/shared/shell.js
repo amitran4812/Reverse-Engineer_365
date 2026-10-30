@@ -24,6 +24,14 @@ export function latexTile(size = 40, appName = true) {
   return t;
 }
 
+// "Upload project (.zip)" tile: unpacks a zipped LaTeX project and opens it.
+export function latexZipTile(size = 40, appName = true) {
+  const t = h('button', 'bs-tile bs-tile-docs', `<div class="bs-tile-preview">${icon('zip', size)}</div><span>Upload LaTeX (.zip)</span>${appName ? '<small>Write</small>' : ''}`);
+  t.title = 'Open a zipped LaTeX project: it is unpacked next to the .zip and compiled';
+  t.onclick = () => window.office.latex.openZip();
+  return t;
+}
+
 export const h = (tag, cls, html) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -375,7 +383,7 @@ class Backstage {
         };
         row.append(t);
       }
-      row.append(latexTile(40, false));
+      row.append(latexTile(40, false), latexZipTile(40, false));
       return row;
     };
     if (section === 'home' || section === 'new') {
@@ -396,11 +404,16 @@ class Backstage {
         this.close();
         window.office.latex.openFolder();
       };
+      const texZip = h('button', 'bs-browse', `${icon('zip', 28)}<span>LaTeX project from a .zip…</span>`);
+      texZip.onclick = () => {
+        this.close();
+        window.office.latex.openZip();
+      };
       const places = cloudPlaces((id) => {
         this.close();
         openFromCloud(id, null);
       });
-      places.append(texFolder);
+      places.append(texFolder, texZip);
       c.append(browse, places, h('h2', '', 'Recent'), await recentList(() => this.close()));
     } else if (section === 'saveas') {
       c.append(h('h1', '', 'Save As'));

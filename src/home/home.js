@@ -2,7 +2,7 @@
 import '../shared/ui.css';
 import './home.css';
 import { icon } from '../shared/icons.js';
-import { APPS, escapeHtml, h, latexTile, settingsForm } from '../shared/shell.js';
+import { APPS, escapeHtml, h, latexTile, latexZipTile, settingsForm } from '../shared/shell.js';
 import { CLOUDS, cloudSettings, openFromCloud } from '../shared/cloud.js';
 import { ClaudePane } from '../shared/claude-pane.js';
 import { MAKE, SYSTEM } from './make.js';
@@ -97,7 +97,7 @@ async function show(view) {
       t.onclick = () => window.office.newWindow(id);
       tiles.append(t);
     }
-    tiles.append(latexTile(44));
+    tiles.append(latexTile(44), latexZipTile(44));
     main.append(h('h2', '', 'New'), tiles);
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'open') {
@@ -112,7 +112,9 @@ async function show(view) {
     }
     const texFolder = h('button', 'bs-browse', `${icon('texFile', 28)}<span>LaTeX project folder…</span>`);
     texFolder.onclick = () => window.office.latex.openFolder();
-    places.append(texFolder);
+    const texZip = h('button', 'bs-browse', `${icon('zip', 28)}<span>LaTeX project from a .zip…</span>`);
+    texZip.onclick = () => window.office.latex.openZip();
+    places.append(texFolder, texZip);
     main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md, .txt and .tex in Write, .xlsx and .csv in Plot, and .reaslides in Present. From Google Drive, Google Sheets and Docs open too.'));
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'options') {
