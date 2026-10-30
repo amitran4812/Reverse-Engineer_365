@@ -258,7 +258,10 @@ export async function createShell(opts) {
       document.body.classList.add('printing');
       opts.beforePrint?.();
       try {
-        await window.office.exportPdf({ suggestedName: state.name.replace(/\.[^.]+$/, ''), ...(opts.pdfOptions?.() || {}) });
+        const file = await window.office.exportPdf({ suggestedName: state.name.replace(/\.[^.]+$/, ''), ...(opts.pdfOptions?.() || {}) });
+        if (file) toast(`Saved ${file.split(/[\\/]/).pop()}`);
+      } catch (err) {
+        toast(String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'error');
       } finally {
         document.body.classList.remove('printing');
         opts.afterPrint?.();
