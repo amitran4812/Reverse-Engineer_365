@@ -2,6 +2,12 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.24: Save notes as PDF
+
+- **Save as PDF** is now on Write's **Notes** tab and in the **/** menu, next to Send to Present. It's still under **File > Export** too.
+- PDFs come out on clean white pages. Before, the page margins came out grey in every app, and the cursor showed in Write.
+- If a PDF can't be saved, Write now says why. Before, nothing happened. The most common cause on Windows is that the same PDF is still open in a viewer, so close it and try again, or pick another name.
+
 ## 0.2.21: More Spotfire functions in Plot
 
 - **Statistics**: `valueformax([Vth], [Wafer])` and `valueformin` give one column's value on the row where another is largest or smallest. Also `weightedaverage([Weight], [Value])`, `uniqueconcatenate`, `outliers`, `pctoutliers`, `covariance`, `correlation`, and the `mostcommon` and `countbig` names. All of them work per group with OVER.
