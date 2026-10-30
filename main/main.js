@@ -325,6 +325,7 @@ ipcMain.handle('claude:attach-dialog', async (e) => {
   });
   return res.canceled ? [] : attachments.loadAll(res.filePaths);
 });
+ipcMain.handle('claude:attach-images', (e, list) => attachments.fromImages(list));
 ipcMain.handle('claude:attach-paths', (e, paths) => attachments.loadAll((Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string' && p).slice(0, 20)));
 // Opens something Claude made in a new Write, Plot or Present window (unsaved).
 ipcMain.handle('app:new-with', safe(async (e, spec) => {

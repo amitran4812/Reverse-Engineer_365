@@ -2,6 +2,13 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.14: Turn Write documents into presentations
+
+- **Send to Present** on Write's Home and Claude tabs turns your document into a new presentation. Headings, paragraphs, bullet points, quotes, pictures and tables all come along.
+- With an AI connected (Claude, ChatGPT, OpenAI or Gemini), it designs the deck: it picks a layout for each slide, writes short bullets, puts the detail in speaker notes, and places each picture and table on the slide where it belongs. It looks at your pictures, so they land next to the right text. Tell it anything extra, like "about 8 slides for a class".
+- Without an AI, **Simple** makes one slide per heading: paragraphs and lists become bullets, pictures sit beside the text, tables get their own slide, and long sections carry on over the next slide.
+- Pick a template (Paper, Slate, Midnight, Sunrise, Forest or Berry), and select part of the document first to send only that part. The presentation opens in Present, ready to edit, show or save as .pptx.
+
 ## 0.2.13: Send plots to Present
 
 - **Send to Present** on Plot's Analyze tab puts your plots on a slide. A list shows every plot in the analysis, page by page, so tick the ones you want and untick the rest.

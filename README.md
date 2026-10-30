@@ -2,7 +2,7 @@
 
 An installable desktop office suite with AI built in (Claude by default, or OpenAI or Gemini with your own key):
 
-- **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)).
+- **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)). **Send to Present** turns a document's text, lists, pictures and tables into a new presentation, designed by the AI you've connected or laid out one slide per heading without one.
 - **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open. Its **Analysis** tab plots large data files, and **Send to Present** puts the plots you pick, with a table of rows if you like, on a slide in a new presentation.
 - **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides`, exports `.pptx`, and opens `.pptx` and OpenDocument `.odp`.
 
@@ -19,7 +19,7 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 
 | App | Claude features |
 | --- | --- |
-| Write | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document |
+| Write | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document, and **Send to Present**: design a presentation from the document, with short bullets, speaker notes and your pictures and tables placed on the slides |
 | Write (LaTeX) | **LaTeX helper**: write LaTeX from a description ("a 3-column table of results"), turn data into a table, convert plain text or math to LaTeX, explain a command, answer "which command do I need?", improve the wording without touching commands, and fix compile errors |
 | Plot | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
 | Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
@@ -176,7 +176,7 @@ main/            Electron main process
   preload.js     the window.office bridge exposed to the renderer
   claude.js      streams Claude responses (the API key stays in this process)
   attachments.js files attached to Claude messages (PDF, images, Office files, text)
-  generated.js   opens what the Claude app made in Write, Plot or Present, and slides Plot sends to Present
+  generated.js   opens what the Claude app made in Write, Plot or Present, and slides Plot and Write send to Present
   cloud/         Google Drive, Google Sheets live sync and OneDrive (OAuth + APIs)
   settings.js    settings + encrypted API key
   profiles.js    accounts: one data folder and process per account

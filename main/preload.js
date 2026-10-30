@@ -105,6 +105,8 @@ contextBridge.exposeInMainWorld('office', {
     chatgptSignOut: () => ipcRenderer.invoke('chatgpt:sign-out'),
     clipboardKey: (provider) => ipcRenderer.invoke('app:clipboard-key', provider),
     attach: () => ipcRenderer.invoke('claude:attach-dialog'),
+    // Pictures from the open document ([{ src: data URL, name }]); returns an attachment id.
+    attachImages: (list) => ipcRenderer.invoke('claude:attach-images', list),
     // Dropped File objects: the path is only readable here in the preload.
     attachFiles: (files) => ipcRenderer.invoke('claude:attach-paths', [...files].map((f) => webUtils.getPathForFile(f))),
   },
