@@ -168,10 +168,6 @@ npm run dist:win   # build the Windows installer into release/
 
 The **Build** workflow (`.github/workflows/build.yml`) tests every push and pull request and builds installers for Windows, macOS and Linux as workflow artifacts. To publish them as a GitHub Release, bump `version` in `package.json`, then either push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`) or open **Actions > Build > Run workflow** and tick **release**.
 
-### Working on it with Claude Code
-
-The repo has a `CLAUDE.md` that explains the layout and conventions to [Claude Code](https://code.claude.com/docs). Clone the repo, run `claude` in the folder, and sign in to Claude Code the usual way. Then ask it to add features or fix bugs.
-
 ### Layout
 
 ```

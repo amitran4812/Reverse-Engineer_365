@@ -1,4 +1,4 @@
-# Work
+# Contributing to Work
 
 An Electron desktop suite: Write (word processor), Plot (spreadsheet) and Present (presentations), each with Claude built in through the Anthropic API.
 
