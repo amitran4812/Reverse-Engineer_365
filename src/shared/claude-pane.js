@@ -43,6 +43,29 @@ export function codeBlock(text, lang) {
 
 let seq = 0;
 
+// One click: sign in with ChatGPT and start with a model the plan offers (changeable in Options).
+function quickSignIn(onDone) {
+  const box = h('div', 'cp-note cp-quick', `${icon('sparkle', 18)}<div><b>Have ChatGPT Plus or Pro?</b><p>Sign in with your ChatGPT account. No key needed.</p><button class="btn primary" type="button">Sign in with ChatGPT</button><p class="settings-status" data-status></p></div>`);
+  const btn = box.querySelector('button');
+  const status = box.querySelector('[data-status]');
+  btn.onclick = async () => {
+    btn.disabled = true;
+    status.textContent = 'Finish signing in in your browser…';
+    const r = await window.office.claude.chatgptSignIn();
+    const m = r.ok ? await window.office.claude.models('chatgpt') : r;
+    if (!m.ok || !m.models.length) {
+      btn.disabled = false;
+      status.textContent = m.message || 'Your ChatGPT plan has no models available to apps.';
+      status.className = 'settings-status bad';
+      return;
+    }
+    await window.office.settings.set({ aiModels: { chatgpt: m.models[0] }, provider: 'chatgpt' });
+    toast(`Signed in to ChatGPT${r.email ? ` as ${r.email}` : ''}`);
+    onDone();
+  };
+  return box;
+}
+
 export class ClaudePane {
   constructor(host, cfg) {
     this.host = host;
@@ -163,7 +186,8 @@ export class ClaudePane {
     this.setup.innerHTML = '';
     if (!s.ready) {
       if (s.provider === 'anthropic') {
-        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect Claude</b><p>Sign in with your Anthropic account and paste a key to turn on Claude in Write, Plot and Present. You can use OpenAI or Gemini instead in File > Options.</p></div>`));
+        this.setup.append(quickSignIn(() => this.loadSettings()));
+        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Or connect Claude</b><p>Claude needs a key from your Anthropic account: click the button, copy the key it shows you, and come back. Work fills it in. You can also use OpenAI or Gemini in File > Options.</p></div>`));
         this.setup.append(await settingsForm(() => this.loadSettings()));
       } else {
         this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect ${escapeHtml(s.providerLabel)}</b><p>${s.provider === 'chatgpt' ? 'Sign in with your ChatGPT account' : `Add your ${escapeHtml(s.providerLabel)} API key`} and pick a model.</p></div>`));
