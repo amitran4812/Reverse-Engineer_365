@@ -26,6 +26,10 @@ const APPS = {
       { name: 'OpenDocument spreadsheet', extensions: ['ods'] },
     ],
   },
+  pdf: {
+    open: ['pdf'],
+    save: [{ name: 'PDF', extensions: ['pdf'] }],
+  },
   slides: {
     open: ['reaslides', 'pptx', 'odp'],
     save: [
@@ -88,6 +92,8 @@ async function openFile(file) {
   const app = appForFile(file);
   const name = path.basename(file);
   if (ext === 'tex') return latexProject(file);
+  // Read loads the bytes itself, through its own IPC.
+  if (ext === 'pdf') return { app: 'pdf', path: file, name, ext };
   // Right-click > New makes an empty file; open it as a blank document.
   const { size } = await fs.stat(file);
   if (app && size === 0) return { app, path: file, name, ext, data: BLANK[app]() };

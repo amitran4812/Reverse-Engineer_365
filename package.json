@@ -1,7 +1,7 @@
 {
   "name": "rea-office",
   "productName": "Work",
-  "version": "0.2.26",
+  "version": "0.2.32",
   "description": "An Office-style desktop suite (documents, spreadsheets, presentations) with Claude built in.",
   "private": true,
   "license": "MIT",
@@ -63,6 +63,7 @@
     "hyparquet-compressors": "^1.1.2",
     "hyparquet-writer": "^0.18.0",
     "mathjax-full": "^3.2.2",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.4.299"
   },
   "build": {

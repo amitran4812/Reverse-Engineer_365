@@ -2,7 +2,7 @@
 import '../shared/ui.css';
 import './home.css';
 import { icon } from '../shared/icons.js';
-import { APPS, escapeHtml, h, latexTile, latexZipTile, notesTile, settingsForm } from '../shared/shell.js';
+import { APPS, escapeHtml, h, latexTile, latexZipTile, notesTile, settingsForm, startApp } from '../shared/shell.js';
 import { CLOUDS, cloudSettings, openFromCloud } from '../shared/cloud.js';
 import { ClaudePane } from '../shared/claude-pane.js';
 import { MAKE, SYSTEM } from './make.js';
@@ -94,7 +94,7 @@ async function show(view) {
     const tiles = h('div', 'bs-tiles');
     for (const [id, m] of Object.entries(APPS)) {
       const t = h('button', `bs-tile bs-tile-${id}`, `<div class="bs-tile-preview">${icon(m.mark, 44)}</div><span>${m.newLabel}</span><small>${m.title}</small>`);
-      t.onclick = () => window.office.newWindow(id);
+      t.onclick = () => startApp(id);
       tiles.append(t);
     }
     tiles.append(notesTile(44), latexTile(44), latexZipTile(44));
@@ -115,7 +115,7 @@ async function show(view) {
     const texZip = h('button', 'bs-browse', `${icon('zip', 28)}<span>LaTeX project from a .zip…</span>`);
     texZip.onclick = () => window.office.latex.openZip();
     places.append(texFolder, texZip);
-    main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md, .txt and .tex in Write, .xlsx and .csv in Plot, and .reaslides in Present. From Google Drive, Google Sheets and Docs open too.'));
+    main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md, .txt and .tex in Write, .xlsx and .csv in Plot, .reaslides in Present, and PDFs in Read. From Google Drive, Google Sheets and Docs open too.'));
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'options') {
     main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await aiSettings(() => pane?.loadSettings()), await cloudSettings(), await accountsSection(), await updateSettings());

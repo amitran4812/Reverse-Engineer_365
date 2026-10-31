@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // latex is Write's LaTeX mode: its own page, opened for .tex projects.
-const APPS = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present', latex: 'Write' };
+const APPS = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present', latex: 'Write', pdf: 'Read' };
 const watch = process.argv.includes('--watch');
 
 await mkdir(join(here, 'dist'), { recursive: true });

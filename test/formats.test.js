@@ -141,7 +141,8 @@ test('openFile / saveFile route by extension', async () => {
   assert.equal(appForFile('a.DOCX'), 'docs');
   assert.equal(appForFile('a.csv'), 'sheets');
   assert.equal(appForFile('a.reaslides'), 'slides');
-  assert.equal(appForFile('a.pdf'), null);
+  assert.equal(appForFile('a.pdf'), 'pdf');
+  assert.equal(appForFile('a.zip'), null);
 
   const md = path.join(dir, 'notes.md');
   fs.writeFileSync(md, '# Title\n\n- a\n- b\n');
