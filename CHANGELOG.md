@@ -2,6 +2,16 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.27: More chart types and the rest of the analyst shortcuts in Plot
+
+- New visualizations in Plot's **Analyze** tab: **Waterfall** (running total by category, with a total bar), **Combination** (bars for the first column, lines for the others, optionally on a right axis), **Treemap**, **Parallel coordinates** (one line per row across several number columns; drag on an axis to mark a range) and **KPI** tiles. Each can be marked by clicking, has a tooltip and is in the right-click "change type" grid.
+- **Text area** for notes on a page (Ctrl+T).
+- **Undo and redo** (Ctrl+Z, Ctrl+Y) for plots, pages and filters.
+- **Paste data** (Ctrl+V): rows copied from a spreadsheet or a CSV, header first, open as the data table.
+- New keys: Ctrl+4 waterfall, Ctrl+6 combination (two-axis line moves to Ctrl+Shift+5), Ctrl+Shift+2 treemap, Ctrl+Shift+4 parallel coordinates, Ctrl+Shift+7 KPI, Ctrl+W close.
+- Formula boxes get line-editing keys: Ctrl+D duplicate line, Ctrl+L delete line, Ctrl+T swap with the line above, Ctrl+U / Ctrl+Shift+U lower / upper case, Ctrl+Shift+Delete delete to the end of the line, Tab / Shift+Tab indent.
+- The shortcuts list (F1) shows all of these.
+
 ## 0.2.26: Write anywhere, voice notes, equations and attachments in notes
 
 - **Write anywhere**: insert an area on the Notes tab (or type `/anywhere`) and click anywhere in it to start a text box. Drag a box by its top edge to move it, drag its right edge to make it wider, and drag the bottom of the area to make it taller. Empty boxes tidy themselves away.

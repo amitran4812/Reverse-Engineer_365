@@ -12,10 +12,10 @@ import { FUNCTION_GROUPS } from './expr.js';
 import { formatValue } from './axes.js';
 import { sendToPresent } from './to-present.js';
 import { createProps } from './props.js';
-import { kbd, menuAt, showShortcuts } from './menus.js';
+import { exprKeys, kbd, menuAt, showShortcuts } from './menus.js';
 
 const TYPE_ICON = { number: 'colNumber', string: 'colText', date: 'colDate' };
-const AGGED = ['bar', 'pie', 'table'];
+const AGGED = ['bar', 'pie', 'table', 'waterfall', 'treemap', 'kpi'];
 const ROW_H = 22;
 const fmtInt = (n) => Number(n || 0).toLocaleString();
 let plotSeq = 0;
@@ -215,6 +215,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     root.classList.add('has-data');
     renderAll();
     refreshPlots();
+    resetHistory();
   }
 
   function defaultPlots() {
@@ -229,6 +230,39 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   }
 
   // ---------- plots ----------
+  // Rows copied from a spreadsheet or a CSV: at least a header and one row.
+  function pastedMatrix(text) {
+    const lines = text.replace(/\r\n?/g, '\n').split('\n').filter((l) => l.trim());
+    if (lines.length < 2) return null;
+    const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(',') ? ',' : lines[0].includes(';') ? ';' : null;
+    if (!sep) return null;
+    const split = (l) => {
+      if (sep === '\t' || !l.includes('"')) return l.split(sep);
+      const out = [];
+      let cur = '';
+      let q = false;
+      for (let i = 0; i < l.length; i += 1) {
+        const ch = l[i];
+        if (q) {
+          if (ch === '"' && l[i + 1] === '"') {
+            cur += '"';
+            i += 1;
+          } else if (ch === '"') q = false;
+          else cur += ch;
+        } else if (ch === '"') q = true;
+        else if (ch === sep) {
+          out.push(cur);
+          cur = '';
+        } else cur += ch;
+      }
+      out.push(cur);
+      return out;
+    };
+    const rows = lines.map(split);
+    if (rows[0].length < 2) return null;
+    return rows;
+  }
+
   function newSpec(type) {
     const cols = st.info?.columns || [];
     const nums = cols.filter((c) => c.type !== 'string');
@@ -250,6 +284,15 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       case 'heatmap': return { type, x: xNum, y: [{ col: yNum }], bins: 40 };
       case 'pie': return { type, x: texts[0]?.name || xNum, y: [], agg: 'count' };
       case 'table': return { type, x: texts[0]?.name || null, color: texts[1]?.name || null, y: yNum ? [{ col: yNum }] : [], agg: yNum ? 'mean' : 'count' };
+      case 'waterfall': return { type, x: texts[0]?.name || xNum, y: yNum ? [{ col: yNum }] : [], agg: yNum ? 'sum' : 'count' };
+      case 'combo': {
+        const ys = nums.filter((c) => c.name !== xNum).slice(0, 2);
+        return { type, x: texts[0]?.name || xNum, y: ys.map((c, i) => ({ col: c.name, axis: i ? 'right' : 'left' })), agg: 'mean' };
+      }
+      case 'treemap': return { type, x: texts[0]?.name || xNum, y: [], agg: 'count' };
+      case 'kpi': return { type, x: texts[0]?.name || null, y: yNum ? [{ col: yNum }] : [], agg: yNum ? 'mean' : 'count' };
+      case 'parallel': return { type, y: nums.slice(0, 6).map((c) => ({ col: c.name })), color: texts[0]?.name || null };
+      case 'text': return { type, title: 'Notes', text: '' };
       default: return { type: 'scatter', x: xNum, y: [{ col: yNum }] };
     }
   }
@@ -467,7 +510,13 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     setActive(v);
     const col = st.info?.columns.find((c) => c.name === name);
     setProp((x) => {
-      if (key === 'x') x.x = name || null;
+      if (key === 'cols') {
+        if (!name) return;
+        const i = x.y.findIndex((y) => y.col === name);
+        if (i >= 0) {
+          if (x.y.length > 2) x.y.splice(i, 1);
+        } else x.y.push({ col: name });
+      } else if (key === 'x') x.x = name || null;
       else if (key === 'color') x.color = name || null;
       else if (key === 'value') {
         x.y = name ? [{ col: name }] : [];
@@ -485,7 +534,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   function axisMenu(v, key, anchor) {
     const s = v.spec;
     const m = h('div', 'rb-menu an-axis-menu');
-    const numericOnly = (key === 'y') || (key === 'x' && s.type === 'histogram');
+    const numericOnly = key === 'y' || key === 'cols' || (key === 'x' && s.type === 'histogram');
     const optional = key === 'color' || key === 'value' || (key === 'x' && ['bar', 'box', 'table'].includes(s.type));
     const current = key === 'x' ? s.x : key === 'color' ? s.color : s.y?.[0]?.col;
     if (key === 'value') {
@@ -511,7 +560,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       if (optional) opts.push({ name: null, label: key === 'value' ? '(row count)' : '(none)' });
       for (const c of st.info.columns) if ((!numericOnly || c.type !== 'string') && (!q || c.name.toLowerCase().includes(q))) opts.push({ name: c.name, label: c.name, c });
       for (const o of opts) {
-        const b = h('button', `rb-menu-item${(o.name || null) === (current || null) ? ' on' : ''}`, `${o.c ? icon(o.c.expr ? 'colCalc' : TYPE_ICON[o.c.type], 14) : icon('close', 14)}<span>${escapeHtml(o.label)}</span>`);
+        const on = key === 'cols' ? (s.y || []).some((y) => y.col === o.name) : (o.name || null) === (current || null);
+        const b = h('button', `rb-menu-item${on ? ' on' : ''}`, `${o.c ? icon(o.c.expr ? 'colCalc' : TYPE_ICON[o.c.type], 14) : icon('close', 14)}<span>${escapeHtml(o.label)}</span>`);
         b.onclick = () => {
           closePopup();
           axisPick(v, key, o.name);
@@ -711,12 +761,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     }
     const s = v.spec;
     const numeric = (c) => c.type !== 'string';
-    const typeSel = select(Object.entries(PLOT_TYPES).map(([value, t]) => ({ value, label: t.label })), s.type, (t) => setProp((x) => {
-      x.type = t;
-      if (AGGED.includes(t) && !x.agg) x.agg = x.y?.[0]?.col ? 'mean' : 'count';
-      if (['bar', 'box', 'heatmap', 'histogram', 'pie', 'table'].includes(t)) x.y = (x.y || []).slice(0, 1);
-      if (t === 'histogram') x.y = [];
-    }));
+    const typeSel = select(Object.entries(PLOT_TYPES).map(([value, t]) => ({ value, label: t.label })), s.type, (t) => changeType(t));
     propsHost.append(field('Type', typeSel));
     const title = h('input');
     title.value = s.title || '';
@@ -727,11 +772,12 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       v.draw();
     };
     propsHost.append(field('Title', title));
-    const xOptional = ['bar', 'box', 'table'].includes(s.type);
+    if (s.type === 'text') return;
+    const xOptional = ['bar', 'box', 'table', 'kpi'].includes(s.type);
     const xFilter = s.type === 'histogram' ? numeric : () => true;
-    const xLabel = { bar: 'Category (X)', box: 'Category (X)', pie: 'Slices', table: 'Rows' }[s.type] || 'X axis';
-    propsHost.append(droppable(field(xLabel, select(colOptions(xFilter, xOptional ? '(none)' : null), s.x || '', (val) => setProp((x) => { x.x = val || null; }))), (name) => setProp((x) => { x.x = name; })));
-    if (s.type === 'scatter' || s.type === 'line') {
+    const xLabel = { bar: 'Category (X)', box: 'Category (X)', pie: 'Slices', table: 'Rows', waterfall: 'Category (X)', combo: 'Category (X)', treemap: 'Rectangles', kpi: 'Tiles' }[s.type] || 'X axis';
+    if (s.type !== 'parallel') propsHost.append(droppable(field(xLabel, select(colOptions(xFilter, xOptional ? '(none)' : null), s.x || '', (val) => setProp((x) => { x.x = val || null; }))), (name) => setProp((x) => { x.x = name; })));
+    if (['scatter', 'line', 'combo', 'parallel'].includes(s.type)) {
       const box = h('div', 'an-series');
       s.y.forEach((ys, i) => {
         const row = h('div', 'an-series-row');
@@ -755,7 +801,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
         if (next) x.y.push({ col: next.name, axis: x.y.length ? 'right' : 'left' });
       });
       box.append(add);
-      propsHost.append(droppable(field('Y axis', box), (name) => setProp((x) => { x.y.push({ col: name }); })));
+      propsHost.append(droppable(field({ combo: 'Bars, then lines', parallel: 'Columns' }[s.type] || 'Y axis', box), (name) => setProp((x) => { x.y.push({ col: name }); })));
+      if (s.type === 'combo') propsHost.append(field('Aggregation', select(AGGS.filter((a) => a.value !== 'count'), s.agg || 'mean', (val) => setProp((x) => { x.agg = val; }))));
     } else if (s.type !== 'histogram') {
       const agged = AGGED.includes(s.type);
       const yFilter = agged ? () => true : numeric;
@@ -770,7 +817,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       propsHost.append(field('Color by value', select(colOptions(numeric, '(row count)'), s.z || '', (val) => setProp((x) => { x.z = val || null; if (val && !x.agg) x.agg = 'mean'; }))));
       if (s.z) propsHost.append(field('Aggregation', select(AGGS.filter((a) => a.value !== 'median' && a.value !== 'std'), s.agg || 'mean', (val) => setProp((x) => { x.agg = val; }))));
     }
-    if (['scatter', 'line', 'bar', 'histogram', 'table'].includes(s.type) && (s.y || []).length <= 1) {
+    if (['scatter', 'line', 'bar', 'histogram', 'table', 'parallel'].includes(s.type) && ((s.y || []).length <= 1 || s.type === 'parallel')) {
       propsHost.append(droppable(field(s.type === 'table' ? 'Columns' : 'Color by', select(colOptions(() => true, '(none)'), s.color || '', (val) => setProp((x) => { x.color = val || null; }))), (name) => setProp((x) => { x.color = name; })));
     }
     if (s.type === 'box') propsHost.append(check('Color each box', !!s.color, (on) => setProp((x) => { x.color = on ? x.x : null; })));
@@ -1572,6 +1619,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     ['scatter', 'chartScatter', 'Scatter'], ['line', 'chartLine', 'Line'], ['bar', 'chartBar', 'Bar'],
     ['histogram', 'chartHist', 'Histogram'], ['box', 'chartBox', 'Box plot'], ['heatmap', 'chartHeat', 'Heat map'],
     ['pie', 'chartPie', 'Pie'], ['table', 'chartTable', 'Cross table'], ['multi', 'chartMulti', 'Two-axis line'],
+    ['waterfall', 'chartWaterfall', 'Waterfall'], ['combo', 'chartCombo', 'Combination'], ['treemap', 'chartTreemap', 'Treemap'],
+    ['parallel', 'chartParallel', 'Parallel coordinates'], ['kpi', 'chartKpi', 'KPI'], ['text', 'textArea', 'Text area'],
   ];
 
   function vizMenu(anchor) {
@@ -1927,6 +1976,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     client,
     setProp: (fn) => setProp(fn),
     setLook: (fn) => setLook(fn),
+    changeType: (t) => changeType(t),
     fitMenu: (anchor) => fitMenu(anchor),
     removeFit: (v, f) => {
       v.spec.fits = v.spec.fits.filter((g) => g !== f);
@@ -2016,9 +2066,22 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   // Switches the selected visualization to another type, keeping its columns.
   function changeType(t) {
     setProp((x) => {
+      const nums = st.info.columns.filter((c) => c.type !== 'string');
+      if (t === 'combo' || t === 'parallel') {
+        x.type = t;
+        x.y = (x.y || []).filter((y) => nums.some((c) => c.name === y.col));
+        const want = t === 'combo' ? 2 : Math.min(5, nums.length);
+        for (const c of nums) if (x.y.length < want && !x.y.some((y) => y.col === c.name) && c.name !== x.x) x.y.push({ col: c.name, axis: t === 'combo' && x.y.length ? 'right' : undefined });
+        if (t === 'combo' && (!x.agg || x.agg === 'count')) x.agg = 'mean';
+        return;
+      }
+      if (t === 'text') {
+        x.type = t;
+        return;
+      }
       x.type = t;
       if (AGGED.includes(t) && !x.agg) x.agg = x.y?.[0]?.col ? 'mean' : 'count';
-      if (['bar', 'box', 'heatmap', 'histogram', 'pie', 'table'].includes(t)) x.y = (x.y || []).slice(0, 1);
+      if (['bar', 'box', 'heatmap', 'histogram', 'pie', 'table', 'waterfall', 'treemap', 'kpi'].includes(t)) x.y = (x.y || []).slice(0, 1);
       if (t === 'histogram') x.y = [];
       if (['scatter', 'line', 'box', 'heatmap'].includes(t) && !x.y?.[0]?.col) {
         const y = st.info.columns.find((c) => c.type !== 'string' && c.name !== x.x);
@@ -2141,7 +2204,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     switchPage((st.page + d + st.pages.length) % st.pages.length);
   }
 
-  const NEW_VIZ = { 2: 'table', 3: 'bar', 5: 'line', 6: 'multi', 7: 'pie', 8: 'scatter', 9: 'histogram', 0: 'box' };
+  const NEW_VIZ = { 2: 'table', 3: 'bar', 4: 'waterfall', 5: 'line', 6: 'combo', 7: 'pie', 8: 'scatter', 9: 'histogram', 0: 'box' };
+  const NEW_VIZ_SHIFT = { 2: 'treemap', 3: 'heatmap', 4: 'parallel', 5: 'multi', 7: 'kpi' };
 
   // The workspace's shortcuts (see SHORTCUTS for the list people see).
   function onKey(e) {
@@ -2182,7 +2246,12 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       if (k === 'Tab' || k === 'PageDown' || k === 'PageUp') return take(() => stepPage(k === 'PageUp' || e.shiftKey ? -1 : 1));
       if (k === 'ArrowRight' || k === 'ArrowLeft') return take(() => stepPage(k === 'ArrowLeft' ? -1 : 1));
       if (digit === 1 && !e.shiftKey) return take(() => togglePanel('table'));
-      if (digit === 3 && e.shiftKey) return take(() => addPlot(newSpec('heatmap')));
+      if (digit != null && e.shiftKey && NEW_VIZ_SHIFT[digit]) return take(() => addPlot(newSpec(NEW_VIZ_SHIFT[digit])));
+      if (digit === 1 && e.shiftKey) return take(() => toast('Maps need map tiles that work offline; they are not in Plot yet.'));
+      if (k === 't' && !e.shiftKey) return take(() => addPlot(newSpec('text')));
+      if (k === 'z' && !e.shiftKey) return take(() => undoRedo(-1));
+      if (k === 'y' || (k === 'z' && e.shiftKey)) return take(() => undoRedo(1));
+      if (k === 'w') return take(() => window.close());
       if (digit != null && !e.shiftKey && NEW_VIZ[digit]) return take(() => addPlot(newSpec(NEW_VIZ[digit])));
     }
     if (e.altKey && k === 'Enter') return take(() => openProps());
@@ -2194,6 +2263,88 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     return undefined;
   }
   document.addEventListener('keydown', onKey, true);
+  // Formula fields: the calculated-column box, the filter formula and a plot's limit.
+  document.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (!t?.closest) return;
+    if (t.closest('.an-expr') || t.classList.contains('an-mono') || (t.tagName === 'TEXTAREA' && t.closest('.modal')?.querySelector('.an-fn'))) exprKeys(e);
+  }, true);
+
+  // Ctrl+V outside a text box: pasted rows (tab- or comma-separated, header
+  // first) open as the data table, as from a spreadsheet copy.
+  document.addEventListener('paste', async (e) => {
+    if (!root.isConnected || !root.offsetParent || document.querySelector('.modal-back')) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    const text = e.clipboardData?.getData('text/plain') || '';
+    const matrix = pastedMatrix(text);
+    if (!matrix) return;
+    e.preventDefault();
+    if (!(await confirmReplace())) return;
+    onShow?.();
+    try {
+      const info = await client.call('fromRows', matrix, 'Pasted data');
+      st.source = { kind: 'sheet', name: 'Pasted data', rows: matrix };
+      st.steps = [];
+      await afterLoad(info);
+      toast(`Pasted ${fmtInt(info.rows)} rows × ${info.columns.length} columns`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  // ---------- undo / redo ----------
+  // Snapshots of the pages, plots and filters, taken shortly after each change.
+  const hist = { undo: [], redo: [], last: null, busy: false, timer: 0 };
+  async function snapshot() {
+    const filters = await client.call('filterState').catch(() => null);
+    return JSON.stringify({ pages: st.pages.map((pg) => ({ title: pg.title, plots: pg.plots.map((v) => ({ ...v.spec, view: undefined })) })), page: st.page, filters });
+  }
+  async function checkpoint() {
+    if (!st.info || hist.busy) return;
+    const snap = await snapshot();
+    if (hist.last && snap !== hist.last) {
+      hist.undo.push(hist.last);
+      if (hist.undo.length > 100) hist.undo.shift();
+      hist.redo = [];
+    }
+    hist.last = snap;
+  }
+  function noteChange() {
+    clearTimeout(hist.timer);
+    hist.timer = setTimeout(checkpoint, 300);
+  }
+  function resetHistory() {
+    hist.undo = [];
+    hist.redo = [];
+    hist.last = null;
+    noteChange();
+  }
+  async function undoRedo(dir) {
+    clearTimeout(hist.timer);
+    await checkpoint();
+    const from = dir < 0 ? hist.undo : hist.redo;
+    const to = dir < 0 ? hist.redo : hist.undo;
+    if (!from.length) return toast(dir < 0 ? 'Nothing to undo' : 'Nothing to redo');
+    to.push(hist.last);
+    const snap = from.pop();
+    hist.last = snap;
+    hist.busy = true;
+    try {
+      const x = JSON.parse(snap);
+      if (x.filters) st.info = await client.call('restoreFilters', x.filters).catch(() => st.info);
+      restorePages(x.pages, x.page);
+      refreshPlots();
+      renderPages();
+      renderFilters();
+      renderProps();
+      props.render();
+    } finally {
+      hist.busy = false;
+    }
+    return undefined;
+  }
+  for (const ev of ['mouseup', 'keyup', 'change', 'input', 'drop']) root.addEventListener(ev, noteChange, true);
 
   // ---------- AI ----------
   async function aiContext() {
@@ -2402,6 +2553,16 @@ ${plots}
           { type: 'small', icon: 'chartPie', label: 'Pie', run: () => addPlot(newSpec('pie')), enabled: needData },
           { type: 'small', icon: 'chartTable', label: 'Cross Table', run: () => addPlot(newSpec('table')), enabled: needData },
           { type: 'small', icon: 'chartMulti', label: 'Two-Axis Line', title: 'Line plot with a second Y axis', run: () => addPlot(newSpec('multi')), enabled: needData },
+        ] },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'chartWaterfall', label: 'Waterfall', title: `Running total by category (${kbd('Ctrl+4')})`, run: () => addPlot(newSpec('waterfall')), enabled: needData },
+          { type: 'small', icon: 'chartCombo', label: 'Combination', title: `Bars and lines on the same categories (${kbd('Ctrl+6')})`, run: () => addPlot(newSpec('combo')), enabled: needData },
+          { type: 'small', icon: 'chartTreemap', label: 'Treemap', title: `Rectangles sized by value (${kbd('Ctrl+Shift+2')})`, run: () => addPlot(newSpec('treemap')), enabled: needData },
+        ] },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'chartParallel', label: 'Parallel', title: `Parallel coordinates: one line per row across several columns (${kbd('Ctrl+Shift+4')})`, run: () => addPlot(newSpec('parallel')), enabled: needData },
+          { type: 'small', icon: 'chartKpi', label: 'KPI', title: `Big-number tiles per category (${kbd('Ctrl+Shift+7')})`, run: () => addPlot(newSpec('kpi')), enabled: needData },
+          { type: 'small', icon: 'textArea', label: 'Text Area', title: `Notes on the page (${kbd('Ctrl+T')})`, run: () => addPlot(newSpec('text')), enabled: needData },
         ] },
         { type: 'big', icon: 'slideNew', label: 'New Page', title: `Add a page of visualizations (${kbd('Ctrl+N')})`, run: () => addPage(), enabled: needData },
         { type: 'stack', items: [

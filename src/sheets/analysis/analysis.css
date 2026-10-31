@@ -347,3 +347,7 @@
 .viz.viz-panel .viz-head { height: 20px; background: #f3f4f6; padding: 0 6px; }
 .viz.viz-panel .viz-title { font-size: 11px; }
 .viz.viz-panel .viz-type, .viz.viz-panel .viz-tools { display: none; }
+
+/* Text area visualization */
+.viz-text { position: absolute; inset: 0; z-index: 4; padding: 12px 14px; overflow: auto; outline: none; white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; color: var(--text, #1f2328); background: #fff; cursor: text; }
+.viz-text:empty::before { content: attr(data-placeholder); color: var(--muted, #8a9099); }
