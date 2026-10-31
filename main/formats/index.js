@@ -6,6 +6,7 @@ const path = require('path');
 const docx = require('./docx');
 const xlsx = require('./xlsx');
 const { exportPptx } = require('./pptx');
+const { importPptx } = require('./pptx-import');
 const imports = require('./imports');
 
 // Which app opens which extension, and what each app can save to.
@@ -111,7 +112,7 @@ async function openFile(file) {
       data = imports.importSheetJs(await fs.readFile(file));
       break;
     case 'pptx':
-      data = { deckSpec: await imports.importPptx(await fs.readFile(file)), theme: 'paper' };
+      data = await importPptx(await fs.readFile(file));
       break;
     case 'odp':
       data = { deckSpec: await imports.importOdp(await fs.readFile(file)), theme: 'paper' };

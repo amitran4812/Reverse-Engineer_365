@@ -1,8 +1,8 @@
 'use strict';
 
-// Opens formats Work reads but doesn't write: PowerPoint (.pptx) and
-// OpenDocument presentations (.odp) become a deck outline for Present,
-// OpenDocument text (.odt) becomes HTML for Write, and legacy or
+// Opens formats Work reads but doesn't write: OpenDocument presentations
+// (.odp) become a deck outline for Present (.pptx has its own reader in
+// pptx-import.js), OpenDocument text (.odt) becomes HTML for Write, and legacy or
 // OpenDocument spreadsheets (.xls, .ods, .xlsm, .xltx) become Plot sheets.
 // Text, structure, formulas and speaker notes come across; images, charts
 // and detailed formatting don't.
@@ -24,26 +24,7 @@ async function zipXml(zip, file) {
   return f ? parseXml(await f.async('string')) : null;
 }
 
-// ---------- PowerPoint (.pptx)
-
-const drawingText = (p) => all(p, 'a:t').map((t) => t.textContent).join('');
-
-function shapesOf(doc) {
-  return all(doc, 'p:sp').map((sp) => {
-    const ph = all(sp, 'p:ph')[0];
-    const paras = all(sp, 'a:p').map(drawingText).map(clean).filter(Boolean);
-    return { type: ph ? ph.getAttribute('type') || 'body' : 'text', idx: ph?.getAttribute('idx') || '', paras };
-  }).filter((s) => s.paras.length);
-}
-
-function relTargets(rels, base) {
-  const out = {};
-  for (const r of all(rels, 'Relationship')) {
-    const t = r.getAttribute('Target');
-    out[r.getAttribute('Id')] = { type: r.getAttribute('Type'), path: t.startsWith('/') ? t.slice(1) : new URL(t, `http://x/${base}`).pathname.slice(1) };
-  }
-  return out;
-}
+// ---------- Presentations
 
 function toSpec(shapes, index, notes) {
   const title = shapes.find((s) => s.type === 'title' || s.type === 'ctrTitle');
@@ -54,25 +35,6 @@ function toSpec(shapes, index, notes) {
   if (bodies.length >= 2 && bodies.filter((b) => b.type !== 'text').length >= 2) return { ...base, layout: 'two', bullets: bodies[0].paras, right_bullets: bodies.slice(1).flatMap((b) => b.paras) };
   if (!bodies.length) return { ...base, layout: index === 0 ? 'title' : 'section' };
   return { ...base, layout: 'content', bullets: bodies.flatMap((b) => b.paras) };
-}
-
-async function importPptx(buffer) {
-  const zip = await JSZip.loadAsync(buffer);
-  const pres = await zipXml(zip, 'ppt/presentation.xml');
-  if (!pres) throw new Error('This doesn’t look like a PowerPoint file.');
-  const rels = relTargets(await zipXml(zip, 'ppt/_rels/presentation.xml.rels'), 'ppt/presentation.xml');
-  const slides = [];
-  for (const [i, id] of all(pres, 'p:sldId').entries()) {
-    const file = rels[id.getAttribute('r:id')]?.path;
-    const doc = file && (await zipXml(zip, file));
-    if (!doc) continue;
-    const srels = relTargets(await zipXml(zip, file.replace(/([^/]+)$/, '_rels/$1.rels')), file);
-    const notesFile = Object.values(srels).find((r) => /notesSlide$/.test(r.type))?.path;
-    const notesDoc = notesFile && (await zipXml(zip, notesFile));
-    const notes = notesDoc ? shapesOf(notesDoc).filter((s) => s.type === 'body').flatMap((s) => s.paras).join('\n') : '';
-    slides.push(toSpec(shapesOf(doc), i, notes));
-  }
-  return { slides };
 }
 
 // ---------- OpenDocument presentation (.odp)
@@ -197,4 +159,4 @@ function importSheetJs(buffer) {
   return { sheets: sheets.length ? sheets : [{ name: 'Sheet1', cells: {}, cols: {} }] };
 }
 
-module.exports = { importPptx, importOdp, importOdt, importSheetJs };
+module.exports = { importOdp, importOdt, importSheetJs };

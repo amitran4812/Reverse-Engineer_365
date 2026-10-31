@@ -2,6 +2,14 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.35: PowerPoint files open the way they look
+
+- **Opening a .pptx keeps its design.** Present now reads the whole file instead of just its text: the slide size, the template's backgrounds and artwork from the master and layouts, theme colours and fonts, and every slide, the first one included.
+- Text keeps its fonts, sizes, colours, bold and italic, alignment, line and paragraph spacing, and the deck's own bullets and numbering at each level.
+- Pictures (with their crops), shapes and their outlines, lines and arrows, grouped objects, tables with their cell colours and borders, charts (column, bar, line, area, pie and doughnut) and SmartArt come across in place.
+- Template artwork stays behind the slide content, so it can't be moved by accident. **New Slide** and **Layout** use the deck's own layouts.
+- Formatting a whole text box from the ribbon still works on opened slides, and saving back to `.pptx` keeps the slide size, backgrounds and fonts.
+
 ## 0.2.34: Send a LaTeX paper to Present, and decks as long as they need to be
 
 - **Send to Present in LaTeX mode**: on the Home tab (and the LaTeX Helper tab), turn the whole project, or the part you selected, into a presentation. The title and authors open the deck; the abstract, sections, lists, theorems, figures, tables and display equations all come across. Files pulled in with `\input` and `\include` count too, figures are found through `\graphicspath` (PNG, JPG, SVG and PDF figures), and `\ref` turns into the right number.
