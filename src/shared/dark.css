@@ -1,0 +1,204 @@
+/* Work's dark theme. Main sets Electron's theme source from Options (Light,
+   Dark or System default), which every page sees as prefers-color-scheme.
+   Only the screen goes dark: printing and PDF export stay light, and slides
+   keep their own design. Each app imports this file last so it wins. */
+
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --accent-soft: color-mix(in srgb, var(--accent) 26%, #222428);
+    --accent-softer: color-mix(in srgb, var(--accent) 14%, #222428);
+    --accent-dark: color-mix(in srgb, var(--accent) 50%, white);
+    --claude-soft: #2c2640;
+    --bg: #17181b;
+    --surface: #222428;
+    --ribbon: #1c1e22;
+    --line: #3a3d44;
+    --line-soft: #2e3136;
+    --text: #e4e6e9;
+    --muted: #9ba2ac;
+    --hover: #2f3238;
+    --press: #3a3e45;
+    --titlebar: color-mix(in srgb, var(--accent) 42%, #1b1d21);
+    --page: #1f2124;
+    --page-text: #e1e3e6;
+    --page-line: #34373d;
+  }
+
+  /* ---- Shared shell ---- */
+  .ico .a { fill: color-mix(in srgb, var(--accent) 75%, white); }
+  .ico .a-s { stroke: color-mix(in srgb, var(--accent) 75%, white); }
+  .rb-tab { color: #c9cdd3; }
+  .rb-tab-special.active, .cp-action:hover { color: #c2a8f0; }
+  .rb-panels { box-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
+  .rb-btn.on { border-color: color-mix(in srgb, var(--accent) 55%, #222428); }
+  .rb-select:hover { border-color: #565a62; }
+  .rb-popup, .acct-menu { box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+  .rb-swatch { border-color: rgba(255, 255, 255, .18); }
+  .titlebar-search:focus-within { background: var(--surface); }
+  .cp-chip .ico path:not(.a):not(.a-s) { stroke: #a3a8b0; }
+  .cp-text pre { background: #1a1c1f; }
+  .cp-error, .toast-error { color: #ffb4ab; background: #3d1f1e; }
+  .cp-file { color: #d6c6f5; }
+  .cp-file button:hover { background: rgba(255, 255, 255, .1); }
+  .settings-status.ok { background: #1d3325; color: #9fd8b0; }
+  .settings-status.bad { background: #3d1f1e; color: #ffb4ab; }
+  .cb-error { color: #ffb4ab; }
+  .btn.danger { color: #ff9c92; border-color: #6b3a36; }
+  .btn.danger:hover { background: #3d1f1e; }
+  .modal-back { background: rgba(0, 0, 0, .55); }
+  .modal { box-shadow: 0 18px 50px rgba(0, 0, 0, .6); border: 1px solid var(--line-soft); }
+  .modal-field input, .modal-field select, .modal-field textarea, .cb-search, .share-invite input, .share-invite select, .share-invite textarea, .name-box, .f-input, .eq-input, .eq-ask input, .cite-find input { background: #1a1c1f; color: var(--text); }
+  .toast { background: #3a3d44; }
+  .update-bar { box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+  .bs-tile-preview { box-shadow: none; }
+  .acct-chip .acct-avatar { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .7); }
+  ::-webkit-scrollbar-thumb { background-color: #464a52; }
+  ::-webkit-scrollbar-thumb:hover { background-color: #5a5f68; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+
+  /* ---- Home ---- */
+  .home-nav { background: #1c1e22; }
+  .home-nav button.active { background: var(--hover); box-shadow: none; }
+  .home-ask { box-shadow: none; }
+
+  /* ---- Cite ---- */
+  .cite-status.ok { color: #7fd09a; }
+  .cite-status.warn { color: #e3b341; }
+  .cite-status.error { color: #ffb4ab; }
+
+  /* ---- Write: page and Notes ---- */
+  .doc-page { box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 2px 10px rgba(0, 0, 0, .45); }
+  .doc-page { --note-bg: var(--note-bg-dark, var(--page)); }
+  .ProseMirror blockquote { border-left-color: #565a62; color: #b5bac2; }
+  .ProseMirror pre, .ProseMirror code { background: #2a2d32; }
+  .ProseMirror a { color: #8ab4f8; }
+  .ProseMirror h2 { color: color-mix(in srgb, var(--accent) 60%, white); }
+  .style-tile[style*="--accent)"] { color: color-mix(in srgb, var(--accent) 60%, white) !important; }
+  .ProseMirror hr, .ProseMirror td, .ProseMirror th { border-color: #4a4e56; }
+  .ProseMirror th { background: #2a2d33; }
+  .ProseMirror .page-break { border-top-color: #4a4e56; }
+  .ProseMirror .page-break::after { background: var(--page); color: #858c96; }
+  .ProseMirror p.is-editor-empty:first-child::before, .doc-page.notes .ProseMirror .is-empty::before { color: #6f7680; }
+  /* Highlighted text keeps dark letters on its light marker color. */
+  .ProseMirror mark { color: #1f2328; }
+  /* Text someone colored black would vanish on the dark page. */
+  .ProseMirror [style*="color: #000"], .ProseMirror [style*="color:#000"], .ProseMirror [style*="color: rgb(0, 0, 0)"], .ProseMirror [style*="color: black"] { color: var(--page-text) !important; }
+  .ProseMirror ul[data-type="taskList"] > li > label input { background: var(--page); border-color: #6f7680; }
+  .ProseMirror ul[data-type="taskList"] > li[data-checked="true"] > div > p { color: #7c838d; }
+  .style-tile { color: var(--text); }
+  .mode-switch { background: #2a2d32; }
+  .mode-switch button { color: #b5bac2; }
+  .mode-switch button:hover { color: var(--text); }
+  .mode-switch button.on { background: #3a3e45; box-shadow: none; }
+  .doc-canvas.notes-canvas { background: #141518; }
+  .doc-page.notes { --rule: #2d3035; box-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35); }
+  .doc-page.notes.paper-dots { background-image: radial-gradient(circle, #44484f 1.2px, transparent 1.4px); }
+  .doc-page.notes .ProseMirror h1 { color: var(--page-text); }
+  .doc-page.notes .ProseMirror h1 + p em { color: #9ba2ac; }
+  .doc-page.notes .ProseMirror table { background: var(--page); }
+  .notes-slash, .rec-bar { border-color: var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+  .notes-slash-item { color: var(--text); }
+  .notes-slash-item:hover, .notes-slash-item.on { background: var(--accent-soft); }
+  .notes-tint { border-color: #565a62; }
+  .notes-busy { color: #c2a8f0; }
+  .ink-btn { color: #c9cdd3; }
+  .ink-btn.on { border-color: var(--line); background: var(--hover); }
+  .ink-swatch.on::before { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--c); }
+  .ink-size i { background: #c9cdd3; }
+  .ink-sep { background: var(--line); }
+  .note-board { border-color: #4a4e56; }
+  .nb-hint { color: #6f7680; }
+  .nb-box:hover, .nb-box:focus-within { background: var(--page); border-color: #4a4e56; box-shadow: 0 2px 8px rgba(0, 0, 0, .4); }
+  .nb-box:hover .nb-grip, .nb-box:focus-within .nb-grip { background: repeating-linear-gradient(90deg, #565a62 0 2px, transparent 2px 5px) center / 28px 2px no-repeat, #2a2d32; }
+  .nb-del { background: var(--surface); border-color: var(--line); color: var(--muted); }
+  .nb-resize::after { background: #565a62; }
+  .nb-remove { color: var(--muted); }
+  .note-file, .note-file-btn, .eq-snip { background: var(--surface); border-color: var(--line); color: var(--text); }
+  .note-file-text { background: #1a1c1f; color: #c9cdd3; border-left-color: color-mix(in srgb, var(--accent) 50%, #222428); }
+  .eq-snip:hover { border-color: #565a62; }
+  .eq-ask { border-top-color: var(--line-soft); }
+  /* Equations render as dark glyphs; keep them on a light card so they stay readable. */
+  .eq-preview { border-color: var(--line); }
+  .ProseMirror img[title="Equation"] { filter: invert(.9); }
+
+  /* ---- Plot: grid ---- */
+  .grid td { border-color: #33363c; color: var(--page-text); }
+  .grid-scroll, .sheet-wrap, .formula-bar, .cell-editor { background: var(--page); }
+  .cell-editor { color: var(--page-text); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+  .grid td.filled { color: #1f2328; }
+  .grid td.ink-dark { color: var(--page-text) !important; }
+  .grid td.bordered { box-shadow: inset 0 0 0 1px #9ba2ac; }
+  .grid td.err { color: #ff9c92; }
+  .grid th { background: #26282c; color: #a3a9b2; border-color: #3a3d44; }
+  .grid th.corner { background: #2c2f34; }
+  .grid th.on { background: color-mix(in srgb, var(--accent) 30%, #26282c); }
+  .grid th.rh.on { border-bottom-color: #3a3d44; }
+  .sel-overlay.filling { border-color: #9ba2ac; }
+  .fill-handle { border-color: var(--page); }
+  .sheet-tab.active { background: var(--surface); }
+
+  /* ---- Plot: Analyze ---- */
+  .an-root { background: #141518; }
+  .an-loading { background: rgba(20, 21, 24, .7); }
+  .an-empty-box, .an-load-box, .an-flyout, .an-props-drawer { box-shadow: 0 8px 28px rgba(0, 0, 0, .5); }
+  .an-fit-chip { background: #2e2526; border-color: #4a3638; }
+  .an-expr input.bad { border-color: #e06c60; background: #3d1f1e; }
+  .an-hist i, .an-range::before { background: #3a3e45; }
+  .an-thumb { box-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+  .an-value.dim span { color: #6f7680; }
+  .an-fit-eq { color: #c9cdd3; }
+  .an-calc-help code, .an-ctx kbd, .an-keys-table kbd { background: #2a2d32; }
+  .an-fn-group { color: var(--muted); }
+  .viz-btn, .an-ctx-type, .an-page-add { color: #b5bac2; }
+  .viz-brush { border-color: #e4e6e9; background: rgba(228, 230, 233, .08); }
+  .viz-tip { background: rgba(52, 55, 61, .97); box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+  .viz-msg.busy, .viz-panels-note { background: rgba(34, 36, 40, .92); }
+  .an-row { border-bottom-color: #2c2f34; }
+  .an-row span { border-right-color: #2c2f34; }
+  .an-row span.n { background: #1e2023; }
+  .an-hrow { background: #26282c; color: #c9cdd3; }
+  .an-row[data-id]:hover { background: #2a2d32; }
+  .an-row.marked { background: #33373e; box-shadow: inset 3px 0 0 #e4e6e9; }
+  .an-rail { background: #111214; }
+  .an-pages { background: #1c1e22; border-bottom-color: #33363c; }
+  .an-page-tab { color: #b5bac2; }
+  .an-page-tab:hover, .an-page-add:hover { background: rgba(255, 255, 255, .06); }
+  .an-page-tab.on { background: #141518; border-color: #33363c; color: var(--text); }
+  .an-side, .an-props-drawer { border-color: #33363c; }
+  .viz, .viz.viz-panel, .viz.viz-panel.active { border-color: #33363c; }
+  .viz-head, .viz.viz-panel .viz-head { background: #26282c; border-bottom-color: #33363c; }
+  .viz-title { color: var(--text); }
+  .viz-sel { background: rgba(34, 36, 40, .85); color: #c9cdd3; }
+  .viz-sel .ico, .viz-strip-label { color: #8a919b; }
+  .viz-sel:hover, .viz-sel.drop { border-color: #565a62; background: var(--surface); color: var(--text); box-shadow: none; }
+  .viz-sel.color.faint { color: #8a919b; }
+  .viz-strip { border-top-color: #33363c; background: #1e2023; }
+  .an-viz-pick, .an-props-tab { color: #c9cdd3; }
+  .an-props-nav { background: #1e2023; }
+  .an-props-tab.on { background: var(--surface); }
+  .viz-text { color: var(--text); }
+
+  /* ---- Present ---- */
+  .stage { box-shadow: 0 2px 14px rgba(0, 0, 0, .55); }
+  .thumb:hover:not(.active) .thumb-box { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, #222428); }
+  .notes { color: var(--text); }
+  .theme-tile { border-color: rgba(255, 255, 255, .14); }
+
+  /* ---- LaTeX ---- */
+  :root { --hl-keyword: #82aaff; --hl-tag: #c792ea; --hl-comment: #7f8c7f; --hl-bracket: #e0b360; --hl-string: #8fd6a4; --hl-atom: #f29e74; --hl-variable: #6fd3e0; --hl-meta: #e3c06b; --hl-invalid: #ff8a80; }
+  .tex-ed-body .cm-editor { background: #1e2023; color: #dcdfe4; }
+  .tex-ed-body .cm-content { caret-color: #e4e6e9; }
+  .tex-ed-body .cm-cursor { border-left-color: #e4e6e9; }
+  .tex-ed-body .cm-gutters { background: #1a1c1f; color: #6f7680; }
+  .tex-ed-body .cm-panel.cm-search input, .tex-ed-body .cm-panel.cm-search button { background: #1a1c1f; color: var(--text); }
+  .cm-tooltip, .tex-ed-body .cm-panels { background: var(--surface) !important; color: var(--text) !important; border-color: var(--line) !important; }
+  .cm-tooltip.cm-tooltip-autocomplete { box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+  .tex-file-view, .tex-pv-body { background: #141518; }
+  .tex-issue.error { background: #3a2021; }
+  .tex-issue.warning { background: #352b17; }
+  .tex-issue.info { background: #26282c; }
+  .tex-issue:hover { filter: brightness(1.12); }
+  .tex-raw pre { background: #1a1c1f; }
+  .tex.no-side .tex-side { box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+}

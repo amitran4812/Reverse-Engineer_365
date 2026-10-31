@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, shell } = require('electron');
 const profiles = require('./profiles');
 
 const account = profiles.init(); // before anything reads userData
@@ -19,6 +19,31 @@ const templates = require('./templates');
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
 const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
 const DIST = path.join(__dirname, '..', 'dist');
+
+// Light, dark or follow the system. Electron passes the choice to every page as
+// prefers-color-scheme; the title bar buttons on Windows and Linux get the
+// same color as the page's title bar (dark.css mixes the accent the same way).
+const DARK_BASE = [0x1b, 0x1d, 0x21];
+const dark = () => nativeTheme.shouldUseDarkColors;
+function titleColor(appName) {
+  const hex = ACCENT[appName] || ACCENT.docs;
+  if (!dark()) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const rgb = [n >> 16, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * 0.42 + DARK_BASE[i] * 0.58));
+  return `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+const windowBackground = () => (dark() ? '#17181b' : '#f3f4f7');
+function applyTheme() {
+  nativeTheme.themeSource = settings.publicSettings().theme;
+}
+nativeTheme.on('updated', () => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    win.setBackgroundColor(windowBackground());
+    const appName = launches.get(win.webContents.id)?.app;
+    if (process.platform !== 'darwin' && appName) win.setTitleBarOverlay?.({ color: titleColor(appName), symbolColor: '#ffffff', height: 40 });
+  }
+});
 
 const launches = new Map(); // webContents id -> { app, file }
 const dirty = new Set(); // webContents ids with unsaved changes
@@ -49,10 +74,10 @@ function openWindow(appName, file = null) {
     minWidth: 820,
     minHeight: 560,
     title: TITLES[appName],
-    backgroundColor: '#f3f4f7',
+    backgroundColor: windowBackground(),
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     titleBarStyle: 'hidden',
-    titleBarOverlay: process.platform === 'darwin' ? true : { color: ACCENT[appName], symbolColor: '#ffffff', height: 40 },
+    titleBarOverlay: process.platform === 'darwin' ? true : { color: titleColor(appName), symbolColor: '#ffffff', height: 40 },
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -337,6 +362,7 @@ ipcMain.handle('settings:get', () => settings.publicSettings());
 ipcMain.handle('settings:set', (e, patch) => {
   const out = settings.update(patch || {});
   if (typeof patch?.autoUpdate === 'boolean') updates.schedule();
+  if (patch?.theme) applyTheme();
   return out;
 });
 ipcMain.handle('updates:status', () => updates.status());
@@ -554,6 +580,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     app.setAppUserModelId?.(aumid('home'));
+    applyTheme();
     buildMenu();
     const files = [...pending, ...filesFromArgv(process.argv)];
     jumpList();

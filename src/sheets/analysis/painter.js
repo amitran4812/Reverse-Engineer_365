@@ -33,6 +33,43 @@ export function markerPoints(shape, x, y, r) {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const r2 = (v) => Math.round(v * 100) / 100;
 
+// Plots on screen follow the dark theme: greys (background, grid, axes, text)
+// turn around, colors keep their hue. Exports and slides always paint light.
+const darkQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
+export const darkScreen = () => !!darkQuery?.matches;
+export function onDarkChange(cb) {
+  darkQuery?.addEventListener('change', cb);
+  return () => darkQuery?.removeEventListener('change', cb);
+}
+const inks = new Map();
+export function darkInk(c) {
+  if (typeof c !== 'string') return c;
+  let out = inks.get(c);
+  if (out) return out;
+  out = c;
+  let rgb = null;
+  let alpha = '';
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+  if (hex) {
+    const x = hex[1].length === 3 ? hex[1].replace(/./g, '$&$&') : hex[1];
+    const n = parseInt(x, 16);
+    rgb = [n >> 16, (n >> 8) & 255, n & 255];
+  } else {
+    const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)\s*(?:[,/]\s*([\d.]+%?))?\s*\)$/i.exec(c);
+    if (m) {
+      rgb = [+m[1], +m[2], +m[3]];
+      if (m[4] != null) alpha = m[4];
+    }
+  }
+  if (rgb && Math.max(...rgb) - Math.min(...rgb) < 30) {
+    const l = (rgb[0] + rgb[1] + rgb[2]) / 3;
+    const v = Math.round(34 + ((255 - l) * (226 - 34)) / 255);
+    out = alpha ? `rgba(${v}, ${v + 2}, ${v + 5}, ${alpha})` : `rgb(${v}, ${v + 2}, ${v + 5})`;
+  }
+  inks.set(c, out);
+  return out;
+}
+
 export class CanvasPainter {
   constructor(ctx, dpr = 1) {
     this.ctx = ctx;
@@ -64,11 +101,11 @@ export class CanvasPainter {
     const c = this.ctx;
     c.globalAlpha = o.alpha ?? 1;
     if (o.stroke) {
-      c.strokeStyle = o.stroke;
+      c.strokeStyle = this.dark ? darkInk(o.stroke) : o.stroke;
       c.lineWidth = o.width ?? 1;
       c.setLineDash(o.dash || []);
     }
-    if (o.fill) c.fillStyle = o.fill;
+    if (o.fill) c.fillStyle = this.dark && !o.keep ? darkInk(o.fill) : o.fill;
   }
 
   line(x1, y1, x2, y2, o = {}) {
@@ -143,7 +180,7 @@ export class CanvasPainter {
     c.save();
     c.globalAlpha = o.alpha ?? 1;
     c.font = `${o.weight || 400} ${o.size || 12}px ${FONT}`;
-    c.fillStyle = o.color || '#30353c';
+    c.fillStyle = this.dark && !o.keep ? darkInk(o.color || '#30353c') : o.color || '#30353c';
     c.textAlign = o.align || 'left';
     c.textBaseline = o.baseline || 'alphabetic';
     c.translate(x, y);

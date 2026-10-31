@@ -3,7 +3,7 @@
 // and handles marking, zooming, panning and hover.
 
 import { PointLayer } from './gl.js';
-import { CanvasPainter, SvgPainter, textWidth } from './painter.js';
+import { CanvasPainter, SvgPainter, darkScreen, onDarkChange, textWidth } from './painter.js';
 import { MARK, Scale, formatValue, padRange, paletteColor, ramp, rampCss, ticksFor } from './axes.js';
 import { curveFn } from './fit.js';
 import { MARKER_SHAPES } from './engine.js';
@@ -127,6 +127,7 @@ export class PlotView {
     this.bind();
     this.ro = new ResizeObserver(() => this.onResize());
     this.ro.observe(this.body);
+    this.offTheme = onDarkChange(() => this.draw());
     this.updateHead();
   }
 
@@ -652,6 +653,7 @@ export class PlotView {
     }
     const back = new CanvasPainter(this.back.getContext('2d'), dpr);
     const front = new CanvasPainter(this.front.getContext('2d'), dpr);
+    back.dark = front.dark = darkScreen();
     back.clear(w, ht, '#fff');
     front.clear(w, ht);
     back.screen = true;
@@ -1151,7 +1153,7 @@ export class PlotView {
       if (sl.share < 0.04) continue;
       const a = (sl.a0 + sl.a1) / 2;
       const label = this.showValueLabels() ? `${d.labels[sl.i].length > 14 ? `${d.labels[sl.i].slice(0, 13)}…` : d.labels[sl.i]} ${Math.round(sl.share * 1000) / 10}%` : `${Math.round(sl.share * 1000) / 10}%`;
-      p.text(label, cx + Math.cos(a) * r * 0.66, cy + Math.sin(a) * r * 0.66 + 4, { size: 11, color: '#fff', weight: 600, align: 'center' });
+      p.text(label, cx + Math.cos(a) * r * 0.66, cy + Math.sin(a) * r * 0.66 + 4, { size: 11, color: '#fff', weight: 600, align: 'center', keep: true });
     }
   }
 
@@ -1205,8 +1207,8 @@ export class PlotView {
       p.rect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1), { stroke: any && d.marked[r.i] > 0 ? MARK : '#fff', width: any && d.marked[r.i] > 0 ? 2 : 1.5 });
       if (r.w > 40 && r.h > 18) {
         const label = shorten(d.labels[r.i], r.w - 10, 11);
-        p.text(label, r.x + 5, r.y + 14, { size: 11, color: '#fff', weight: 600 });
-        if (r.h > 34) p.text(shorten(`${formatValue(d.values[r.i], 'number')}  (${Math.round((d.values[r.i] / L.total) * 1000) / 10}%)`, r.w - 10, 10), r.x + 5, r.y + 28, { size: 10, color: '#fff' });
+        p.text(label, r.x + 5, r.y + 14, { size: 11, color: '#fff', weight: 600, keep: true });
+        if (r.h > 34) p.text(shorten(`${formatValue(d.values[r.i], 'number')}  (${Math.round((d.values[r.i] / L.total) * 1000) / 10}%)`, r.w - 10, 10), r.x + 5, r.y + 28, { size: 10, color: '#fff', keep: true });
       }
     }
   }
@@ -2085,6 +2087,7 @@ export class PlotView {
   destroy() {
     this.clearPanels();
     this.ro.disconnect();
+    this.offTheme?.();
     this.points?.dispose();
     this.token += 1;
     this.el.remove();

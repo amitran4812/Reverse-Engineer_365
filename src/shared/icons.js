@@ -169,6 +169,9 @@ const P = {
   paper: '<rect x="3.5" y="2.5" width="13" height="15" rx="1.5"/><path class="a-s" d="M3.5 7h13M3.5 10.5h13M3.5 14h13"/>',
   webNotes: '<circle cx="8" cy="10" r="6"/><path d="M2 10h12M8 4c-2 2-2 10 0 12M8 4c2 2 2 10 0 12"/><path class="a-s" d="M13 13.5h5M13 16.5h3.5"/>',
   slash: '<rect x="2.5" y="2.5" width="15" height="15" rx="3"/><path class="a-s" d="M12 5.5L8 14.5"/>',
+  themeLight: '<circle class="a" cx="10" cy="10" r="3.5"/><path d="M10 1.5v2.5M10 16v2.5M1.5 10H4M16 10h2.5M4 4l1.8 1.8M14.2 14.2L16 16M4 16l1.8-1.8M14.2 5.8L16 4"/>',
+  themeDark: '<path class="a" d="M15.5 13.2A6.8 6.8 0 017 4.3a6.8 6.8 0 108.5 8.9z"/>',
+  themeSystem: '<rect x="2.5" y="3.5" width="15" height="10" rx="1.5"/><path class="a" d="M10 4v9h6.2a.8.8 0 00.8-.8V4.8a.8.8 0 00-.8-.8z"/><path d="M7 17h6M10 13.5V17"/>',
   // App marks: original glyphs, not based on any vendor logo.
   appDocs: '<rect class="a" x="3" y="1.5" width="14" height="17" rx="2.5"/><path stroke="#fff" d="M6.5 6h7M6.5 9h7M6.5 12h7M6.5 15h4"/>',
   appSheets: '<rect class="a" x="2" y="2" width="16" height="16" rx="2.5"/><path stroke="#fff" d="M2.5 7.5h15M2.5 12.5h15M8 7.5v10"/>',

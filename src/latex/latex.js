@@ -21,6 +21,7 @@ import { codeBlock } from '../shared/claude-pane.js';
 import { bibEntries, labels, outline, userCommands, userEnvironments, fileKind, findMain, parseSynctex, synctexForward, synctexBackward } from '../../common/latex.js';
 import { latexCompletions, COMMANDS } from './completions.js';
 import { PdfView } from './pdf-view.js';
+import '../shared/dark.css';
 
 const info = await window.office.launchInfo();
 const project = info.file.latex;
@@ -59,16 +60,17 @@ let editorShown = false;
 
 // ---- Editor ----
 
+// Colors come from latex.css, with dark ones in dark.css.
 const highlight = HighlightStyle.define([
-  { tag: t.keyword, color: '#2f5aa8' },
-  { tag: [t.tagName, t.typeName], color: '#7a3e9d' },
-  { tag: t.comment, color: '#6a7a6a', fontStyle: 'italic' },
-  { tag: [t.bracket, t.paren, t.squareBracket], color: '#8a5a00' },
-  { tag: t.string, color: '#1b7a4b' },
-  { tag: [t.atom, t.number], color: '#b4431d' },
-  { tag: t.variableName, color: '#0b6e7f' },
-  { tag: t.meta, color: '#9a6a00' },
-  { tag: t.invalid, color: '#c0392b' },
+  { tag: t.keyword, color: 'var(--hl-keyword)' },
+  { tag: [t.tagName, t.typeName], color: 'var(--hl-tag)' },
+  { tag: t.comment, color: 'var(--hl-comment)', fontStyle: 'italic' },
+  { tag: [t.bracket, t.paren, t.squareBracket], color: 'var(--hl-bracket)' },
+  { tag: t.string, color: 'var(--hl-string)' },
+  { tag: [t.atom, t.number], color: 'var(--hl-atom)' },
+  { tag: t.variableName, color: 'var(--hl-variable)' },
+  { tag: t.meta, color: 'var(--hl-meta)' },
+  { tag: t.invalid, color: 'var(--hl-invalid)' },
 ]);
 const texLanguage = StreamLanguage.define(stex);
 const fontTheme = new Compartment();

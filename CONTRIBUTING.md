@@ -24,4 +24,5 @@ An Electron desktop suite: Write (word processor), Plot (spreadsheet) and Presen
 - The apps are named Write, Plot and Present in the UI; the code keeps the ids `docs`, `sheets` and `slides`.
 - Windows shortcuts, file associations and the New menu are in `build/installer.nsh`; per-app icons are in `build/apps/`. The installer and window ids use `tools.rea.office.*`, the data folder stays `Rea Office`, and the suite is called Work in the UI.
 - Accounts never share data: anything stored goes under `app.getPath('userData')`, never a fixed path.
+- Light, dark and system themes: `main/main.js` sets Electron's `nativeTheme.themeSource` from the `theme` setting, so pages see `prefers-color-scheme`. Colors are CSS variables in `src/shared/ui.css`; the dark values and overrides live in `src/shared/dark.css` (screen only, so print and PDF export stay light), which each app imports last. Use the variables (`--surface`, `--text`, `--page`, …) for new UI instead of fixed colors. Canvas drawing reads `darkScreen()` from `src/sheets/analysis/painter.js`; exports always paint light.
 - Match the surrounding code style: plain ES modules, small helpers, few comments.

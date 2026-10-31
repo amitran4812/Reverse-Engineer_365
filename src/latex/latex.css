@@ -1,4 +1,5 @@
 [hidden] { display: none !important; }
+:root { --hl-keyword: #2f5aa8; --hl-tag: #7a3e9d; --hl-comment: #6a7a6a; --hl-bracket: #8a5a00; --hl-string: #1b7a4b; --hl-atom: #b4431d; --hl-variable: #0b6e7f; --hl-meta: #9a6a00; --hl-invalid: #c0392b; }
 
 .tex { flex: 1; min-height: 0; display: flex; background: var(--bg); position: relative; }
 .tex.dragging { cursor: col-resize; user-select: none; }
@@ -74,7 +75,7 @@
 .tex-ed-body .cm-matchingBracket { background: color-mix(in srgb, var(--accent) 18%, transparent); outline: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .tex-ed-body .cm-panels { background: var(--ribbon); border-color: var(--line); }
 .tex-ed-body .cm-panel.cm-search { padding: 6px 8px; font-size: 12.5px; }
-.tex-ed-body .cm-panel.cm-search input, .tex-ed-body .cm-panel.cm-search button { font: inherit; border: 1px solid var(--line); border-radius: 4px; background: #fff; padding: 2px 6px; }
+.tex-ed-body .cm-panel.cm-search input, .tex-ed-body .cm-panel.cm-search button { font: inherit; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); padding: 2px 6px; }
 .cm-tooltip.cm-tooltip-autocomplete { border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 20px rgba(15,23,42,.16); overflow: hidden; }
 .cm-tooltip.cm-tooltip-autocomplete > ul { font-family: var(--ui-font); font-size: 12.5px; max-height: 18em; }
 .cm-tooltip.cm-tooltip-autocomplete > ul > li { padding: 3px 10px 3px 6px !important; }

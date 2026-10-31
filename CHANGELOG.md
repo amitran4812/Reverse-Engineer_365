@@ -2,6 +2,14 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.37: Light, dark or system theme
+
+- **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.
+- **System default** follows your computer's light or dark setting (on Windows: Settings › Personalization › Colors), and switches when that setting changes.
+- In dark mode the ribbon, panes, dialogs and the Claude pane turn dark, and so do Write's pages, Notes paper (including its tints), Plot's grid, Plot's charts in Analyze and the LaTeX editor.
+- Some things keep their own colors on purpose: slides in Present, PDF pages in the LaTeX preview, and everything you print or export (PDF, Word, PowerPoint, pictures of charts) stays on white paper.
+- Text you colored black, and cells or highlights with a light fill, stay readable on the dark page.
+
 ## 0.2.33: Your own PowerPoint templates
 
 - **Upload your own templates.** On Present's **Design** tab, **Upload Template** takes a PowerPoint template or presentation (.pptx, .potx, .pptm or .potm). Work keeps it, so it shows up next to Paper, Slate and the others from then on, in every Present window.
