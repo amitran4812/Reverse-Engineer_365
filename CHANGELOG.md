@@ -2,6 +2,18 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.36: Read, a PDF reader and editor
+
+- **Read** is a new app for PDFs. Open a PDF from the start screen (**Open a PDF**), **File > Open**, or right-click a PDF in Explorer and choose **Open in Read**. Read never takes over as your default PDF app unless there is none.
+- **Read comfortably**: page thumbnails, bookmarks, find (Ctrl+F) with every match marked, clickable links, fit width or fit page, zoom with Ctrl and the mouse wheel, rotate the view, **Night** pages for reading in the dark, and full-screen **Read Mode**.
+- **Mark it up**: select text and a small bar offers Highlight, Underline, Strikethrough, a comment, Copy and Ask Claude. Add sticky notes, text boxes, pen drawings, rectangles, ovals, lines and arrows in any colour and thickness. Click any mark to recolour it, comment on it, move it, resize it or delete it. The **Comments** panel lists everything by page.
+- **Fill & Sign**: type, draw or upload your signature or initials (saved for next time, encrypted on this computer), then click where it goes. Add text, today's date, check marks, crosses and pictures.
+- **Organize pages**: rotate, delete, move, extract to a new PDF, add a blank page, insert pages from other PDFs, or combine several PDFs into one.
+- **Convert**: open the PDF as a Write document (headings, paragraphs, lists and tables kept), as notes, as a Plot workbook (one sheet per page, tables split into columns), or as a Present deck (one slide per page, with the page's text in the speaker notes). Or save a page as a picture, or all the text as a .txt file.
+- **Claude** reads the PDF with you: summarize it, pull out key points and numbers with page references, explain a passage in simple words, or quiz you on it.
+- Your marks are saved as standard PDF comments, so other PDF readers show them, and Read can edit marks made in other readers. Signatures, dates, check marks and pictures become part of the page when you save.
+- Not yet: changing the PDF's own text and pictures, filling in form fields, saving changes into password-protected PDFs, and reading scanned pages (OCR). These are next.
+
 ## 0.2.35: PowerPoint files open the way they look
 
 - **Opening a .pptx keeps its design.** Present now reads the whole file instead of just its text: the slide size, the template's backgrounds and artwork from the master and layouts, theme colours and fonts, and every slide, the first one included.

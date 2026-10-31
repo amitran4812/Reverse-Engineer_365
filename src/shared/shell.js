@@ -14,7 +14,11 @@ export const APPS = {
   docs: { title: 'Write', accent: '#2f5aa8', kind: 'Document', mark: 'appDocs', newLabel: 'Blank document' },
   sheets: { title: 'Plot', accent: '#1b7a4b', kind: 'Workbook', mark: 'appSheets', newLabel: 'Blank workbook' },
   slides: { title: 'Present', accent: '#c2532d', kind: 'Presentation', mark: 'appSlides', newLabel: 'Blank presentation' },
+  pdf: { title: 'Read', accent: '#0f7b87', kind: 'PDF', mark: 'appRead', newLabel: 'Open a PDF' },
 };
+
+// Read has no blank file: its tile opens a PDF.
+export const startApp = (id) => (id === 'pdf' ? window.office.openDialog('pdf') : window.office.newWindow(id));
 
 // "New LaTeX project" tile for the start screens: opens Write's LaTeX mode.
 export function latexTile(size = 40, appName = true) {
@@ -393,7 +397,7 @@ class Backstage {
         const t = h('button', `bs-tile bs-tile-${id}`, `<div class="bs-tile-preview">${icon(m.mark, 40)}</div><span>${m.newLabel}</span>`);
         t.onclick = () => {
           this.close();
-          window.office.newWindow(id);
+          startApp(id);
         };
         row.append(t);
       }

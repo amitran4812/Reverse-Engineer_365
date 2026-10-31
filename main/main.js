@@ -14,16 +14,17 @@ const generated = require('./generated');
 const updates = require('./updates');
 const latex = require('./latex');
 const data = require('./data');
+const pdfFiles = require('./pdf');
 const templates = require('./templates');
 
-const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
-const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
+const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d', pdf: '#0f7b87' };
+const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present', pdf: 'Read' };
 const DIST = path.join(__dirname, '..', 'dist');
 
 const launches = new Map(); // webContents id -> { app, file }
 const dirty = new Set(); // webContents ids with unsaved changes
 
-const ICON = { home: 'work', docs: 'write', sheets: 'plot', slides: 'present' };
+const ICON = { home: 'work', docs: 'write', sheets: 'plot', slides: 'present', pdf: 'read' };
 const iconFile = (appName) => path.join(app.isPackaged ? path.join(process.resourcesPath, 'icons') : path.join(__dirname, '..', 'build', 'apps'), `${ICON[appName]}.ico`);
 const aumid = (appName) => ['tools.rea.office', appName === 'home' ? null : appName, account.id === 'default' ? null : account.id].filter(Boolean).join('.');
 const relaunchArgs = (appName) => [...(app.isPackaged ? [] : [`"${app.getAppPath()}"`]), `--rea-account=${account.id}`, ...(appName === 'home' ? [] : [`--rea-new=${appName}`])].join(' ');
@@ -65,6 +66,7 @@ function openWindow(appName, file = null) {
   windowsIdentity(win, appName);
   launches.set(win.webContents.id, { app: appName, file });
   const id = win.webContents.id;
+  if (appName === 'pdf') pdfFiles.setFile(id, file?.path);
   win.once('ready-to-show', () => win.show());
   // A window that never paints would keep Work running with nothing on screen.
   const shown = setTimeout(() => !win.isDestroyed() && !win.isVisible() && win.show(), 8000);
@@ -80,6 +82,7 @@ function openWindow(appName, file = null) {
     launches.delete(id);
     dirty.delete(id);
     data.closeOwner(id);
+    pdfFiles.setFile(id, null);
   });
   win.on('close', (e) => {
     if (!dirty.has(id)) return;
@@ -364,6 +367,21 @@ ipcMain.handle('app:new-with', safe(async (e, spec) => {
   openWindow(info.app, info);
   return { ok: true };
 }));
+// Read: each window reads and saves only its own PDF.
+ipcMain.handle('pdf:read', (e) => pdfFiles.read(e.sender.id));
+ipcMain.handle('pdf:save', safe(async (e, req) => {
+  const res = await pdfFiles.save(senderWin(e), e.sender.id, req || {});
+  if (res && !req?.copy) {
+    const info = launches.get(e.sender.id);
+    if (info) info.file = { ...(info.file || {}), path: res.path, name: res.name };
+    settings.addRecent('pdf', res.path);
+  }
+  return res;
+}));
+ipcMain.handle('pdf:pick', safe((e, opts) => pdfFiles.pickPdfs(senderWin(e), opts || {})));
+ipcMain.handle('pdf:signatures', () => pdfFiles.signatures());
+ipcMain.handle('pdf:set-signatures', safe((e, list) => pdfFiles.setSignatures(list)));
+ipcMain.handle('pdf:user', () => pdfFiles.userName());
 // Present templates the user uploaded.
 ipcMain.handle('templates:list', () => templates.list());
 ipcMain.handle('templates:upload', safe((e) => templates.upload(senderWin(e))));
@@ -499,7 +517,7 @@ const newFromArgv = (argv) => TITLES[argv.find((a) => a.startsWith('--rea-new=')
 
 function jumpList() {
   if (process.platform !== 'win32') return;
-  app.setUserTasks(['docs', 'sheets', 'slides'].map((x) => ({
+  app.setUserTasks(['docs', 'sheets', 'slides', 'pdf'].map((x) => ({
     program: process.execPath,
     arguments: relaunchArgs(x),
     iconPath: iconFile(x),
