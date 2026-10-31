@@ -2,7 +2,7 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.32: Read, a PDF reader and editor
+## 0.2.36: Read, a PDF reader and editor
 
 - **Read** is a new app for PDFs. Open a PDF from the start screen (**Open a PDF**), **File > Open**, or right-click a PDF in Explorer and choose **Open in Read**. Read never takes over as your default PDF app unless there is none.
 - **Read comfortably**: page thumbnails, bookmarks, find (Ctrl+F) with every match marked, clickable links, fit width or fit page, zoom with Ctrl and the mouse wheel, rotate the view, **Night** pages for reading in the dark, and full-screen **Read Mode**.
