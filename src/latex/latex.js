@@ -18,7 +18,10 @@ import { popup, closePopup } from '../shared/ribbon.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { bibEntries, labels, outline, userCommands, userEnvironments, fileKind, findMain, parseSynctex, synctexForward, synctexBackward } from '../../common/latex.js';
 import { latexCompletions, COMMANDS } from './completions.js';
-import { PdfView } from './pdf-view.js';
+import { PdfView, pdfPicture } from './pdf-view.js';
+import { presentDialog, preparePictures } from '../docs/to-present.js';
+import { keepLoadedImages } from '../docs/deck.js';
+import { findGraphic, readLatex } from '../docs/tex-deck.js';
 
 const info = await window.office.launchInfo();
 const project = info.file.latex;
@@ -208,6 +211,9 @@ const homeTab = {
     { label: 'AI', items: [
       { type: 'big', icon: 'sparkle', label: 'LaTeX Helper', title: 'Ask the AI to write, explain or fix LaTeX (Ctrl+J)', run: () => shell.claude.toggle() },
     ] },
+    { label: 'Present', items: [
+      { type: 'big', icon: 'toPresent', label: 'Send to Present', title: 'Turn this paper into a presentation', run: () => toPresent() },
+    ] },
   ],
 };
 
@@ -366,8 +372,45 @@ const aiTab = {
       { type: 'big', icon: 'proofread', label: 'Fix Errors', run: () => shell.claude.runQuick(QUICK.fix) },
       { type: 'big', icon: 'wand', label: 'Improve Writing', run: () => shell.claude.runQuick(QUICK.improve) },
     ] },
+    { label: 'Present', items: [
+      { type: 'big', icon: 'toPresent', label: 'Send to Present', title: 'Turn this paper into a presentation', run: () => toPresent() },
+    ] },
   ],
 };
+
+// ---- Send to Present ----
+
+// Every .tex file as it is in the editor, saved or not.
+function projectTexts() {
+  const texts = new Map(sources.map((s) => [s.path, s.text]));
+  for (const [path, buf] of buffers) {
+    if (buf.kind === 'tex' || buf.kind === 'bib') texts.set(path, (path === current && view ? view.state : buf.state).doc.toString());
+  }
+  return [...texts].map(([path, text]) => ({ path, text }));
+}
+
+// Loads the figures from the project; PDF figures are drawn with pdf.js.
+async function loadFigures(doc) {
+  const paths = files.map((f) => f.path);
+  for (const im of doc.images) {
+    const file = findGraphic(im.path, paths, doc);
+    const res = file ? await api.read(file).catch(() => null) : null;
+    if (res?.base64) im.src = res.mime === 'application/pdf' ? await pdfPicture(res.base64).catch(() => '') : `data:${res.mime};base64,${res.base64}`;
+    if (!im.alt && file) im.alt = file.split('/').pop().replace(/\.[^.]+$/, '');
+  }
+  keepLoadedImages(doc);
+  await preparePictures(doc);
+}
+
+function toPresent() {
+  if (!mainFile) return toast('This project has no main .tex file yet.', 'error');
+  const texts = projectTexts();
+  const whole = readLatex(texts, mainFile);
+  const range = view && isTex() ? view.state.selection.main : null;
+  const picked = range && !range.empty ? view.state.sliceDoc(range.from, range.to) : '';
+  const part = picked.trim() ? readLatex(texts, mainFile, { fragment: picked }) : null;
+  return presentDialog({ name: whole.title || shell.state.name, whole, part, showAi: () => shell.claude.show(), prepare: loadFigures });
+}
 
 
 // ---- Shell ----

@@ -2,6 +2,13 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.29: Send a LaTeX paper to Present, and decks as long as they need to be
+
+- **Send to Present in LaTeX mode**: on the Home tab (and the LaTeX Helper tab), turn the whole project, or the part you selected, into a presentation. The title and authors open the deck; the abstract, sections, lists, theorems, figures, tables and display equations all come across. Files pulled in with `\input` and `\include` count too, figures are found through `\graphicspath` (PNG, JPG, SVG and PDF figures), and `\ref` turns into the right number.
+- **Equations on slides**: the AI can give an important equation a slide of its own, drawn sharp and in the template's text colour (light on dark templates). Equations in Write documents get the same treatment.
+- **No slide limit**: the AI now makes as many slides as the document needs, instead of aiming for 5-12. Type a number in the new **Number of slides** box, or ask for one in the notes box ("about 10 slides"), when you want a set length.
+- The progress box counts the slides as the AI writes them.
+
 ## 0.2.27: More chart types and the rest of the analyst shortcuts in Plot
 
 - New visualizations in Plot's **Analyze** tab: **Waterfall** (running total by category, with a total bar), **Combination** (bars for the first column, lines for the others, optionally on a right axis), **Treemap**, **Parallel coordinates** (one line per row across several number columns; drag on an axis to mark a range) and **KPI** tiles. Each can be marked by clicking, has a tooltip and is in the right-click "change type" grid.

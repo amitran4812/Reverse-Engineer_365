@@ -181,22 +181,3 @@
   .ProseMirror .page-break::after { display: none; }
   @page { margin: 1in; }
 }
-
-.wp-present .modal-field input { width: 100%; }
-.wp-label { display: block; font-size: 12px; margin: 10px 0 6px; }
-.wp-found { font-size: 12px; margin: 0 0 4px; }
-.wp-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin: 4px 0; }
-.wp-how { display: flex; flex-direction: column; gap: 6px; }
-.wp-choice { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; cursor: pointer; }
-.wp-choice:has(input:checked) { border-color: var(--accent); background: var(--accent-softer); }
-.wp-choice.off { cursor: default; }
-.wp-choice.off b { color: var(--muted); }
-.wp-choice input { margin-top: 3px; }
-.wp-choice span { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
-.wp-choice small { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
-.wp-ai { margin-top: 8px; }
-.wp-ai textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 12.5px; resize: vertical; }
-.wp-progress { width: 380px; }
-.wp-bar { height: 4px; border-radius: 2px; background: var(--accent-soft); overflow: hidden; margin: 6px 0 10px; }
-.wp-bar i { display: block; height: 100%; width: 35%; background: var(--accent); border-radius: 2px; animation: wp-slide 1.2s ease-in-out infinite; }
-@keyframes wp-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
