@@ -241,3 +241,53 @@ test('pptx import keeps the template, fonts, pictures, shapes, tables and charts
   const zip = await JSZip.loadAsync(out);
   assert.equal(zip.file(/ppt\/slides\/slide\d+\.xml/).length, 5);
 });
+
+test('reads an uploaded PowerPoint template: colours, fonts, background and master pictures', async () => {
+  const { readTemplate } = require('../main/formats/template');
+  const buf = fs.readFileSync(path.join(__dirname, 'fixtures', 'deck.pptx'));
+  const plain = await readTemplate(buf, 'Plain.potx');
+  assert.equal(plain.bg, '#ffffff');
+  assert.equal(plain.accent, '#4f81bd');
+  assert.equal(plain.font, 'Calibri');
+  assert.equal(plain.bgImage, null);
+  assert.deepEqual(plain.decor, []);
+
+  // Give the master a picture background, a logo and a coloured strip.
+  const zip = await JSZip.loadAsync(buf);
+  const masterFile = 'ppt/slideMasters/slideMaster1.xml';
+  const relsFile = 'ppt/slideMasters/_rels/slideMaster1.xml.rels';
+  const png = PNG_1x1.split(',')[1];
+  zip.file('ppt/media/bg.png', png, { base64: true });
+  zip.file('ppt/media/logo.png', png, { base64: true });
+  let rels = await zip.file(relsFile).async('string');
+  rels = rels.replace('</Relationships>', '<Relationship Id="rIdBg" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/bg.png"/><Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/logo.png"/></Relationships>');
+  zip.file(relsFile, rels);
+  let master = await zip.file(masterFile).async('string');
+  master = master
+    .replace(/<p:bg>.*?<\/p:bg>/, '<p:bg><p:bgPr><a:blipFill><a:blip r:embed="rIdBg"/><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/></p:bgPr></p:bg>')
+    .replace('</p:grpSpPr>', '</p:grpSpPr><p:pic><p:nvPicPr><p:cNvPr id="90" name="Logo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdLogo"/></p:blipFill><p:spPr><a:xfrm><a:off x="8229600" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:prstGeom prst="rect"/></p:spPr></p:pic><p:sp><p:nvSpPr><p:cNvPr id="91" name="Strip"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="6400800"/><a:ext cx="9144000" cy="457200"/></a:xfrm><a:prstGeom prst="rect"/><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></p:spPr></p:sp>')
+    .replace('<a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="+mj-lt"/>', '<a:srgbClr val="AA1100"/></a:solidFill><a:latin typeface="+mj-lt"/>');
+  zip.file(masterFile, master);
+  const t = await readTemplate(await zip.generateAsync({ type: 'nodebuffer' }), 'Company.potx');
+  assert.match(t.bgImage, /^data:image\/png;base64,/);
+  assert.equal(t.title, '#aa1100');
+  assert.equal(t.decor.length, 2);
+  const logo = t.decor.find((d) => d.type === 'image');
+  assert.deepEqual([logo.x, logo.y, logo.w, logo.h], [864, 0, 96, 36]);
+  const strip = t.decor.find((d) => d.type === 'shape');
+  assert.equal(strip.fill, '#c0504d');
+  assert.equal(strip.y, 504);
+
+  // Exported decks carry the template on their slide master.
+  const out = await exportPptx({
+    title: 'T',
+    themeColors: { bg: t.bg, text: t.text, font: t.font },
+    master: { bg: t.bg, bgImage: t.bgImage, decor: t.decor },
+    slides: [{ bg: null, elements: [{ type: 'text', x: 60, y: 40, w: 840, h: 80, style: { fontSize: 40 }, paragraphs: [{ runs: [{ text: 'Hello' }] }] }] }],
+  });
+  const ozip = await JSZip.loadAsync(out);
+  const layouts = Object.keys(ozip.files).filter((f) => /slideLayouts\/slideLayout\d+\.xml$/.test(f));
+  const layoutXml = (await Promise.all(layouts.map((f) => ozip.file(f).async('string')))).join('');
+  assert.match(layoutXml, /<p:bg>.*blip/s);
+  assert.ok(Object.keys(ozip.files).filter((f) => f.startsWith('ppt/media/')).length >= 2);
+});

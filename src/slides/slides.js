@@ -3,7 +3,7 @@ import './slides.css';
 import { createShell, escapeHtml, h, toast } from '../shared/shell.js';
 import { markdownToHtml, sanitize } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
-import { THEMES } from '../shared/themes.js';
+import { THEMES, UPLOADED, allThemes, loadTemplates, removeTemplate, slideBackground, uploadTemplates } from '../shared/themes.js';
 
 let W = 960;
 let H = 540;
@@ -56,7 +56,12 @@ let editingId = null;
 let undoStack = [];
 let redoStack = [];
 
-const theme = () => THEMES[deck.theme] || THEMES.paper;
+// Uploaded templates this deck has used, so an opened file keeps its look
+// even when the template isn't in this account's list (kept outside deck so
+// undo snapshots stay small).
+const fileTemplates = {};
+const theme = () => THEMES[deck.theme] || fileTemplates[deck.theme] || UPLOADED[deck.theme] || THEMES.paper;
+const knownTheme = (id) => !!(THEMES[id] || fileTemplates[id] || UPLOADED[id]);
 const slide = () => deck.slides[current];
 const selectedEl = () => slide()?.elements.find((e) => e.id === selected) || null;
 
@@ -103,7 +108,7 @@ function elementNode(el, s, t, layer = false) {
       textAlign: el.style?.align || (el.type === 'shape' ? 'center' : 'left'),
       fontWeight: free ? (el.style.bold ? '700' : '') : el.style?.bold || el.role === 'title' ? (el.role === 'title' && !el.style?.bold ? '600' : '700') : '',
       fontStyle: el.style?.italic ? 'italic' : '',
-      fontFamily: el.style?.fontFamily || '',
+      fontFamily: el.style?.fontFamily || (el.role === 'title' && t.titleFont) || '',
       justifyContent: VALIGN[el.style?.valign] && (free || el.style.valign === 'middle') ? VALIGN[el.style.valign] : el.type === 'shape' ? 'center' : el.role === 'title' && s.layout !== 'title' ? 'flex-end' : 'flex-start',
     });
     if (el.style?.pad) inner.style.padding = el.style.pad.map((v) => `${v}px`).join(' ');
@@ -146,10 +151,16 @@ function renderSlideInto(container, s, { interactive = false } = {}) {
   const surface = h('div', 'slide');
   surface.style.width = `${W}px`;
   surface.style.height = `${H}px`;
-  surface.style.background = s.bgCss || s.bg || t.bg;
+  surface.style.background = s.own ? s.bgCss || s.bg || t.bg : slideBackground(t, s.bg);
   surface.style.fontFamily = t.font;
+  for (const d of s.own ? [] : t.decor || []) {
+    const deco = d.type === 'image' ? Object.assign(h('img', 'deco'), { src: d.src, draggable: false, alt: '' }) : h('div', 'deco');
+    Object.assign(deco.style, { left: `${d.x}px`, top: `${d.y}px`, width: `${d.w}px`, height: `${d.h}px` });
+    if (d.type !== 'image') Object.assign(deco.style, { background: d.fill, borderRadius: d.shape === 'ellipse' ? '50%' : d.shape === 'roundRect' ? '12px' : '0' });
+    surface.append(deco);
+  }
   if (!s.own && t.band && s.layout !== 'title') surface.append(Object.assign(h('div', 'band'), { style: `background:${t.accent}` }));
-  if (!s.own && (s.layout === 'title' || s.layout === 'section')) {
+  if (!s.own && !t.custom && (s.layout === 'title' || s.layout === 'section')) {
     const bar = h('div', 'accent-bar');
     bar.style.background = t.accent;
     bar.style.top = s.layout === 'title' ? '288px' : '290px';
@@ -664,6 +675,23 @@ function setTheme(id) {
   renderAll();
 }
 
+async function uploadTemplate() {
+  const added = await uploadTemplates();
+  shell.ribbon.rebuildGalleries();
+  if (added.length) setTheme(added[added.length - 1].id);
+}
+
+async function forgetTemplate() {
+  const t = theme();
+  if (!t.custom || !UPLOADED[t.id]) {
+    toast('Pick one of your uploaded templates on the Design tab first.');
+    return;
+  }
+  // The open deck keeps its look; the template just leaves the list.
+  fileTemplates[t.id] = t;
+  if (await removeTemplate(t.id)) shell.ribbon.rebuildGalleries();
+}
+
 function setBackground(color) {
   snapshot();
   slide().bg = color;
@@ -977,26 +1005,30 @@ function htmlToParagraphs(html, base) {
 function exportElement(el, t) {
   const style = { ...el.style, color: el.type === 'shape' && !el.style?.color ? '#ffffff' : elementColor(el), fill: el.type === 'shape' || el.type === 'table' ? el.style?.fill || t.accent : el.style?.fill, fontFamily: el.style?.fontFamily || t.font };
   if (el.role === 'title' && style.bold === undefined) style.bold = true;
+  if (el.role === 'title' && !el.style?.fontFamily && t.titleFont) style.fontFamily = t.titleFont;
   return { ...el, style, paragraphs: el.type === 'image' || el.type === 'table' ? undefined : htmlToParagraphs(el.html, style) };
 }
 
 function exportModel() {
   const t = theme();
+  const { bgImage, decor, ...colors } = t;
   return {
     ...JSON.parse(JSON.stringify(deck)),
     size: { w: W, h: H },
-    themeColors: t,
+    themeColors: colors,
+    // An uploaded template's picture and boxes go on the slide master.
+    master: t.custom ? { bg: t.bg, bgImage, decor: decor || [] } : null,
     slides: deck.slides.map((s) => {
       const els = [];
       if (!s.own && t.band && s.layout !== 'title') els.push({ type: 'shape', shape: 'rect', x: 0, y: 0, w: 14, h: H, style: { fill: t.accent } });
-      if (!s.own && (s.layout === 'title' || s.layout === 'section')) els.push({ type: 'shape', shape: 'rect', x: s.layout === 'title' ? 430 : 80, y: s.layout === 'title' ? 288 : 290, w: 100, h: 4, style: { fill: t.accent } });
+      if (!s.own && !t.custom && (s.layout === 'title' || s.layout === 'section')) els.push({ type: 'shape', shape: 'rect', x: s.layout === 'title' ? 430 : 80, y: s.layout === 'title' ? 288 : 290, w: 100, h: 4, style: { fill: t.accent } });
       for (const id of s.layers || []) for (const el of layers[id]?.elements || []) els.push(exportElement(el, t));
       for (const el of s.elements) {
         if (el.type === 'text' && !el.html) continue;
         els.push(exportElement(el, t));
       }
-      const bgImage = /url\("(data:[^"]+)"\)/.exec(s.bgCss || '')?.[1];
-      return { ...s, bg: s.bg || t.bg, bgImage, elements: els };
+      if (s.own) return { ...s, bg: s.bg || t.bg, bgImage: /url\("(data:[^"]+)"\)/.exec(s.bgCss || '')?.[1], elements: els };
+      return { ...s, bg: s.bg || (t.bgImage ? null : t.bg), elements: els };
     }),
   };
 }
@@ -1186,12 +1218,17 @@ const designTab = {
   id: 'design',
   label: 'Design',
   groups: [
-    { label: 'Themes', items: [{ type: 'gallery', items: Object.entries(THEMES).map(([id, t]) => ({
+    { label: 'Themes', items: [{ type: 'gallery', items: () => Object.entries(allThemes()).map(([id, t]) => ({
       label: t.label,
-      html: `<span class="theme-tile" style="background:${t.bg};color:${t.title};font-family:${t.font}"><b>Aa</b><i style="background:${t.accent}"></i></span><small>${t.label}</small>`,
+      title: t.custom ? `${t.label} (your template)` : t.label,
+      html: `<span class="theme-tile" style="background:${escapeHtml(slideBackground(t))};color:${t.title};font-family:${escapeHtml(t.titleFont || t.font)}"><b>Aa</b><i style="background:${t.accent}"></i></span><small>${escapeHtml(t.label)}</small>`,
       run: () => setTheme(id),
       active: () => deck.theme === id,
     })) }] },
+    { label: 'Templates', items: [
+      { type: 'big', icon: 'upload', label: 'Upload Template', title: 'Upload a PowerPoint template (.pptx or .potx). It is kept for Present, and for Send to Present in Write and Plot.', run: () => uploadTemplate() },
+      { type: 'small', icon: 'trash', label: 'Remove Template', title: 'Remove the current uploaded template from your list', run: () => forgetTemplate(), enabled: () => !!theme().custom && !!UPLOADED[deck.theme] },
+    ] },
     { label: 'Customize', items: [
       { type: 'color', icon: 'background', title: 'Slide background', initial: '#fff4e6', allowNone: true, pick: (c) => setBackground(c) },
     ] },
@@ -1247,6 +1284,7 @@ const claudeTab = {
   ],
 };
 
+await loadTemplates();
 const shell = await createShell({
   app: 'slides',
   defaultExt: 'reaslides',
@@ -1256,8 +1294,9 @@ const shell = await createShell({
   redo,
   getSaveData: () => {
     finishEditing();
+    const custom = theme().custom ? theme() : null;
     const own = W !== 960 || H !== 540 || Object.keys(layers).length ? { size: { w: W, h: H }, layers, layouts: pptLayouts } : {};
-    return { format: 'rea-slides', version: 1, theme: deck.theme, slides: deck.slides, ...own, export: exportModel() };
+    return { format: 'rea-slides', version: 1, theme: deck.theme, ...(custom ? { themeData: custom } : {}), slides: deck.slides, ...own, export: exportModel() };
   },
   exports: [{ label: 'PowerPoint presentation (.pptx)', detail: 'Opens in PowerPoint, Keynote and Google Slides.', icon: 'play', ext: 'pptx' }],
   pdfOptions: () => ({ pageSize: { width: 10, height: (10 * H) / W } }),
@@ -1294,14 +1333,16 @@ const playBtn = h('button', 'status-btn', 'Slide Show');
 playBtn.onclick = () => present(current);
 shell.statusRight.append(notesBtn, playBtn);
 
+const opened = shell.info.file?.data;
+if (opened?.themeData?.custom && opened.themeData.id === opened.theme) fileTemplates[opened.theme] = opened.themeData;
 if (shell.info.file?.data?.deckSpec) {
   // Made by Claude in the Claude app.
   const d = shell.info.file.data;
-  deck = { theme: THEMES[d.theme] ? d.theme : 'paper', slides: d.deckSpec.slides.map(slideFromSpec) };
+  deck = { theme: knownTheme(d.theme) ? d.theme : 'paper', slides: d.deckSpec.slides.map(slideFromSpec) };
   if (!deck.slides.length) deck.slides.push(newSlide('title'));
 } else if (shell.info.file?.data?.slides) {
   const d = shell.info.file.data;
-  deck = { theme: THEMES[d.theme] ? d.theme : 'paper', slides: d.slides.map((s) => ({ ...s, elements: (s.elements || []).filter((e) => !(e.type === 'shape' && !e.id)) })) };
+  deck = { theme: knownTheme(d.theme) ? d.theme : 'paper', slides: d.slides.map((s) => ({ ...s, elements: (s.elements || []).filter((e) => !(e.type === 'shape' && !e.id)) })) };
   if (!deck.slides.length) deck.slides.push(newSlide('title'));
   layers = d.layers || {};
   pptLayouts = d.layouts || {};

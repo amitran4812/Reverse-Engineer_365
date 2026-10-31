@@ -61,6 +61,14 @@ contextBridge.exposeInMainWorld('office', {
   web: {
     data: (kind, params) => ipcRenderer.invoke('web:data', kind, params),
   },
+  // References for papers: lookup({ doi, arxiv, isbn, text, info, metadata, title, fileName }) and search(text)
+  // resolve to { items, match, ids, note } or { error }.
+  cite: {
+    lookup: (req) => ipcRenderer.invoke('cite:lookup', req),
+    search: (text) => ipcRenderer.invoke('cite:search', String(text || '')),
+    openFile: () => ipcRenderer.invoke('cite:open-file'),
+    readFile: (file) => ipcRenderer.invoke('cite:read-path', webUtils.getPathForFile(file)),
+  },
   latex: {
     openFolder: (opts) => ipcRenderer.invoke('latex:open-folder', opts),
     openZip: (file) => ipcRenderer.invoke('latex:open-zip', file ? webUtils.getPathForFile(file) : null),
@@ -80,6 +88,11 @@ contextBridge.exposeInMainWorld('office', {
     reveal: (rel) => ipcRenderer.invoke('latex:reveal', rel),
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
+  },
+  templates: {
+    list: () => ipcRenderer.invoke('templates:list'),
+    upload: () => ipcRenderer.invoke('templates:upload'),
+    remove: (id) => ipcRenderer.invoke('templates:remove', id),
   },
   notes: {
     image: (prompt) => ipcRenderer.invoke('notes:image', prompt),

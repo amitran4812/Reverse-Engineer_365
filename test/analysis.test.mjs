@@ -442,3 +442,32 @@ test('scatter extras: size and shape by, labels, line connection and reference s
   const again = d.scatter(spec, null, { w: 300, h: 200 });
   assert.deepEqual(Array.from(again.series[0].x.slice(0, 20)), Array.from(se.x.slice(0, 20)));
 });
+
+test('waterfall, combination, treemap, KPI and parallel coordinates', () => {
+  const d = sample();
+  const wf = d.plotData({ type: 'waterfall', x: 'g', y: [{ col: 'x' }], agg: 'sum' });
+  const n = wf.labels.length - 1;
+  assert.equal(wf.labels[n], 'Total');
+  assert.equal(wf.values[n], 499500);
+  assert.equal(wf.starts[n - 1] + wf.values[n - 1], 499500);
+  assert.equal(wf.cats[n], -1);
+  const combo = d.plotData({ type: 'combo', x: 'g', y: [{ col: 'x' }, { col: 'y', axis: 'right' }], agg: 'mean' });
+  assert.equal(combo.kind, 'bars');
+  assert.equal(combo.lines.length, 1);
+  assert.equal(combo.lines[0].values.length, combo.labels.length);
+  assert.equal(combo.lines[0].axis, 'right');
+  const tm = d.plotData({ type: 'treemap', x: 'g', y: [], agg: 'count' });
+  assert.equal(tm.kind, 'treemap');
+  assert.equal(Array.from(tm.values).reduce((a, b) => a + b, 0), 1000);
+  const kpi = d.plotData({ type: 'kpi', x: null, y: [{ col: 'x' }], agg: 'mean' });
+  assert.equal(kpi.labels.length, 1);
+  assert.equal(kpi.values[0], 499.5);
+  const pc = d.plotData({ type: 'parallel', y: [{ col: 'x' }, { col: 'y' }], color: 'g' });
+  assert.equal(pc.cols.length, 2);
+  assert.equal(pc.values.length, pc.n * 2);
+  assert.ok(Array.from(pc.values).every((v) => v >= 0 && v <= 1));
+  d.markPlot({ type: 'parallel', y: [{ col: 'x' }, { col: 'y' }] }, { col: 'x', lo: 0, hi: 99 }, 'replace');
+  assert.equal(d.markCount, 100);
+  d.markPlot({ type: 'treemap', x: 'g', y: [] }, { cats: [tm.cats[0]] }, 'replace');
+  assert.equal(d.markCount, tm.values[0]);
+});

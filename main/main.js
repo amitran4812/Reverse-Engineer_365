@@ -14,6 +14,7 @@ const generated = require('./generated');
 const updates = require('./updates');
 const latex = require('./latex');
 const data = require('./data');
+const templates = require('./templates');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d' };
 const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present' };
@@ -319,6 +320,18 @@ ipcMain.handle('accounts:remove', safe((e, id) => profiles.remove(id)));
 ipcMain.handle('accounts:open', safe((e, id) => profiles.open(id)));
 ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
 ipcMain.handle('web:data', safe(async (e, kind, params) => ({ value: await require('./webdata').data(kind, params) })));
+// References for papers (the Cite dialog).
+ipcMain.handle('cite:lookup', safe((e, req) => require('./cite').lookup(req)));
+ipcMain.handle('cite:search', safe((e, text) => require('./cite').search(text)));
+ipcMain.handle('cite:open-file', safe(async (e) => {
+  const res = await dialog.showOpenDialog(senderWin(e), {
+    title: 'Pick a paper to cite',
+    properties: ['openFile'],
+    filters: [{ name: 'Papers', extensions: ['pdf', 'docx', 'txt', 'md', 'html'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  return res.canceled ? null : require('./cite').readFile(res.filePaths[0]);
+}));
+ipcMain.handle('cite:read-path', safe((e, file) => require('./cite').readFile(file)));
 
 ipcMain.handle('settings:get', () => settings.publicSettings());
 ipcMain.handle('settings:set', (e, patch) => {
@@ -346,10 +359,15 @@ ipcMain.handle('claude:attach-images', (e, list) => attachments.fromImages(list)
 ipcMain.handle('claude:attach-paths', (e, paths) => attachments.loadAll((Array.isArray(paths) ? paths : []).filter((p) => typeof p === 'string' && p).slice(0, 20)));
 // Opens something Claude made in a new Write, Plot or Present window (unsaved).
 ipcMain.handle('app:new-with', safe(async (e, spec) => {
-  const info = await generated.toFileInfo(spec);
+  const custom = spec?.kind === 'deck' ? await templates.get(spec.theme) : null;
+  const info = await generated.toFileInfo(custom ? { ...spec, themeData: custom } : spec);
   openWindow(info.app, info);
   return { ok: true };
 }));
+// Present templates the user uploaded.
+ipcMain.handle('templates:list', () => templates.list());
+ipcMain.handle('templates:upload', safe((e) => templates.upload(senderWin(e))));
+ipcMain.handle('templates:remove', safe((e, id) => templates.remove(id)));
 // LaTeX projects. Every call works inside the folder this window opened.
 function latexRoot(e) {
   const root = launches.get(e.sender.id)?.file?.latex?.root;

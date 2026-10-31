@@ -401,7 +401,11 @@ export class Dataset {
       const x = this.need(spec.x).data;
       return applyMark((i) => x[i] >= sel.x0 && x[i] <= sel.x1, mode);
     }
-    if (t === 'bar' || t === 'box' || t === 'pie' || t === 'table') {
+    if (t === 'parallel') {
+      const v = this.need(sel.col).data;
+      return applyMark((i) => v[i] >= sel.lo && v[i] <= sel.hi, mode);
+    }
+    if (['bar', 'box', 'pie', 'table', 'waterfall', 'combo', 'treemap', 'kpi'].includes(t)) {
       const k = spec.x ? this.keyFor(spec.x) : null;
       const g = sel.groups && spec.color && t !== 'pie' ? this.keyFor(spec.color) : null;
       const cats = new Set(sel.cats);
@@ -942,6 +946,63 @@ export class Dataset {
     };
   }
 
+  // Each category adds to a running total; the last bar is the total.
+  waterfall(spec) {
+    const a = this.aggregate({ ...spec, color: null });
+    const n = a.labels.length;
+    const starts = new Float64Array(n + 1);
+    const values = new Float64Array(n + 1);
+    let run = 0;
+    for (let c = 0; c < n; c += 1) {
+      const v = Number.isFinite(a.values[c]) ? a.values[c] : 0;
+      starts[c] = run;
+      values[c] = v;
+      run += v;
+    }
+    values[n] = run;
+    return { ...a, kind: 'bars', waterfall: true, starts, values, labels: [...a.labels, 'Total'], cats: [...a.cats, -1], counts: null, marked: a.marked ? Float64Array.from([...a.marked, NaN]) : null };
+  }
+
+  // Bars for the first value column, lines for the others, on the same categories.
+  combo(spec) {
+    const ys = (spec.y || []).filter((y) => y.col);
+    const a = this.aggregate({ ...spec, y: ys.slice(0, 1) });
+    const lines = ys.slice(1).map((y, k) => {
+      const b = this.aggregate({ ...spec, y: [y], color: null, sort: null, agg: y.agg || spec.agg });
+      const at = new Map(b.labels.map((l, i) => [l, b.values[i]]));
+      return { name: y.col, axis: y.axis === 'right' ? 'right' : 'left', color: k + 1, values: Float64Array.from(a.labels, (l) => at.get(l) ?? NaN) };
+    });
+    return { ...a, lines };
+  }
+
+  // One polyline per row across several numeric columns, each on its own scale.
+  parallel(spec) {
+    const names = (spec.cols?.length ? spec.cols : (spec.y || []).map((y) => y.col)).filter(Boolean);
+    const cols = names.map((n) => this.need(n)).filter((c) => c.type !== 'string');
+    if (cols.length < 2) throw new Error('Choose at least two number columns for parallel coordinates');
+    const rows = this.plotRows(spec);
+    const cap = Math.max(100, Math.min(20000, spec.maxLines || 5000));
+    const step = Math.max(1, Math.ceil(rows.length / cap));
+    const pick = [];
+    for (let k = 0; k < rows.length; k += step) pick.push(rows[k]);
+    const k = cols.length;
+    const values = new Float32Array(pick.length * k);
+    const ranges = cols.map((c) => this.bounds(c.data, rows));
+    pick.forEach((i, r) => {
+      cols.forEach((c, j) => {
+        const [lo, hi] = ranges[j];
+        values[r * k + j] = (c.data[i] - lo) / (hi - lo || 1);
+      });
+    });
+    const kc = spec.color ? this.keyFor(spec.color) : null;
+    const color = kc ? Int32Array.from(pick, (i) => kc.keys[i]) : null;
+    const marked = this.markCount ? Uint8Array.from(pick, (i) => this.mark[i]) : null;
+    return {
+      kind: 'parallel', cols: cols.map((c) => c.name), types: cols.map((c) => c.type), ranges, n: pick.length, total: rows.length, values, color,
+      legend: kc ? kc.labels : null, marked, transfer: [values.buffer],
+    };
+  }
+
   plotData(spec, view, size) {
     switch (spec.type) {
       case 'scatter': return this.scatter(spec, view, size);
@@ -952,6 +1013,11 @@ export class Dataset {
       case 'histogram': return this.histogram(spec);
       case 'box': return this.box(spec);
       case 'heatmap': return this.heatmap(spec);
+      case 'waterfall': return this.waterfall(spec);
+      case 'combo': return this.combo(spec);
+      case 'treemap': return { ...this.aggregate({ ...spec, color: null, sort: 'value' }), kind: 'treemap' };
+      case 'kpi': return { ...this.aggregate({ ...spec, color: null }), kind: 'kpi' };
+      case 'parallel': return this.parallel(spec);
       default: throw new Error(`Unknown plot type ${spec.type}`);
     }
   }

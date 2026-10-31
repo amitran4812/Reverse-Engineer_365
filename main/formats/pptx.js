@@ -64,11 +64,27 @@ async function exportPptx(model) {
   }
   pptx.author = 'Work';
   pptx.title = model.title || 'Presentation';
-  const theme = model.theme || {};
+  const theme = model.themeColors || {};
+  // An uploaded template: its background picture and the master's pictures
+  // and boxes go on a slide master that every slide uses.
+  const master = model.master;
+  if (master) {
+    const objects = [];
+    for (const d of master.decor || []) {
+      const box = { x: inch(d.x), y: inch(d.y), w: inch(d.w), h: inch(d.h) };
+      if (d.type === 'image' && d.src?.startsWith('data:')) objects.push({ image: { ...box, data: d.src.slice(5) } });
+      else if (d.type === 'shape' && hex(d.fill)) objects.push({ rect: { ...box, fill: { color: hex(d.fill) } } });
+    }
+    pptx.defineSlideMaster({
+      title: 'TEMPLATE',
+      background: master.bgImage?.startsWith('data:') ? { data: master.bgImage.slice(5) } : { color: hex(master.bg) || 'FFFFFF' },
+      objects,
+    });
+  }
   for (const s of model.slides || []) {
-    const slide = pptx.addSlide();
-    const bg = hex(s.bg || theme.bg);
-    if (s.bgImage) slide.background = { data: s.bgImage };
+    const slide = master ? pptx.addSlide({ masterName: 'TEMPLATE' }) : pptx.addSlide();
+    const bg = hex(s.bg || (master ? null : theme.bg));
+    if (s.bgImage) slide.background = { data: s.bgImage.slice(5) };
     else if (bg) slide.background = { color: bg };
     if (s.notes) slide.addNotes(s.notes);
     for (const el of s.elements || []) {

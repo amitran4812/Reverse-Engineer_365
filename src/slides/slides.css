@@ -16,6 +16,7 @@
 .notes { flex: none; height: 92px; border: 0; border-top: 1px solid var(--line); resize: vertical; padding: 10px 16px; outline: 0; background: #fff; font: 13px var(--ui-font); }
 .hide-notes .notes { display: none; }
 .slide { position: absolute; left: 0; top: 0; width: 960px; height: 540px; overflow: hidden; background: #fff; }
+.slide .deco { position: absolute; pointer-events: none; object-fit: fill; }
 .slide .band { position: absolute; left: 0; top: 0; bottom: 0; width: 14px; }
 .slide .accent-bar { position: absolute; width: 100px; height: 4px; border-radius: 2px; }
 .el { position: absolute; }
@@ -53,7 +54,7 @@
 .h-w { left: -6px; top: calc(50% - 5px); cursor: ew-resize; }
 .theme-tile { display: flex; align-items: center; justify-content: space-between; height: 38px; width: 64px; border-radius: 3px; padding: 0 6px; border: 1px solid rgba(0,0,0,.12); font-size: 16px; }
 .theme-tile i { width: 12px; height: 12px; border-radius: 50%; }
-.rb-tile small { font-size: 11px; color: var(--muted); }
+.rb-tile small { font-size: 11px; color: var(--muted); display: block; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .presenter { position: fixed; inset: 0; background: #000; z-index: 4000; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: none; }
 .presenter.show-bar, .presenter.coach-on { cursor: default; }
 .presenter.coach-on { justify-content: flex-start; }
