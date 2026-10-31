@@ -18,6 +18,12 @@ export const PLOT_TYPES = {
   heatmap: { label: 'Heat map', icon: 'chartHeat' },
   pie: { label: 'Pie', icon: 'chartPie' },
   table: { label: 'Cross table', icon: 'chartTable' },
+  waterfall: { label: 'Waterfall', icon: 'chartWaterfall' },
+  combo: { label: 'Combination', icon: 'chartCombo' },
+  treemap: { label: 'Treemap', icon: 'chartTreemap' },
+  parallel: { label: 'Parallel coordinates', icon: 'chartParallel' },
+  kpi: { label: 'KPI', icon: 'chartKpi' },
+  text: { label: 'Text area', icon: 'textArea' },
 };
 
 const FIT_COLORS = ['#b3261e', '#6a1b9a', '#00695c', '#e65100'];
@@ -41,6 +47,12 @@ export function autoTitle(spec) {
     case 'box': return `${ys[0] || '…'}${spec.x ? ` by ${spec.x}` : ''}`;
     case 'heatmap': return `${ys[0] || '…'} vs ${spec.x || '…'}${spec.z ? ` (${aggLabel(spec.agg || 'mean')} of ${spec.z})` : ''}`;
     case 'pie': return ys.length ? `${aggLabel(spec.agg)} of ${ys[0]} by ${spec.x || '…'}` : `Rows by ${spec.x || '…'}`;
+    case 'waterfall': return ys.length ? `${aggLabel(spec.agg)} of ${ys[0]} by ${spec.x || '…'} (running total)` : `Rows by ${spec.x || '…'} (running total)`;
+    case 'combo': return `${ys.join(' and ') || '…'} by ${spec.x || '…'}`;
+    case 'treemap': return ys.length ? `${aggLabel(spec.agg)} of ${ys[0]} by ${spec.x || '…'}` : `Rows by ${spec.x || '…'}`;
+    case 'kpi': return ys.length ? `${aggLabel(spec.agg)} of ${ys[0]}${spec.x ? ` by ${spec.x}` : ''}` : `Rows${spec.x ? ` by ${spec.x}` : ''}`;
+    case 'parallel': return `Parallel coordinates of ${(spec.cols?.length ? spec.cols : ys).join(', ') || '…'}`;
+    case 'text': return 'Text';
     case 'table': return `${ys.length ? `${aggLabel(spec.agg)} of ${ys[0]}` : 'Rows'} by ${[spec.x, spec.color].filter(Boolean).join(' and ') || 'all rows'}`;
     default: return `${ys.join(', ') || '…'} vs ${spec.x || '…'}`;
   }
@@ -52,10 +64,17 @@ export const AGGS = [
 ];
 const aggLabel = (a) => AGGS.find((x) => x.value === a)?.label || 'Sum';
 const AGG_SHORT = { count: 'Count', sum: 'Sum', mean: 'Avg', median: 'Median', min: 'Min', max: 'Max', std: 'StdDev' };
-const STRIP = { pie: true, table: true };
+const STRIP = { pie: true, table: true, treemap: true, kpi: true, parallel: true };
 const num = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 // A manual axis range from the properties, applied over the automatic one.
 const ranged = (dom, a) => (a && (num(a.min) != null || num(a.max) != null) ? [num(a.min) ?? dom[0], num(a.max) ?? dom[1]] : dom);
+// Cuts text to fit a width, with an ellipsis.
+const shorten = (text, w, size) => {
+  let t = String(text ?? '');
+  if (textWidth(t, size) <= w) return t;
+  while (t.length > 1 && textWidth(`${t}…`, size) > w) t = t.slice(0, -1);
+  return `${t}…`;
+};
 const shapeName = (i) => MARKER_SHAPES[((Math.round(i) % MARKER_SHAPES.length) + MARKER_SHAPES.length) % MARKER_SHAPES.length];
 
 export class PlotView {
@@ -131,6 +150,7 @@ export class PlotView {
     const zoomable = ['scatter', 'line', 'histogram'].includes(this.spec.type);
     this.toolButtons.zoom.hidden = !zoomable;
     this.toolButtons.pan.hidden = !zoomable;
+    this.toolButtons.mark.hidden = this.spec.type === 'text';
   }
 
   setSpec(spec) {
@@ -149,7 +169,12 @@ export class PlotView {
     const s = this.spec;
     if (this.isTrellis()) return this.fetchTrellis(token);
     if (this.panels) this.clearPanels();
-    if (!s.x && !['box', 'bar', 'table'].includes(s.type)) return this.showMessage(s.type === 'pie' ? 'Choose a column for the slices.' : 'Choose a column for the X axis.');
+    if (s.type === 'text') return this.showText();
+    this.textEl?.remove();
+    this.textEl = null;
+    if (s.type === 'parallel') {
+      if ((s.cols?.length ? s.cols : (s.y || []).map((y) => y.col).filter(Boolean)).length < 2) return this.showMessage('Choose at least two number columns.');
+    } else if (!s.x && !['box', 'bar', 'table', 'kpi'].includes(s.type)) return this.showMessage(s.type === 'pie' ? 'Choose a column for the slices.' : 'Choose a column for the X axis.');
     if (['scatter', 'line', 'box', 'heatmap'].includes(s.type) && !s.y?.[0]?.col) return this.showMessage('Choose a column for the Y axis.');
     const { w, h: ht } = this.size();
     const L = this.layoutGuess();
@@ -174,6 +199,28 @@ export class PlotView {
       clearTimeout(this.slow);
       this.msg.classList.remove('busy');
     }
+  }
+
+  // A text area: notes typed straight onto the page, kept in the spec.
+  showText() {
+    this.data = { kind: 'text' };
+    this.msg.className = 'viz-msg';
+    if (!this.textEl) {
+      const t = h('div', 'viz-text');
+      t.contentEditable = 'true';
+      t.spellcheck = true;
+      t.dataset.placeholder = 'Type notes about this page…';
+      t.textContent = this.spec.text || '';
+      t.oninput = () => {
+        this.spec.text = t.innerText;
+        this.ctx.changed?.(this);
+      };
+      t.addEventListener('mousedown', (e) => e.stopPropagation());
+      t.addEventListener('keydown', (e) => e.stopPropagation());
+      this.body.append(t);
+      this.textEl = t;
+    }
+    this.draw();
   }
 
   // ---------- trellis ----------
@@ -298,6 +345,9 @@ export class PlotView {
     const L = { W, H, kind };
     if (kind === 'pie') return this.layoutPie(L, data);
     if (kind === 'table') return this.layoutTable(L, data);
+    if (kind === 'treemap') return this.layoutTreemap(L, data);
+    if (kind === 'kpi') return this.layoutKpi(L, data);
+    if (kind === 'parallel') return this.layoutParallel(L, data);
     const top = 12;
     let legend = null;
     let legendW = 0;
@@ -342,7 +392,26 @@ export class PlotView {
       const ng = data.groups ? data.groups.length : 1;
       let lo = 0;
       let hi = 0;
-      for (let c = 0; c < xCats.length; c += 1) {
+      if (data.waterfall) {
+        for (let c = 0; c < xCats.length; c += 1) {
+          const a = data.starts[c];
+          const b = a + data.values[c];
+          lo = Math.min(lo, a, b);
+          hi = Math.max(hi, a, b);
+        }
+      }
+      for (const ln of data.lines || []) {
+        for (const v of ln.values) {
+          if (!Number.isFinite(v)) continue;
+          if (ln.axis === 'right') yR = [Math.min(yR?.[0] ?? 0, v), Math.max(yR?.[1] ?? 0, v)];
+          else {
+            lo = Math.min(lo, v);
+            hi = Math.max(hi, v);
+          }
+        }
+      }
+      if (yR) yR = ranged([yR[0] * 1.06, yR[1] * 1.06 || 1], axY2);
+      for (let c = 0; c < xCats.length && !data.waterfall; c += 1) {
         let pos = 0;
         let neg = 0;
         for (let g = 0; g < ng; g += 1) {
@@ -450,6 +519,90 @@ export class PlotView {
     return { ...L, plot: { x: 0, y: 0, w: L.W, h: L.H }, table: { rowHeadW, colWs, rowH, headH, rows, top, ng, x0: 6, y0: 4 } };
   }
 
+  // Squarified treemap: rectangles with areas in proportion to the values.
+  layoutTreemap(L, data) {
+    const plot = { x: 4, y: 4, w: Math.max(20, L.W - 8), h: Math.max(20, L.H - 8) };
+    const items = Array.from(data.values, (v, i) => ({ i, v: Number.isFinite(v) && v > 0 ? v : 0 })).filter((it) => it.v > 0).sort((a, b) => b.v - a.v);
+    const total = items.reduce((a, b) => a + b.v, 0) || 1;
+    const scale = (plot.w * plot.h) / total;
+    const rects = [];
+    let box = { ...plot };
+    let k = 0;
+    const worst = (row, side) => {
+      const sum = row.reduce((a, b) => a + b.v * scale, 0);
+      let w = 0;
+      for (const r of row) {
+        const a = r.v * scale;
+        w = Math.max(w, (side * side * a) / (sum * sum), (sum * sum) / (side * side * a));
+      }
+      return w;
+    };
+    while (k < items.length) {
+      const side = Math.min(box.w, box.h);
+      const row = [items[k]];
+      k += 1;
+      while (k < items.length && worst([...row, items[k]], side) <= worst(row, side)) {
+        row.push(items[k]);
+        k += 1;
+      }
+      const sum = row.reduce((a, b) => a + b.v * scale, 0);
+      if (box.w >= box.h) {
+        const w = sum / box.h;
+        let y = box.y;
+        for (const r of row) {
+          const hh = (r.v * scale) / w;
+          rects.push({ i: r.i, x: box.x, y, w, h: hh });
+          y += hh;
+        }
+        box = { x: box.x + w, y: box.y, w: box.w - w, h: box.h };
+      } else {
+        const hh = sum / box.w;
+        let x = box.x;
+        for (const r of row) {
+          const w = (r.v * scale) / hh;
+          rects.push({ i: r.i, x, y: box.y, w, h: hh });
+          x += w;
+        }
+        box = { x: box.x, y: box.y + hh, w: box.w, h: box.h - hh };
+      }
+    }
+    return { ...L, plot, rects, total };
+  }
+
+  // KPI tiles: one per category (or one for all rows).
+  layoutKpi(L, data) {
+    const n = Math.min(data.labels.length, 48);
+    const gap = 8;
+    // Pick the column count whose tiles come closest to a 2.4:1 shape.
+    let cols = 1;
+    let best = Infinity;
+    for (let c = 1; c <= n; c += 1) {
+      const r = Math.ceil(n / c);
+      const tw = (L.W - gap * (c + 1)) / c;
+      const th = (L.H - gap * (r + 1)) / r;
+      if (tw < 90 && c > 1) break;
+      const score = Math.abs(Math.log(tw / Math.max(1, Math.min(th, 130)) / 2.4)) + (th < 44 ? 5 : 0);
+      if (score < best) {
+        best = score;
+        cols = c;
+      }
+    }
+    const rows = Math.max(1, Math.ceil(n / cols));
+    const w = (L.W - gap * (cols + 1)) / cols;
+    const hh = Math.max(36, Math.min(130, (L.H - gap * (rows + 1)) / rows));
+    const tiles = Array.from({ length: n }, (_, i) => ({ i, x: gap + (i % cols) * (w + gap), y: gap + Math.floor(i / cols) * (hh + gap), w, h: hh }));
+    return { ...L, plot: { x: 0, y: 0, w: L.W, h: L.H }, tiles };
+  }
+
+  layoutParallel(L, data) {
+    const legend = this.spec.legend?.show === false ? null : this.legendItems(data);
+    const legendW = legend ? Math.min(200, Math.max(...legend.items.map((it) => textWidth(it.label, 11)), textWidth(legend.title || '', 11)) + 30) : 0;
+    const k = data.cols.length;
+    const plot = { x: 40, y: 40, w: Math.max(60, L.W - 80 - legendW), h: Math.max(40, L.H - 40 - 34) };
+    const axes = data.cols.map((c, j) => plot.x + (k > 1 ? (plot.w * j) / (k - 1) : plot.w / 2));
+    return { ...L, plot, axes, legend, legendW, legendH: 0 };
+  }
+
   valueTitle(data) {
     return data.agg === 'count' ? 'Count' : `${aggLabel(data.agg)}(${data.valueName})`;
   }
@@ -461,6 +614,11 @@ export class PlotView {
     if (data.kind === 'heatmap' || data.kind === 'density') return { type: 'ramp', title: data.kind === 'density' ? 'Rows' : data.valueName };
     if (data.colorMode === 'continuous') return { type: 'ramp', title: s.color, range: data.colorRange, colorType: data.colorType };
     if (data.legend?.length) return { type: 'items', title: s.color, items: data.legend.slice(0, 40).map((label, i) => ({ label, color: paletteColor(i) })) };
+    if (data.lines?.length) {
+      return { type: 'items', items: [{ label: data.valueName, color: data.groups ? '#9aa0a8' : this.fixedColor() || paletteColor(0) }, ...data.lines.map((ln) => ({ label: ln.name + (ln.axis === 'right' ? ' (right)' : ''), color: paletteColor(ln.color) }))] };
+    }
+    if (data.kind === 'parallel') return data.legend ? { type: 'items', title: s.color, items: data.legend.slice(0, 40).map((label, i) => ({ label, color: paletteColor(i) })) } : null;
+    if (data.kind === 'treemap' || data.kind === 'kpi') return null;
     if (data.groups?.length > 1 || (data.groups && s.color)) return { type: 'items', title: s.color, items: data.groups.map((label, i) => ({ label, color: paletteColor(data.groupIds?.[i] ?? i) })) };
     if (data.shapeLegend?.length) return { type: 'items', title: s.marker?.shapeBy, items: data.shapeLegend.map((label, i) => ({ label, color: this.fixedColor() || '#5d6570', shape: shapeName(i) })) };
     if ((data.kind === 'points' || data.kind === 'lines') && data.series.length > 1) {
@@ -498,6 +656,12 @@ export class PlotView {
     front.clear(w, ht);
     back.screen = true;
     front.screen = true;
+    if (this.data?.kind === 'text') {
+      this.points?.setData([]);
+      this.selectors.innerHTML = '';
+      this.lastLayout = null;
+      return;
+    }
     if (!this.data) {
       this.points?.draw({ width: Math.round(w * dpr), height: Math.round(ht * dpr), rect: { x: 0, y: 0, w: 0, h: 0 }, sx: null, sy: {} });
       this.placeSelectors(null, w, ht);
@@ -631,10 +795,21 @@ export class PlotView {
       this.paintTable(p, L);
       return;
     }
+    if (d.kind === 'treemap') return this.paintTreemap(p, L);
+    if (d.kind === 'kpi') return this.paintKpi(p, L);
+    if (d.kind === 'parallel') {
+      this.paintParallel(p, L);
+      this.paintLegend(p, L);
+      return;
+    }
     p.clip(plot.x, plot.y, plot.w, plot.h);
     if (d.kind === 'density') this.paintDensity(p, L);
     if (d.kind === 'lines') this.paintLines(p, L);
-    if (d.kind === 'bars') this.paintBars(p, L);
+    if (d.kind === 'bars') {
+      if (d.waterfall) this.paintWaterfall(p, L);
+      else this.paintBars(p, L);
+      if (d.lines) this.paintComboLines(p, L);
+    }
     if (d.kind === 'histogram') this.paintHistogram(p, L);
     if (d.kind === 'box') this.paintBoxes(p, L);
     if (d.kind === 'heatmap') this.paintHeatmap(p, L);
@@ -980,6 +1155,113 @@ export class PlotView {
     }
   }
 
+  paintWaterfall(p, L) {
+    const d = this.data;
+    const band = L.xBand.w;
+    const inner = band * 0.7;
+    const any = !!d.marked;
+    const up = this.spec.marker?.color || '#2e7d32';
+    const n = d.labels.length;
+    for (let c = 0; c < n; c += 1) {
+      const last = c === n - 1;
+      const v = d.values[c];
+      const a = last ? 0 : d.starts[c];
+      const b = a + v;
+      const x = L.plot.x + c * band + (band - inner) / 2;
+      const ya = L.syL.map(a);
+      const yb = L.syL.map(b);
+      const color = last ? '#5d6570' : v >= 0 ? up : '#c62828';
+      p.rect(x, Math.min(ya, yb), inner, Math.max(1, Math.abs(yb - ya)), { fill: color, alpha: any && !(d.marked?.[c] > 0) ? 0.35 : 1 });
+      if (any && d.marked[c]) p.rect(x, Math.min(ya, yb), inner, Math.max(1, Math.abs(yb - ya)), { stroke: MARK, width: 1.2 });
+      if (!last) {
+        const nx = L.plot.x + (c + 1) * band + (band - inner) / 2;
+        p.line(x + inner, yb, nx, yb, { stroke: '#9aa0a8', width: 1, dash: [3, 2] });
+      }
+      if ((this.showValueLabels() || inner > 26) && inner > 14) p.text(formatValue(v, 'number'), x + inner / 2, Math.min(ya, yb) - 3, { size: 10, color: TEXT, align: 'center' });
+    }
+    p.line(L.plot.x, L.syL.map(0), L.plot.x + L.plot.w, L.syL.map(0), { stroke: AXIS, width: AXIS_W });
+  }
+
+  paintComboLines(p, L) {
+    const d = this.data;
+    const band = L.xBand.w;
+    const n = d.labels.length;
+    for (const ln of d.lines) {
+      const sy = ln.axis === 'right' && L.syR ? L.syR : L.syL;
+      const xs = Float64Array.from({ length: n }, (_, c) => L.plot.x + (c + 0.5) * band);
+      const ys = Float64Array.from({ length: n }, (_, c) => (Number.isFinite(ln.values[c]) ? sy.map(ln.values[c]) : NaN));
+      const color = paletteColor(ln.color);
+      p.polyline(xs, ys, n, { stroke: color, width: num(this.spec.lineWidth) || 2.2 });
+      for (let c = 0; c < n; c += 1) if (Number.isFinite(ys[c])) p.circle(xs[c], ys[c], 3, { fill: color, stroke: '#fff', width: 1 });
+    }
+  }
+
+  paintTreemap(p, L) {
+    const d = this.data;
+    const any = !!d.marked;
+    for (const r of L.rects) {
+      const color = paletteColor(d.cats[r.i]);
+      p.rect(r.x, r.y, r.w, r.h, { fill: color, alpha: any && !(d.marked[r.i] > 0) ? 0.35 : 1 });
+      p.rect(r.x + 0.5, r.y + 0.5, Math.max(0, r.w - 1), Math.max(0, r.h - 1), { stroke: any && d.marked[r.i] > 0 ? MARK : '#fff', width: any && d.marked[r.i] > 0 ? 2 : 1.5 });
+      if (r.w > 40 && r.h > 18) {
+        const label = shorten(d.labels[r.i], r.w - 10, 11);
+        p.text(label, r.x + 5, r.y + 14, { size: 11, color: '#fff', weight: 600 });
+        if (r.h > 34) p.text(shorten(`${formatValue(d.values[r.i], 'number')}  (${Math.round((d.values[r.i] / L.total) * 1000) / 10}%)`, r.w - 10, 10), r.x + 5, r.y + 28, { size: 10, color: '#fff' });
+      }
+    }
+  }
+
+  paintKpi(p, L) {
+    const d = this.data;
+    const any = !!d.marked;
+    const accent = this.fixedColor() || paletteColor(0);
+    for (const t of L.tiles) {
+      const on = any && d.marked[t.i] > 0;
+      p.rect(t.x, t.y, t.w, t.h, { fill: '#f6f8fa' });
+      p.rect(t.x, t.y, 4, t.h, { fill: accent });
+      p.rect(t.x + 0.5, t.y + 0.5, t.w - 1, t.h - 1, { stroke: on ? MARK : '#e1e4e8', width: on ? 2 : 1 });
+      p.text(shorten(d.labels[t.i], t.w - 20, 11.5), t.x + 12, t.y + 18, { size: 11.5, color: '#5d6570' });
+      const size = Math.max(14, Math.min(34, t.h * 0.36, t.w / 6));
+      p.text(shorten(formatValue(d.values[t.i], 'number'), t.w - 20, size), t.x + 12, t.y + 18 + size + 6, { size, weight: 600, color: '#1f2328' });
+      if (t.h > 70) {
+        const cnt = d.counts?.[t.i];
+        const sub = `${this.valueTitle(d)}${Number.isFinite(cnt) ? ` · ${cnt.toLocaleString()} rows` : ''}${on ? ` · marked ${formatValue(d.marked[t.i], 'number')}` : ''}`;
+        p.text(shorten(sub, t.w - 20, 10), t.x + 12, t.y + t.h - 10, { size: 10, color: '#8a9099' });
+      }
+    }
+  }
+
+  paintParallel(p, L) {
+    const d = this.data;
+    const { plot, axes } = L;
+    const k = d.cols.length;
+    const xs = Float64Array.from(axes);
+    const ys = new Float64Array(k);
+    const alpha = Math.max(0.05, Math.min(0.7, 40 / Math.sqrt(d.n || 1)));
+    const any = !!d.marked;
+    const draw = (markedPass) => {
+      for (let r = 0; r < d.n; r += 1) {
+        const m = any && d.marked[r];
+        if (markedPass !== !!m) continue;
+        for (let j = 0; j < k; j += 1) ys[j] = plot.y + plot.h - d.values[r * k + j] * plot.h;
+        const color = m ? MARK : d.color ? (d.color[r] >= 0 ? paletteColor(d.color[r]) : '#b0b5bb') : this.fixedColor() || paletteColor(0);
+        p.polyline(xs, ys, k, { stroke: color, width: m ? 1.4 : 1, alpha: m ? 0.85 : any ? alpha * 0.4 : alpha });
+      }
+    };
+    draw(false);
+    if (any) draw(true);
+    d.cols.forEach((c, j) => {
+      const x = axes[j];
+      p.line(x, plot.y, x, plot.y + plot.h, { stroke: AXIS, width: AXIS_W });
+      const [lo, hi] = d.ranges[j];
+      const f = (v) => formatValue(v, d.types[j] || 'number');
+      p.text(shorten(c, Math.max(50, plot.w / Math.max(1, k - 1) - 8), 11), x, plot.y - 20, { size: 11, weight: 600, color: TEXT, align: 'center' });
+      p.text(f(hi), x, plot.y - 6, { size: 10, color: '#8a9099', align: 'center' });
+      p.text(f(lo), x + 4, plot.y + plot.h + 12, { size: 10, color: '#8a9099' });
+    });
+    if (d.n < d.total) p.text(`Showing ${d.n.toLocaleString()} of ${d.total.toLocaleString()} rows`, plot.x + plot.w, plot.y + plot.h + 26, { size: 10, color: '#8a9099', align: 'right' });
+  }
+
   paintTable(p, L) {
     const d = this.data;
     const t = L.table;
@@ -1192,6 +1474,12 @@ export class PlotView {
       case 'pie': return { strip: [['x', 'Slices', s.x], ['value', 'Size', value]] };
       case 'table': return { strip: [['x', 'Rows', s.x || '(none)'], ['color', 'Columns', s.color || '(none)'], ['value', 'Cell values', value]] };
       case 'bar': return { x: s.x || '(none)', y: value, yKey: 'value', color: colorable };
+      case 'waterfall': return { x: s.x, y: value, yKey: 'value' };
+      case 'combo': return { x: s.x, y: (s.y || []).map((y) => y.col).filter(Boolean).join(', '), color: (s.y || []).length <= 1 };
+      case 'treemap': return { strip: [['x', 'Rectangles', s.x], ['value', 'Size', value]] };
+      case 'kpi': return { strip: [['x', 'Tiles', s.x || '(none)'], ['value', 'Value', value]] };
+      case 'parallel': return { strip: [['cols', 'Columns', (s.cols?.length ? s.cols : (s.y || []).map((y) => y.col).filter(Boolean)).join(', ') || 'Choose…'], ['color', 'Color by', s.color || '(none)']] };
+      case 'text': return { strip: [] };
       case 'histogram': return { x: s.x, y: null, color: colorable };
       case 'box': return { x: s.x || '(none)', y: ys[0] };
       case 'heatmap': return { x: s.x, y: ys[0] };
@@ -1445,7 +1733,7 @@ export class PlotView {
     let x1 = Math.max(d.start.x, d.at.x);
     let y0 = Math.min(d.start.y, d.at.y);
     let y1 = Math.max(d.start.y, d.at.y);
-    if (kind === 'pie') return;
+    if (kind === 'pie' || kind === 'treemap' || kind === 'kpi') return;
     const xOnly = d.tool === 'mark' && ['bars', 'histogram', 'box'].includes(kind);
     if (xOnly) {
       y0 = L.plot.y;
@@ -1503,9 +1791,25 @@ export class PlotView {
       if (!moved && (i0 < 0 || i0 >= n || d.at.y < L.plot.y || d.at.y > L.plot.y + L.plot.h)) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
       const ids = kind === 'bars' ? this.data.cats : this.data.stats.map((s) => s.cat);
       const cats = [];
-      for (let i = Math.max(0, i0); i <= Math.min(n - 1, i1); i += 1) cats.push(ids[i]);
+      for (let i = Math.max(0, i0); i <= Math.min(n - 1, i1); i += 1) if (ids[i] >= 0) cats.push(ids[i]);
       if (!cats.length) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
       sel = { cats };
+    } else if (kind === 'treemap' || kind === 'kpi') {
+      const hit = (L.rects || L.tiles).find((r) => d.at.x >= r.x && d.at.x <= r.x + r.w && d.at.y >= r.y && d.at.y <= r.y + r.h);
+      if (!hit) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
+      if (kind === 'kpi' && !this.spec.x) return this.ctx.mark?.(this, { cats: [] }, mode);
+      sel = { cats: [this.data.cats[hit.i]] };
+    } else if (kind === 'parallel') {
+      if (!moved) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
+      const dd = this.data;
+      const mid = (xa + xb) / 2;
+      let j = 0;
+      L.axes.forEach((x, k) => {
+        if (Math.abs(x - mid) < Math.abs(L.axes[j] - mid)) j = k;
+      });
+      const [lo, hi] = dd.ranges[j];
+      const at = (py) => lo + ((L.plot.y + L.plot.h - py) / L.plot.h) * (hi - lo);
+      sel = { col: dd.cols[j], lo: at(yb), hi: at(ya) };
     } else if (kind === 'pie') {
       const sl = this.pieSlice(L, d.at);
       if (!sl) return mode === 'replace' ? this.ctx.clearMark?.() : undefined;
@@ -1624,8 +1928,12 @@ export class PlotView {
           const m = d.marked?.[i * ng + g];
           return `${d.groups ? `${esc(d.groups[g])}: ` : ''}${esc(formatValue(v, 'number'))}${m ? ` <span class="k">(marked ${esc(formatValue(m, 'number'))})</span>` : ''}`;
         });
+        for (const ln of d.lines || []) rows.push(`${esc(ln.name)}: ${esc(formatValue(ln.values[i], 'number'))}`);
         html = `<b>${esc(d.labels[i])}</b><br>${rows.join('<br>')}`;
       }
+    } else if (d.kind === 'treemap' || d.kind === 'kpi') {
+      const r = (L.rects || L.tiles).find((q) => at.x >= q.x && at.x <= q.x + q.w && at.y >= q.y && at.y <= q.y + q.h);
+      if (r) html = `<b>${esc(d.labels[r.i])}</b><br>${esc(this.valueTitle(d))}: ${esc(formatValue(d.values[r.i], 'number'))}<br>Rows: ${esc((d.counts?.[r.i] ?? 0).toLocaleString())}`;
     } else if (d.kind === 'histogram') {
       const v = L.sx.invert(at.x);
       const k = d.edges.findIndex((e, j) => j < d.edges.length - 1 && d.edges[j + 1] > v && e <= v);

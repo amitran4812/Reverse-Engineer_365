@@ -9,6 +9,7 @@ import { MAKE, SYSTEM } from './make.js';
 import { accountSwitcher, accountsSection } from '../shared/accounts.js';
 import { aiSettings } from '../shared/ai-settings.js';
 import { updateSettings, watchUpdates } from '../shared/updates.js';
+import { openCiteDialog } from '../shared/cite.js';
 
 const info = await window.office.launchInfo();
 watchUpdates();
@@ -79,6 +80,14 @@ function askBox() {
   return box;
 }
 
+// Cite a paper: pick a PDF or Word file, or search by DOI or title, and copy its reference.
+function citeTile() {
+  const t = h('button', 'bs-tile bs-tile-cite', `<div class="bs-tile-preview">${icon('cite', 44)}</div><span>Cite a paper</span><small>APA, IEEE, BibTeX…</small>`);
+  t.title = 'Get the reference for a paper from its PDF, DOI, arXiv id or title, ready to copy';
+  t.onclick = () => openCiteDialog();
+  return t;
+}
+
 async function show(view) {
   root.querySelectorAll('.home-nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   main.innerHTML = '';
@@ -98,6 +107,7 @@ async function show(view) {
       tiles.append(t);
     }
     tiles.append(notesTile(44), latexTile(44), latexZipTile(44));
+    tiles.append(citeTile());
     main.append(h('h2', '', 'New'), tiles);
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'open') {

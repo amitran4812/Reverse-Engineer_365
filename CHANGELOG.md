@@ -14,6 +14,34 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Your marks are saved as standard PDF comments, so other PDF readers show them, and Read can edit marks made in other readers. Signatures, dates, check marks and pictures become part of the page when you save.
 - Not yet: changing the PDF's own text and pictures, filling in form fields, saving changes into password-protected PDFs, and reading scanned pages (OCR). These are next.
 
+## 0.2.33: Your own PowerPoint templates
+
+- **Upload your own templates.** On Present's **Design** tab, **Upload Template** takes a PowerPoint template or presentation (.pptx, .potx, .pptm or .potm). Work keeps it, so it shows up next to Paper, Slate and the others from then on, in every Present window.
+- **They show up in Send to Present too.** The template picker in Plot's and Write's **Send to Present** lists your uploaded templates, with an **Upload…** tile to add one right there. The slides it makes use that template.
+- What comes across from the template: its background (a color or a picture), the pictures and colored boxes on the slide master such as a logo or a strip along the bottom, the title and text colors, and the title and body fonts. Placeholder positions and effects stay as Present lays them out.
+- Saving as .pptx puts the template's background and pictures on the slide master, so the deck looks the same in PowerPoint. A saved presentation keeps its template's look even on a computer that doesn't have the template.
+- To remove an uploaded template, point at it in the picker and click **×**, or pick it in Present and click **Remove Template**. Presentations already made with it aren't changed.
+- Older .ppt files can't be read; open them in PowerPoint and save them as .pptx first.
+
+## 0.2.31: Cite a paper in APA, MLA, IEEE, BibTeX and more
+
+- **Cite a paper** from Home: pick or drop a PDF or Word file, or type its DOI, arXiv id, ISBN, link or title. Work finds the paper's DOI on its first pages and fetches the full reference from doi.org (Crossref and DataCite), arXiv or Open Library. Papers without an identifier are matched by title on Crossref, and you pick the right one.
+- **Eight styles**: APA 7, MLA 9, Chicago (author-date), Harvard, IEEE, Vancouver, BibTeX and RIS (for Zotero, Mendeley and EndNote). Switch with one click; the style you used last is remembered.
+- **One-click copy**: Copy reference keeps the italics when pasted into Word, Google Docs or Write. The in-text citation, like (LeCun et al., 2015) or [1], has its own Copy button.
+- **Edit details** fixes anything the lookup got wrong, and the reference updates as you type. Offline, or with no match, the reference is built from the file's own title, author and date for you to check.
+- **Write**: Cite on the Insert tab looks up the open document when it carries a DOI or arXiv id, and inserts the reference or the in-text citation at the cursor.
+- **LaTeX**: Cite a paper on the Insert tab adds the BibTeX entry to the project's `.bib` file (or a new `references.bib`) and puts `\cite{key}` at the cursor.
+
+## 0.2.27: More chart types and the rest of the analyst shortcuts in Plot
+
+- New visualizations in Plot's **Analyze** tab: **Waterfall** (running total by category, with a total bar), **Combination** (bars for the first column, lines for the others, optionally on a right axis), **Treemap**, **Parallel coordinates** (one line per row across several number columns; drag on an axis to mark a range) and **KPI** tiles. Each can be marked by clicking, has a tooltip and is in the right-click "change type" grid.
+- **Text area** for notes on a page (Ctrl+T).
+- **Undo and redo** (Ctrl+Z, Ctrl+Y) for plots, pages and filters.
+- **Paste data** (Ctrl+V): rows copied from a spreadsheet or a CSV, header first, open as the data table.
+- New keys: Ctrl+4 waterfall, Ctrl+6 combination (two-axis line moves to Ctrl+Shift+5), Ctrl+Shift+2 treemap, Ctrl+Shift+4 parallel coordinates, Ctrl+Shift+7 KPI, Ctrl+W close.
+- Formula boxes get line-editing keys: Ctrl+D duplicate line, Ctrl+L delete line, Ctrl+T swap with the line above, Ctrl+U / Ctrl+Shift+U lower / upper case, Ctrl+Shift+Delete delete to the end of the line, Tab / Shift+Tab indent.
+- The shortcuts list (F1) shows all of these.
+
 ## 0.2.26: Write anywhere, voice notes, equations and attachments in notes
 
 - **Write anywhere**: insert an area on the Notes tab (or type `/anywhere`) and click anywhere in it to start a text box. Drag a box by its top edge to move it, drag its right edge to make it wider, and drag the bottom of the area to make it taller. Empty boxes tidy themselves away.
