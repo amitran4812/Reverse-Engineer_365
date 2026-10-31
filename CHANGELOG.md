@@ -2,12 +2,21 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.32: Send a LaTeX paper to Present, and decks as long as they need to be
+## 0.2.34: Send a LaTeX paper to Present, and decks as long as they need to be
 
 - **Send to Present in LaTeX mode**: on the Home tab (and the LaTeX Helper tab), turn the whole project, or the part you selected, into a presentation. The title and authors open the deck; the abstract, sections, lists, theorems, figures, tables and display equations all come across. Files pulled in with `\input` and `\include` count too, figures are found through `\graphicspath` (PNG, JPG, SVG and PDF figures), and `\ref` turns into the right number.
 - **Equations on slides**: the AI can give an important equation a slide of its own, drawn sharp and in the template's text colour (light on dark templates). Equations in Write documents get the same treatment.
 - **No slide limit**: the AI now makes as many slides as the document needs, instead of aiming for 5-12. Type a number in the new **Number of slides** box, or ask for one in the notes box ("about 10 slides"), when you want a set length.
 - The progress box counts the slides as the AI writes them.
+
+## 0.2.33: Your own PowerPoint templates
+
+- **Upload your own templates.** On Present's **Design** tab, **Upload Template** takes a PowerPoint template or presentation (.pptx, .potx, .pptm or .potm). Work keeps it, so it shows up next to Paper, Slate and the others from then on, in every Present window.
+- **They show up in Send to Present too.** The template picker in Plot's and Write's **Send to Present** lists your uploaded templates, with an **Upload…** tile to add one right there. The slides it makes use that template.
+- What comes across from the template: its background (a color or a picture), the pictures and colored boxes on the slide master such as a logo or a strip along the bottom, the title and text colors, and the title and body fonts. Placeholder positions and effects stay as Present lays them out.
+- Saving as .pptx puts the template's background and pictures on the slide master, so the deck looks the same in PowerPoint. A saved presentation keeps its template's look even on a computer that doesn't have the template.
+- To remove an uploaded template, point at it in the picker and click **×**, or pick it in Present and click **Remove Template**. Presentations already made with it aren't changed.
+- Older .ppt files can't be read; open them in PowerPoint and save them as .pptx first.
 
 ## 0.2.31: Cite a paper in APA, MLA, IEEE, BibTeX and more
 

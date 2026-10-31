@@ -58,3 +58,13 @@ test('a slide made in Plot opens as a new presentation in Present', async () => 
   assert.equal(info.data.theme, 'midnight');
   assert.deepEqual(info.data.slides[0].elements.map((e) => e.id), ['a', 'b', 'c']);
 });
+
+test('a slide sent with an uploaded template carries the template along', async () => {
+  const themeData = { id: 'u0123456789ab', custom: true, label: 'Company', bg: '#ffffff', text: '#222222', title: '#111111', accent: '#c00000', font: 'Arial', decor: [] };
+  const info = await toFileInfo({ kind: 'deck', title: 'Sales', theme: themeData.id, themeData, slides: [] });
+  assert.equal(info.data.theme, themeData.id);
+  assert.equal(info.data.themeData.label, 'Company');
+  const missing = await toFileInfo({ kind: 'deck', title: 'Sales', theme: 'u999999999999', slides: [] });
+  assert.equal(missing.data.theme, 'paper');
+  assert.equal(missing.data.themeData, undefined);
+});

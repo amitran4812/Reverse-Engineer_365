@@ -10,7 +10,7 @@
 //   select  dropdown                          { type:'select', options:[{value,label}], value(), change(v), width }
 //   color   colour picker                     { type:'color', icon, title, pick(color) }
 //   menu    button with a dropdown list       { type:'menu', icon, label, big, items:[{label, run, icon}] }
-//   gallery tiles (styles, themes, layouts)   { type:'gallery', items:[{label, html, run, active()}] }
+//   gallery tiles (styles, themes, layouts)   { type:'gallery', items:[{label, html, run, active()}] or () => [...] }
 // Any control may define active() and enabled() for refresh().
 
 import { icon } from './icons.js';
@@ -97,6 +97,7 @@ export class Ribbon {
     this.host = host;
     this.tabs = tabs;
     this.controls = [];
+    this.galleries = [];
     this.lastColor = {};
     host.classList.add('ribbon');
     if (accent) host.style.setProperty('--accent', accent);
@@ -245,11 +246,8 @@ export class Ribbon {
       }
       case 'gallery': {
         const g = el('div', 'rb-gallery');
-        for (const gi of item.items) {
-          const t = this.button(gi, 'rb-tile', gi.html);
-          t.title = gi.label;
-          g.append(t);
-        }
+        this.fillGallery(g, item);
+        if (typeof item.items === 'function') this.galleries.push({ g, item });
         return g;
       }
       case 'sep':
@@ -257,6 +255,22 @@ export class Ribbon {
       default:
         return el('span', '', '?');
     }
+  }
+
+  fillGallery(g, item) {
+    this.controls = this.controls.filter((c) => !g.contains(c.node));
+    g.innerHTML = '';
+    for (const gi of typeof item.items === 'function' ? item.items() : item.items) {
+      const t = this.button(gi, 'rb-tile', gi.html);
+      t.title = gi.title || gi.label;
+      g.append(t);
+    }
+  }
+
+  // Galleries whose items is a function are built again from it.
+  rebuildGalleries() {
+    for (const { g, item } of this.galleries) this.fillGallery(g, item);
+    this.refresh();
   }
 
   refresh() {

@@ -6,7 +6,7 @@
 
 import './to-present.css';
 import { dialog, escapeHtml, h, toast } from '../shared/shell.js';
-import { THEMES, themePicker } from '../shared/themes.js';
+import { allThemes, themePicker } from '../shared/themes.js';
 import { DECK_SCHEMA, DECK_SYSTEM, buildDeck, cleanDeck, deckPrompt, isEmpty, plainDeck, readDocument } from './deck.js';
 
 const MAX_SIDE = 1600; // pictures larger than this are scaled down for the deck
@@ -268,7 +268,7 @@ export async function presentDialog({ name, whole, part, showAi, prepare = prepa
     }
   }
   if (!spec) spec = plainDeck(doc, title);
-  await drawEquations(doc, spec.slides, THEMES[last.theme]?.text || '#1f2328');
+  await drawEquations(doc, spec.slides, allThemes()[last.theme]?.text || '#1f2328');
   const slides = buildDeck(spec, doc);
   // An untitled document's deck takes the title the slides were given.
   const deckName = title === base && /^(Document|Untitled)\d*$/.test(base) ? spec.title || base : title;

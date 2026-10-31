@@ -89,6 +89,11 @@ contextBridge.exposeInMainWorld('office', {
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
   },
+  templates: {
+    list: () => ipcRenderer.invoke('templates:list'),
+    upload: () => ipcRenderer.invoke('templates:upload'),
+    remove: (id) => ipcRenderer.invoke('templates:remove', id),
+  },
   notes: {
     image: (prompt) => ipcRenderer.invoke('notes:image', prompt),
     fetchLink: (url) => ipcRenderer.invoke('notes:fetch-link', url),
