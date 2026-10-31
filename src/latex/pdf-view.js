@@ -174,3 +174,22 @@ export class PdfView {
     if (p) this.scroller.scrollTop = p.el.offsetTop - 8;
   }
 }
+
+// The first page of a PDF figure as a PNG data URL, at most side pixels on its long edge.
+export async function pdfPicture(base64, side = 1600) {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const task = pdfjs.getDocument({ data: bytes, isEvalSupported: false, enableXfa: false });
+  try {
+    const doc = await task.promise;
+    const page = await doc.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: Math.min(4, side / Math.max(base.width, base.height)) });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(viewport.width));
+    canvas.height = Math.max(1, Math.round(viewport.height));
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    return canvas.toDataURL('image/png');
+  } finally {
+    task.destroy();
+  }
+}
