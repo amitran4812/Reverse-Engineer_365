@@ -2,7 +2,7 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.30: Cite a paper in APA, MLA, IEEE, BibTeX and more
+## 0.2.31: Cite a paper in APA, MLA, IEEE, BibTeX and more
 
 - **Cite a paper** from Home: pick or drop a PDF or Word file, or type its DOI, arXiv id, ISBN, link or title. Work finds the paper's DOI on its first pages and fetches the full reference from doi.org (Crossref and DataCite), arXiv or Open Library. Papers without an identifier are matched by title on Crossref, and you pick the right one.
 - **Eight styles**: APA 7, MLA 9, Chicago (author-date), Harvard, IEEE, Vancouver, BibTeX and RIS (for Zotero, Mendeley and EndNote). Switch with one click; the style you used last is remembered.
