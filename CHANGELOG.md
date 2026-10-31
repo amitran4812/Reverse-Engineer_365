@@ -2,7 +2,7 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.27: Your own PowerPoint templates
+## 0.2.28: Your own PowerPoint templates
 
 - **Upload your own templates.** On Present's **Design** tab, **Upload Template** takes a PowerPoint template or presentation (.pptx, .potx, .pptm or .potm). Work keeps it, so it shows up next to Paper, Slate and the others from then on, in every Present window.
 - **They show up in Send to Present too.** The template picker in Plot's and Write's **Send to Present** lists your uploaded templates, with an **Upload…** tile to add one right there. The slides it makes use that template.
