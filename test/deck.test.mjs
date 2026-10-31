@@ -121,3 +121,15 @@ test('notes cards and free boxes reach the deck as text', () => {
     { type: 'para', text: 'Attachment: Budget.pdf' },
   ]);
 });
+
+test('equation pictures in Write are read as equations with their TeX', () => {
+  const eq = { type: 'image', attrs: { src: 'data:image/png;base64,AA', alt: 'E=mc^2', title: 'Equation' } };
+  const doc = readDocument({ type: 'doc', content: [hd(1, 'Physics'), hd(2, 'Energy'), p('Mass is energy.'), { type: 'paragraph', content: [eq] }] });
+  assert.deepEqual(doc.equations, [{ src: 'data:image/png;base64,AA', tex: 'E=mc^2' }]);
+  assert.deepEqual(doc.images, []);
+  assert.match(outlineText(doc), /\[Equation 1: E=mc\^2\]/);
+  const slides = buildDeck(plainDeck(doc, 'Physics'), { ...doc, equations: [{ ...doc.equations[0], w: 100, h: 20 }] });
+  const img = slides.at(-1).elements.find((e) => e.type === 'image');
+  assert.equal(img.w, 200);
+  assert.ok(img.x + img.w <= SLIDE_W && img.y + img.h <= SLIDE_H);
+});
