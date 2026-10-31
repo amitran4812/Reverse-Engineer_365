@@ -84,6 +84,13 @@ contextBridge.exposeInMainWorld('office', {
   notes: {
     image: (prompt) => ipcRenderer.invoke('notes:image', prompt),
     fetchLink: (url) => ipcRenderer.invoke('notes:fetch-link', url),
+    transcribe: (audio) => ipcRenderer.invoke('notes:transcribe', audio),
+    transcribeFile: () => ipcRenderer.invoke('notes:transcribe-file'),
+    canTranscribe: () => ipcRenderer.invoke('notes:can-transcribe'),
+    microphone: () => ipcRenderer.invoke('notes:mic'),
+    attach: () => ipcRenderer.invoke('notes:attach'),
+    openAttachment: (file) => ipcRenderer.invoke('notes:open-attachment', file),
+    saveAttachment: (file) => ipcRenderer.invoke('notes:save-attachment', file),
   },
   sheets: {
     openTable: () => ipcRenderer.invoke('sheets:open-table'),

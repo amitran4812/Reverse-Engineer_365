@@ -2,6 +2,8 @@
 // currentColor; parts marked with the `a` class pick up the app accent.
 
 const P = {
+  mic: '<rect x="7.5" y="2.5" width="5" height="9" rx="2.5"/><path class="a-s" d="M4.5 9.5a5.5 5.5 0 0011 0"/><path d="M10 15v3M7 18h6"/>',
+  board: '<rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><rect class="a" x="5" y="6" width="5" height="3" rx=".5"/><path d="M11 12h4M6 13h3"/>',
   save: '<path d="M4 3h10l3 3v11H4z"/><path d="M7 3v4h6V3"/><rect class="a" x="7" y="11" width="7" height="6" rx=".5"/>',
   saveAs: '<path d="M4 3h10l3 3v6"/><path d="M4 3v14h7"/><path d="M7 3v4h6V3"/><path class="a-s" d="M13 18l1-3 4-4 2 2-4 4z"/>',
   undo: '<path d="M7 5L3 9l4 4"/><path d="M3 9h9a5 5 0 010 10h-2"/>',

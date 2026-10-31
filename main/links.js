@@ -30,6 +30,70 @@ function decode(s) {
   return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 
+
+// YouTube: the watch page lists caption tracks; the chosen track's text is
+// the transcript. Videos without captions can't be read this way.
+const YOUTUBE = /^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)$/i;
+
+function youtubeId(raw) {
+  let url = raw;
+  if (typeof raw === 'string') {
+    try {
+      url = new URL(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!YOUTUBE.test(url.hostname)) return null;
+  if (/youtu\.be$/i.test(url.hostname)) return url.pathname.slice(1).split('/')[0] || null;
+  if (url.pathname === '/watch') return url.searchParams.get('v');
+  const m = /^\/(?:shorts|live|embed)\/([\w-]{6,})/.exec(url.pathname);
+  return m ? m[1] : null;
+}
+
+// Caption tracks from a watch page, English first, then manual over automatic.
+function captionTracks(html) {
+  const m = /"captionTracks":(\[.*?\])\s*,\s*"/s.exec(String(html || ''));
+  if (!m) return [];
+  let tracks;
+  try {
+    tracks = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  const score = (t) => (/^en/.test(t.languageCode) ? 0 : 2) + (t.kind === 'asr' ? 1 : 0);
+  return tracks.filter((t) => t.baseUrl).sort((a, b) => score(a) - score(b));
+}
+
+// Transcript text from a json3 caption file, with a line break at pauses.
+function captionText(json) {
+  const out = [];
+  let last = 0;
+  for (const ev of json?.events || []) {
+    const text = (ev.segs || []).map((s) => s.utf8 || '').join('').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    out.push((ev.tStartMs - last > 4000 && out.length ? '\n' : ' ') + text);
+    last = ev.tStartMs + (ev.dDurationMs || 0);
+  }
+  return out.join('').replace(/^ /, '').replace(/ ?\n ?/g, '\n');
+}
+
+async function youtubeTranscript(id, signal) {
+  const page = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(id)}&hl=en`, {
+    signal,
+    headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'accept-language': 'en', cookie: 'CONSENT=YES+1' },
+  });
+  if (!page.ok) return { ok: false, message: `YouTube answered with error ${page.status}.` };
+  const html = await page.text();
+  const title = decode(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] || '').replace(/ - YouTube$/, '').trim();
+  const track = captionTracks(html)[0];
+  if (!track) return { ok: false, message: 'That video has no captions to read. Download the recording and use Transcribe a recording, or paste its transcript.' };
+  const res = await fetch(`${track.baseUrl}&fmt=json3`, { signal });
+  const text = res.ok ? captionText(await res.json().catch(() => null)) : '';
+  if (!text) return { ok: false, message: 'YouTube didn’t send the captions for that video. Try again later, or paste its transcript.' };
+  return { ok: true, url: `https://www.youtube.com/watch?v=${id}`, title, text: text.slice(0, 200000), kind: 'video' };
+}
+
 const MAX_BYTES = 4 * 1024 * 1024;
 const TIMEOUT = 20000;
 
@@ -44,6 +108,8 @@ async function fetchLink(raw) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT);
   try {
+    const video = youtubeId(url);
+    if (video) return await youtubeTranscript(video, controller.signal);
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
@@ -70,4 +136,4 @@ async function fetchLink(raw) {
   }
 }
 
-module.exports = { fetchLink, pageText };
+module.exports = { fetchLink, pageText, youtubeId, captionTracks, captionText };
