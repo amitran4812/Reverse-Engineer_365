@@ -172,15 +172,22 @@ test('cell reference helpers', () => {
 
 test('imports PowerPoint, OpenDocument and legacy Excel files', async () => {
   const fx = (f) => path.join(__dirname, 'fixtures', f);
-  for (const f of ['deck.pptx', 'deck.odp']) {
-    const r = await openFile(fx(f));
-    assert.equal(r.app, 'slides');
-    assert.equal(r.path, null);
-    const [first, second, third] = r.data.deckSpec.slides;
-    assert.deepEqual([first.layout, first.title, first.subtitle, first.notes], ['title', 'Launch plan', 'Q3 review', 'Welcome everyone.']);
-    assert.deepEqual([second.layout, second.bullets, second.notes], ['content', ['Grow revenue', 'Hire two engineers'], 'Focus on revenue first.']);
-    assert.deepEqual([third.layout, third.bullets, third.right_bullets], ['two', ['Slow'], ['Fast']]);
-  }
+  const odp = await openFile(fx('deck.odp'));
+  assert.equal(odp.app, 'slides');
+  assert.equal(odp.path, null);
+  const [first, second, third] = odp.data.deckSpec.slides;
+  assert.deepEqual([first.layout, first.title, first.subtitle, first.notes], ['title', 'Launch plan', 'Q3 review', 'Welcome everyone.']);
+  assert.deepEqual([second.layout, second.bullets, second.notes], ['content', ['Grow revenue', 'Hire two engineers'], 'Focus on revenue first.']);
+  assert.deepEqual([third.layout, third.bullets, third.right_bullets], ['two', ['Slow'], ['Fast']]);
+  const pptx = await openFile(fx('deck.pptx'));
+  assert.equal(pptx.app, 'slides');
+  assert.equal(pptx.path, null);
+  const text = (s) => s.elements.map((e) => (e.html || '').replace(/<[^>]+>/g, '')).filter(Boolean);
+  const [p1, p2, p3] = pptx.data.slides;
+  assert.deepEqual(text(p1), ['Launch plan', 'Q3 review']);
+  assert.deepEqual([p1.notes, p2.notes], ['Welcome everyone.', 'Focus on revenue first.']);
+  assert.deepEqual(text(p2), ['Goals', 'Grow revenueHire two engineers']);
+  assert.deepEqual(text(p3).slice(-2), ['Slow', 'Fast']);
   const odt = await openFile(fx('notes.odt'));
   assert.equal(odt.app, 'docs');
   assert.match(odt.data.html, /<h1>Report<\/h1><p>Hello world.<\/p><ul><li><p>First<\/p><\/li><\/ul><table>/);
@@ -201,4 +208,36 @@ test('imports PowerPoint, OpenDocument and legacy Excel files', async () => {
   const blank = await openFile(path.join(dir, 'New.xlsx'));
   assert.equal(blank.path, path.join(dir, 'New.xlsx'));
   assert.deepEqual(blank.data.sheets[0].cells, {});
+});
+
+test('pptx import keeps the template, fonts, pictures, shapes, tables and charts', async () => {
+  const d = (await openFile(path.join(__dirname, 'fixtures', 'styled.pptx'))).data;
+  assert.deepEqual(d.size, { w: 960, h: 540 });
+  assert.equal(d.slides.length, 5);
+  const [title, agenda, shapes, numbers, table] = d.slides;
+  assert.match(title.bgCss, /^linear-gradient\(45deg, #0B1F3A 0%, #1E5A9C 100%\)$/);
+  assert.ok(title.layers.every((id) => d.layers[id]));
+  assert.match(title.elements[0].html, /color:#FFFFFF/);
+  assert.match(title.elements[1].html, /Design team · 2026/);
+  const body = agenda.elements.find((e) => e.role === 'body');
+  assert.equal((body.html.match(/data-bu=/g) || []).length, 6);
+  assert.match(body.html, /data-bu="–"/);
+  assert.match(body.html, /font-weight:700">Revenue grew 24%/);
+  const shape = shapes.elements.find((e) => e.prst === 'chevron');
+  assert.match(shape.svg, /fill="#1565C0"/);
+  assert.ok(shapes.elements.some((e) => e.type === 'image' && e.src.startsWith('data:image/png')));
+  const arrow = shapes.elements.find((e) => e.line);
+  assert.match(arrow.svg, /marker-end/);
+  assert.match(shapes.elements.find((e) => /Georgia/.test(e.html || '')).html, /font-family:'Georgia', serif;font-size:28px/);
+  const charts = numbers.elements.filter((e) => e.chart);
+  assert.equal(charts.length, 2);
+  assert.match(Buffer.from(charts[0].src.split(',')[1], 'base64').toString(), /Q4/);
+  const tbl = table.elements.find((e) => e.type === 'table');
+  assert.equal(tbl.cells.length, 4);
+  assert.deepEqual(tbl.rows[0], ['Region', 'Q1', 'Q2']);
+  assert.equal(table.notes, 'Talk about the table.');
+  assert.ok(d.layouts.obj.elements.some((e) => e.role === 'title' && e.placeholder));
+  const out = await exportPptx({ ...d, slides: d.slides.map((s) => ({ ...s, elements: s.elements.map((e) => ({ ...e, paragraphs: [{ runs: [{ text: 'x' }] }] })) })) });
+  const zip = await JSZip.loadAsync(out);
+  assert.equal(zip.file(/ppt\/slides\/slide\d+\.xml/).length, 5);
 });

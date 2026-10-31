@@ -5,8 +5,12 @@ import { markdownToHtml, sanitize } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
 import { THEMES } from '../shared/themes.js';
 
-const W = 960;
-const H = 540;
+let W = 960;
+let H = 540;
+// Master and layout artwork from an opened .pptx, shared by the slides that use it.
+let layers = {};
+let pptLayouts = {}; // PowerPoint layout type -> { layers, bg, bgCss, elements }
+const PPT_TYPE = { title: 'title', content: 'obj', section: 'secHead', two: 'twoObj', titleOnly: 'titleOnly', blank: 'blank' };
 
 const LAYOUTS = {
   title: { label: 'Title Slide', make: () => [
@@ -38,8 +42,12 @@ function text(role, x, y, w, h, fontSize, align, placeholder, bullets = false) {
 }
 
 function newSlide(layout = 'content') {
+  const ppt = pptLayouts[PPT_TYPE[layout]];
+  if (ppt) return { id: nid(), layout, own: true, layers: ppt.layers, bg: ppt.bg, ...(ppt.bgCss ? { bgCss: ppt.bgCss } : {}), elements: pptElements(ppt), notes: '' };
   return { id: nid(), layout, elements: LAYOUTS[layout].make(), notes: '' };
 }
+
+const pptElements = (ppt) => JSON.parse(JSON.stringify(ppt.elements)).map((e) => ({ ...e, id: nid() }));
 
 let deck = { theme: 'paper', slides: [newSlide('title')] };
 let current = 0;
@@ -72,51 +80,85 @@ function elementColor(el) {
   return el.role === 'title' ? theme().title : theme().text;
 }
 
+const VALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+const CSS_KEYS = { fontSize: 'font-size', color: 'color', fontFamily: 'font-family', bold: 'font-weight', italic: 'font-style', align: 'text-align' };
+
+function elementNode(el, s, t, layer = false) {
+  const node = h('div', `el el-${el.type}${el.style?.bullets ? ' bullets' : ''}${layer ? ' layer' : ''}${el.style?.free ? ' free' : ''}`);
+  if (!layer) node.dataset.id = el.id;
+  Object.assign(node.style, { left: `${el.x}px`, top: `${el.y}px`, width: `${el.w}px`, height: `${el.h}px` });
+  if (el.style?.rotate) node.style.transform = `rotate(${el.style.rotate}deg)`;
+  if (el.type === 'text' || el.type === 'shape') {
+    if (el.svg) {
+      node.classList.add('svg-shape');
+      node.append(Object.assign(h('div', 'el-geom'), { innerHTML: el.svg }));
+    }
+    const inner = h('div', 'el-text');
+    inner.innerHTML = el.html || '';
+    if (!el.html && el.placeholder) inner.dataset.ph = el.placeholder;
+    const free = el.style?.free;
+    Object.assign(inner.style, {
+      fontSize: `${el.style?.fontSize || 24}px`,
+      color: el.type === 'shape' && !el.style?.color ? '#ffffff' : elementColor(el),
+      textAlign: el.style?.align || (el.type === 'shape' ? 'center' : 'left'),
+      fontWeight: free ? (el.style.bold ? '700' : '') : el.style?.bold || el.role === 'title' ? (el.role === 'title' && !el.style?.bold ? '600' : '700') : '',
+      fontStyle: el.style?.italic ? 'italic' : '',
+      fontFamily: el.style?.fontFamily || '',
+      justifyContent: VALIGN[el.style?.valign] && (free || el.style.valign === 'middle') ? VALIGN[el.style.valign] : el.type === 'shape' ? 'center' : el.role === 'title' && s.layout !== 'title' ? 'flex-end' : 'flex-start',
+    });
+    if (el.style?.pad) inner.style.padding = el.style.pad.map((v) => `${v}px`).join(' ');
+    if (el.style?.nowrap) inner.style.whiteSpace = 'nowrap';
+    if (el.style?.vert) {
+      inner.style.writingMode = 'vertical-rl';
+      if (el.style.vert === 'vert270') inner.style.transform = 'rotate(180deg)';
+    }
+    if (el.type === 'shape' && !el.svg) {
+      node.classList.add(`shape-${el.shape}`);
+      node.style.setProperty('--fill', el.style?.fill || t.accent);
+      node.style.setProperty('--stroke', el.style?.stroke || 'transparent');
+    }
+    node.append(inner);
+  } else if (el.type === 'image') {
+    const img = h('img');
+    img.src = el.src;
+    img.draggable = false;
+    const crop = el.style?.crop;
+    if (crop) {
+      const [l, tp, r, b] = crop;
+      const fw = 100 / Math.max(0.01, 1 - l - r);
+      const fh = 100 / Math.max(0.01, 1 - tp - b);
+      Object.assign(img.style, { position: 'absolute', width: `${fw}%`, height: `${fh}%`, left: `${-l * fw}%`, top: `${-tp * fh}%` });
+    }
+    if (el.style?.flip) img.style.transform = `scale(${el.style.flip.join(',')})`;
+    if (el.style?.clip === 'ellipse') node.style.clipPath = 'ellipse(50% 50%)';
+    if (el.style?.clip === 'round') node.style.borderRadius = '12%';
+    node.append(img);
+    if (el.style?.border) node.append(Object.assign(h('div', 'img-border'), { style: `border:${el.style.border}` }));
+  } else if (el.type === 'table') {
+    node.append(tableNode(el, t));
+  }
+  return node;
+}
+
 function renderSlideInto(container, s, { interactive = false } = {}) {
   container.innerHTML = '';
   const t = theme();
   const surface = h('div', 'slide');
-  surface.style.background = s.bg || t.bg;
+  surface.style.width = `${W}px`;
+  surface.style.height = `${H}px`;
+  surface.style.background = s.bgCss || s.bg || t.bg;
   surface.style.fontFamily = t.font;
-  if (t.band && s.layout !== 'title') surface.append(Object.assign(h('div', 'band'), { style: `background:${t.accent}` }));
-  if (s.layout === 'title' || s.layout === 'section') {
+  if (!s.own && t.band && s.layout !== 'title') surface.append(Object.assign(h('div', 'band'), { style: `background:${t.accent}` }));
+  if (!s.own && (s.layout === 'title' || s.layout === 'section')) {
     const bar = h('div', 'accent-bar');
     bar.style.background = t.accent;
     bar.style.top = s.layout === 'title' ? '288px' : '290px';
     bar.style.left = s.layout === 'title' ? '430px' : '80px';
     surface.append(bar);
   }
+  for (const id of s.layers || []) for (const el of layers[id]?.elements || []) surface.append(elementNode(el, s, t, true));
   for (const el of s.elements) {
-    const node = h('div', `el el-${el.type}${el.style?.bullets ? ' bullets' : ''}`);
-    node.dataset.id = el.id;
-    Object.assign(node.style, { left: `${el.x}px`, top: `${el.y}px`, width: `${el.w}px`, height: `${el.h}px` });
-    if (el.type === 'text' || el.type === 'shape') {
-      const inner = h('div', 'el-text');
-      inner.innerHTML = el.html || '';
-      if (!el.html && el.placeholder) inner.dataset.ph = el.placeholder;
-      Object.assign(inner.style, {
-        fontSize: `${el.style?.fontSize || 24}px`,
-        color: el.type === 'shape' && !el.style?.color ? '#ffffff' : elementColor(el),
-        textAlign: el.style?.align || (el.type === 'shape' ? 'center' : 'left'),
-        fontWeight: el.style?.bold || el.role === 'title' ? (el.role === 'title' && !el.style?.bold ? '600' : '700') : '',
-        fontStyle: el.style?.italic ? 'italic' : '',
-        fontFamily: el.style?.fontFamily || '',
-        justifyContent: el.type === 'shape' || el.style?.valign === 'middle' ? 'center' : el.role === 'title' && s.layout !== 'title' ? 'flex-end' : 'flex-start',
-      });
-      if (el.type === 'shape') {
-        node.classList.add(`shape-${el.shape}`);
-        node.style.setProperty('--fill', el.style?.fill || t.accent);
-        node.style.setProperty('--stroke', el.style?.stroke || 'transparent');
-      }
-      node.append(inner);
-    } else if (el.type === 'image') {
-      const img = h('img');
-      img.src = el.src;
-      img.draggable = false;
-      node.append(img);
-    } else if (el.type === 'table') {
-      node.append(tableNode(el, t));
-    }
+    const node = elementNode(el, s, t);
     if (interactive) {
       if (el.id === selected) node.classList.add('selected');
       if (el.id === selected && el.id !== editingId) {
@@ -134,6 +176,7 @@ function renderSlideInto(container, s, { interactive = false } = {}) {
 }
 
 function tableNode(el, t) {
+  if (el.cells) return cellsTable(el);
   const table = h('table', 'slide-table');
   table.style.setProperty('--tb-accent', el.style?.fill || t.accent);
   table.style.setProperty('--tb-text', el.style?.color || t.text);
@@ -144,6 +187,29 @@ function tableNode(el, t) {
     for (const v of row) tr.append(h(r === 0 && el.header !== false ? 'th' : 'td', '', escapeHtml(v ?? '')));
     table.append(tr);
   });
+  return table;
+}
+
+// A table read from .pptx keeps its own cell fills, borders, merges and text.
+function cellsTable(el) {
+  const table = h('table', 'slide-table cells');
+  const cols = h('colgroup');
+  for (const w of el.cols || []) cols.append(Object.assign(h('col'), { style: `width:${w}%` }));
+  table.append(cols);
+  for (const row of el.cells) {
+    const tr = h('tr');
+    for (const c of row) {
+      if (c.merged) continue;
+      const td = h('td');
+      td.innerHTML = c.html || '';
+      if (c.colspan) td.colSpan = c.colspan;
+      if (c.rowspan) td.rowSpan = c.rowspan;
+      Object.assign(td.style, { height: `${c.h}px`, background: c.fill || '', verticalAlign: c.valign || 'top', padding: (c.pad || []).map((v) => `${v}px`).join(' ') });
+      for (const [side, b] of Object.entries(c.borders || {})) if (side !== 'inner') td.style[`border${side[0].toUpperCase()}${side.slice(1)}`] = b;
+      tr.append(td);
+    }
+    table.append(tr);
+  }
   return table;
 }
 
@@ -175,6 +241,7 @@ function renderThumbs() {
     item.dataset.index = i;
     const num = h('span', 'thumb-num', String(i + 1));
     const box = h('div', 'thumb-box');
+    box.style.height = `${Math.round((160 * H) / W)}px`;
     renderSlideInto(box, s);
     item.append(num, box);
     item.onclick = () => go(i);
@@ -461,7 +528,9 @@ function changeLayout(layout) {
   const s = slide();
   const texts = s.elements.filter((e) => e.type === 'text' && e.role && e.html);
   const others = s.elements.filter((e) => !(e.type === 'text' && e.role));
-  const fresh = LAYOUTS[layout].make();
+  const ppt = pptLayouts[PPT_TYPE[layout]];
+  const fresh = ppt ? pptElements(ppt) : LAYOUTS[layout].make();
+  if (ppt) Object.assign(s, { own: true, layers: ppt.layers, bg: ppt.bg, bgCss: ppt.bgCss });
   for (const f of fresh) {
     const match = texts.findIndex((t) => t.role === f.role);
     if (match >= 0) {
@@ -560,6 +629,7 @@ function format(cmd, styleKey, value) {
   }
   snapshot();
   el.style = { ...el.style, [styleKey]: value === undefined ? !el.style?.[styleKey] : value };
+  if (el.style.free && el.html) el.html = dropCss(el.html, CSS_KEYS[styleKey]);
   renderStage();
   updateThumb();
   shell.refresh();
@@ -573,9 +643,19 @@ function setStyle(patch) {
   }
   snapshot();
   el.style = { ...el.style, ...patch };
+  if (el.style.free && el.html) for (const k of Object.keys(patch)) el.html = dropCss(el.html, CSS_KEYS[k]);
   renderStage();
   updateThumb();
   shell.refresh();
+}
+
+// Formatting a whole box read from .pptx replaces what its runs set.
+function dropCss(html, prop) {
+  if (!prop) return html;
+  const box = document.createElement('div');
+  box.innerHTML = html;
+  for (const n of box.querySelectorAll('[style]')) n.style.removeProperty(prop);
+  return box.innerHTML;
 }
 
 function setTheme(id) {
@@ -587,6 +667,7 @@ function setTheme(id) {
 function setBackground(color) {
   snapshot();
   slide().bg = color;
+  delete slide().bgCss;
   renderStage();
   updateThumb();
 }
@@ -855,8 +936,8 @@ function htmlToParagraphs(html, base) {
   div.innerHTML = html || '';
   const paras = [];
   let cur = null;
-  const open = (align) => {
-    cur = { align: align || base.align, bullet: base.bullets ? true : undefined, runs: [] };
+  const open = (align, bu) => {
+    cur = { align: align || base.align, bullet: bu || (base.bullets ? true : undefined), runs: [] };
     paras.push(cur);
   };
   const walk = (node, fmt) => {
@@ -877,8 +958,12 @@ function htmlToParagraphs(html, base) {
         if (tag === 'u' || /underline/.test(child.style.textDecoration)) next.underline = true;
         if (child.style.color) next.color = child.style.color;
         if (child.getAttribute('color')) next.color = child.getAttribute('color');
+        if (child.style.fontWeight && !/bold|[6-9]00/.test(child.style.fontWeight)) next.bold = false;
+        if (/px$/.test(child.style.fontSize)) next.size = parseFloat(child.style.fontSize);
+        if (child.style.fontFamily) next.font = child.style.fontFamily.replace(/["']/g, '').split(',')[0].trim();
         const block = ['div', 'p', 'li', 'h1', 'h2', 'h3'].includes(tag);
-        if (block) open(child.style.textAlign || undefined);
+        const bu = child.dataset?.bu;
+        if (block) open(child.style.textAlign || undefined, bu ? (/^\(?[0-9ivxlcdmIVXLCDMa-zA-Z]+[.)]/.test(bu) ? 'number' : bu) : undefined);
         walk(child, next);
         if (block) cur = null;
       }
@@ -889,22 +974,29 @@ function htmlToParagraphs(html, base) {
 }
 
 // Resolve theme colours and flatten text so the main process can write .pptx.
+function exportElement(el, t) {
+  const style = { ...el.style, color: el.type === 'shape' && !el.style?.color ? '#ffffff' : elementColor(el), fill: el.type === 'shape' || el.type === 'table' ? el.style?.fill || t.accent : el.style?.fill, fontFamily: el.style?.fontFamily || t.font };
+  if (el.role === 'title' && style.bold === undefined) style.bold = true;
+  return { ...el, style, paragraphs: el.type === 'image' || el.type === 'table' ? undefined : htmlToParagraphs(el.html, style) };
+}
+
 function exportModel() {
   const t = theme();
   return {
     ...JSON.parse(JSON.stringify(deck)),
+    size: { w: W, h: H },
     themeColors: t,
     slides: deck.slides.map((s) => {
       const els = [];
-      if (t.band && s.layout !== 'title') els.push({ type: 'shape', shape: 'rect', x: 0, y: 0, w: 14, h: H, style: { fill: t.accent } });
-      if (s.layout === 'title' || s.layout === 'section') els.push({ type: 'shape', shape: 'rect', x: s.layout === 'title' ? 430 : 80, y: s.layout === 'title' ? 288 : 290, w: 100, h: 4, style: { fill: t.accent } });
+      if (!s.own && t.band && s.layout !== 'title') els.push({ type: 'shape', shape: 'rect', x: 0, y: 0, w: 14, h: H, style: { fill: t.accent } });
+      if (!s.own && (s.layout === 'title' || s.layout === 'section')) els.push({ type: 'shape', shape: 'rect', x: s.layout === 'title' ? 430 : 80, y: s.layout === 'title' ? 288 : 290, w: 100, h: 4, style: { fill: t.accent } });
+      for (const id of s.layers || []) for (const el of layers[id]?.elements || []) els.push(exportElement(el, t));
       for (const el of s.elements) {
         if (el.type === 'text' && !el.html) continue;
-        const style = { ...el.style, color: el.type === 'shape' && !el.style?.color ? '#ffffff' : elementColor(el), fill: el.type === 'shape' || el.type === 'table' ? el.style?.fill || t.accent : el.style?.fill, fontFamily: el.style?.fontFamily || t.font };
-        if (el.role === 'title' && style.bold === undefined) style.bold = true;
-        els.push({ ...el, style, paragraphs: el.type === 'image' || el.type === 'table' ? undefined : htmlToParagraphs(el.html, style) });
+        els.push(exportElement(el, t));
       }
-      return { ...s, bg: s.bg || t.bg, elements: els };
+      const bgImage = /url\("(data:[^"]+)"\)/.exec(s.bgCss || '')?.[1];
+      return { ...s, bg: s.bg || t.bg, bgImage, elements: els };
     }),
   };
 }
@@ -1164,10 +1256,11 @@ const shell = await createShell({
   redo,
   getSaveData: () => {
     finishEditing();
-    return { format: 'rea-slides', version: 1, theme: deck.theme, slides: deck.slides, export: exportModel() };
+    const own = W !== 960 || H !== 540 || Object.keys(layers).length ? { size: { w: W, h: H }, layers, layouts: pptLayouts } : {};
+    return { format: 'rea-slides', version: 1, theme: deck.theme, slides: deck.slides, ...own, export: exportModel() };
   },
   exports: [{ label: 'PowerPoint presentation (.pptx)', detail: 'Opens in PowerPoint, Keynote and Google Slides.', icon: 'play', ext: 'pptx' }],
-  pdfOptions: () => ({ pageSize: { width: 10, height: 5.625 } }),
+  pdfOptions: () => ({ pageSize: { width: 10, height: (10 * H) / W } }),
   beforePrint: () => {
     finishEditing();
     printDeck.innerHTML = '';
@@ -1210,6 +1303,15 @@ if (shell.info.file?.data?.deckSpec) {
   const d = shell.info.file.data;
   deck = { theme: THEMES[d.theme] ? d.theme : 'paper', slides: d.slides.map((s) => ({ ...s, elements: (s.elements || []).filter((e) => !(e.type === 'shape' && !e.id)) })) };
   if (!deck.slides.length) deck.slides.push(newSlide('title'));
+  layers = d.layers || {};
+  pptLayouts = d.layouts || {};
+  if (d.size?.w && d.size?.h) {
+    W = d.size.w;
+    H = d.size.h;
+    const page = document.createElement('style');
+    page.textContent = `@media print { @page { size: 10in ${(10 * H) / W}in; } .print-page { height: ${(10 * H) / W}in; } }`;
+    document.head.append(page);
+  }
 }
 renderAll();
 if (shell.info.file?.generated) shell.markDirty();
