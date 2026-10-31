@@ -2,6 +2,14 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.37: Light, dark or system theme
+
+- **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.
+- **System default** follows your computer's light or dark setting (on Windows: Settings › Personalization › Colors), and switches when that setting changes.
+- In dark mode the ribbon, panes, dialogs and the Claude pane turn dark, and so do Write's pages, Notes paper (including its tints), Plot's grid, Plot's charts in Analyze, the LaTeX editor and Read's panes around the PDF.
+- Some things keep their own colors on purpose: slides in Present, PDF pages in Read and the LaTeX preview (Read's own **Night** button still darkens a PDF's pages), and everything you print or export (PDF, Word, PowerPoint, pictures of charts) stays on white paper.
+- Text you colored black, and cells or highlights with a light fill, stay readable on the dark page.
+
 ## 0.2.36: Read, a PDF reader and editor
 
 - **Read** is a new app for PDFs. Open a PDF from the start screen (**Open a PDF**), **File > Open**, or right-click a PDF in Explorer and choose **Open in Read**. Read never takes over as your default PDF app unless there is none.

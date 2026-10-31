@@ -10,6 +10,7 @@ import { icon } from '../shared/icons.js';
 import { closePopup, popup } from '../shared/ribbon.js';
 import { createAnalysis } from './analysis/workspace.js';
 import { appendTable, joinTable, JOINS, matchHeaders, tableOf } from './combine.js';
+import '../shared/dark.css';
 
 const { colName, mapRefs, parseRef, rangeName, rect, refName, shiftFormula } = cellref;
 
@@ -115,6 +116,13 @@ function td(r, c) {
   return tbody.rows[r]?.cells[c + 1];
 }
 
+function nearBlack(c) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(c || '');
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) < 60;
+}
+
 function renderCell(r, c) {
   const cell = td(r, c);
   if (!cell) return;
@@ -139,6 +147,9 @@ function renderCell(r, c) {
   st.textAlign = s.align || (err || typeof v === 'boolean' ? 'center' : typeof v === 'number' ? 'right' : 'left');
   cell.classList.toggle('wrap', !!s.wrap);
   cell.classList.toggle('bordered', !!s.border);
+  // The dark theme keeps filled cells light and lifts near-black text off the dark grid.
+  cell.classList.toggle('filled', !!s.bg);
+  cell.classList.toggle('ink-dark', !s.bg && nearBlack(s.color));
   cell.classList.toggle('err', err && !loading);
 }
 

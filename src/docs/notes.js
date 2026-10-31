@@ -21,7 +21,8 @@ import { EQUATION_TITLE, LATEX_SCHEMA, equationDialog, equationPng, isEquation }
 export const notesState = { on: false };
 
 const PAPERS = { plain: 'Plain', lined: 'Lined', grid: 'Grid', dots: 'Dots' };
-const TINTS = { white: ['White', '#ffffff'], sand: ['Sand', '#fff8e1'], mint: ['Mint', '#eaf7ef'], sky: ['Sky', '#e9f3fd'], lavender: ['Lavender', '#f2eefc'], rose: ['Rose', '#fdeef1'] };
+// Paper tints, with the darker shade used in the dark theme.
+const TINTS = { white: ['White', '#ffffff', ''], sand: ['Sand', '#fff8e1', '#2b2820'], mint: ['Mint', '#eaf7ef', '#1f2a24'], sky: ['Sky', '#e9f3fd', '#1e2631'], lavender: ['Lavender', '#f2eefc', '#27222f'], rose: ['Rose', '#fdeef1', '#2e2327'] };
 // Links to a meeting or video app other than YouTube (whose captions can be
 // read): their recordings sit behind a sign-in.
 const MEDIA = /(vimeo\.com|zoom\.us|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com|webex\.com|loom\.com|drive\.google\.com\/file|sharepoint\.com)/i;
@@ -525,7 +526,9 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
     const kind = store.get('paper', 'lined');
     const tint = store.get('tint', 'white');
     for (const k of Object.keys(PAPERS)) paper.classList.toggle(`paper-${k}`, notesState.on && k === kind);
-    paper.style.setProperty('--note-bg', TINTS[tint]?.[1] || '#fff');
+    paper.style.setProperty('--note-bg-light', TINTS[tint]?.[1] || '#fff');
+    if (TINTS[tint]?.[2]) paper.style.setProperty('--note-bg-dark', TINTS[tint][2]);
+    else paper.style.removeProperty('--note-bg-dark');
   }
   const paperMenu = () => Object.entries(PAPERS).map(([k, label]) => ({ label: `${store.get('paper', 'lined') === k ? '✓ ' : ''}${label}`, icon: 'paper', run: () => { store.set('paper', k); applyPaper(); } }));
   const tintMenu = () => Object.entries(TINTS).map(([k, [label, c]]) => ({ label, html: `<span class="notes-tint" style="background:${c}"></span><span>${store.get('tint', 'white') === k ? '✓ ' : ''}${label}</span>`, run: () => { store.set('tint', k); applyPaper(); } }));

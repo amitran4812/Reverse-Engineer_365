@@ -17,6 +17,7 @@ import { openCiteDialog } from '../shared/cite.js';
 import { NotesKeys, createNotes, notesHtml, notesPlaceholder, notesState } from './notes.js';
 import { NoteFile } from './notes-media.js';
 import { NoteBoard } from './notes-board.js';
+import '../shared/dark.css';
 
 const FONTS = ['Calibri', 'Arial', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New', 'Consolas'];
 const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];

@@ -13,7 +13,8 @@ const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (fastest, cheapest)' },
 ];
 
-const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [], provider: 'anthropic', aiModels: {} };
+const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [], provider: 'anthropic', aiModels: {}, theme: 'system' };
+const THEMES = ['system', 'light', 'dark'];
 const AI = { anthropic: 'Claude', chatgpt: 'ChatGPT', openai: 'OpenAI', gemini: 'Gemini' };
 
 function file() {
@@ -83,6 +84,7 @@ function publicSettings() {
     ready: provider === 'anthropic' ? hasKey : others[provider].hasKey && Boolean(others[provider].model),
     ai: others,
     coach: Boolean(raw.coach),
+    theme: THEMES.includes(raw.theme) ? raw.theme : 'system',
     hasKey,
     keyFromEnv: Boolean(process.env.ANTHROPIC_API_KEY),
     model: raw.model,
@@ -92,7 +94,7 @@ function publicSettings() {
   };
 }
 
-function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, coach, autoUpdate }) {
+function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, coach, autoUpdate, theme }) {
   let raw = readRaw();
   if (aiKeys && typeof aiKeys === 'object') {
     for (const [id, k] of Object.entries(aiKeys)) if (['openai', 'gemini'].includes(id) && typeof k === 'string') setSecret(`ai-key:${id}`, k.trim() || null);
@@ -105,6 +107,7 @@ function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModel
   if (provider && AI[provider]) raw.provider = provider;
   if (typeof coach === 'boolean') raw.coach = coach;
   if (typeof autoUpdate === 'boolean') raw.autoUpdate = autoUpdate;
+  if (THEMES.includes(theme)) raw.theme = theme;
   if (cloudClients && typeof cloudClients === 'object') {
     raw.cloudClients = { ...(raw.cloudClients || {}) };
     for (const [id, v] of Object.entries(cloudClients)) {

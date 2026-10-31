@@ -169,6 +169,9 @@ const P = {
   paper: '<rect x="3.5" y="2.5" width="13" height="15" rx="1.5"/><path class="a-s" d="M3.5 7h13M3.5 10.5h13M3.5 14h13"/>',
   webNotes: '<circle cx="8" cy="10" r="6"/><path d="M2 10h12M8 4c-2 2-2 10 0 12M8 4c2 2 2 10 0 12"/><path class="a-s" d="M13 13.5h5M13 16.5h3.5"/>',
   slash: '<rect x="2.5" y="2.5" width="15" height="15" rx="3"/><path class="a-s" d="M12 5.5L8 14.5"/>',
+  themeLight: '<circle class="a" cx="10" cy="10" r="3.5"/><path d="M10 1.5v2.5M10 16v2.5M1.5 10H4M16 10h2.5M4 4l1.8 1.8M14.2 14.2L16 16M4 16l1.8-1.8M14.2 5.8L16 4"/>',
+  themeDark: '<path class="a" d="M15.5 13.2A6.8 6.8 0 017 4.3a6.8 6.8 0 108.5 8.9z"/>',
+  themeSystem: '<rect x="2.5" y="3.5" width="15" height="10" rx="1.5"/><path class="a" d="M10 4v9h6.2a.8.8 0 00.8-.8V4.8a.8.8 0 00-.8-.8z"/><path d="M7 17h6M10 13.5V17"/>',
   // Read (PDFs).
   underline: '<path d="M6 3v6a4 4 0 008 0V3"/><path class="a-s" d="M4 17h12"/>',
   strike: '<path d="M14 5.5C13.3 4 12 3 10 3 7.5 3 6 4.3 6 6c0 1.2.7 2 2 2.6"/><path d="M6.2 14c.6 1.8 2 3 4 3 2.5 0 4-1.4 4-3.3 0-.8-.3-1.4-.8-1.9"/><path class="a-s" d="M3 10.5h14"/>',

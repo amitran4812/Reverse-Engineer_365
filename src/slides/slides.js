@@ -4,6 +4,7 @@ import { createShell, escapeHtml, h, toast } from '../shared/shell.js';
 import { markdownToHtml, sanitize } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
 import { THEMES, UPLOADED, allThemes, loadTemplates, removeTemplate, slideBackground, uploadTemplates } from '../shared/themes.js';
+import '../shared/dark.css';
 
 let W = 960;
 let H = 540;

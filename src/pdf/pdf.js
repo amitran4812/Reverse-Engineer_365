@@ -15,6 +15,7 @@ import { MARKUPS, TYPE_LABELS, bounds, newId } from './annot-data.js';
 import { createSignature } from './sign.js';
 import { paperInfo } from './paper.js';
 import { toPlot, toPresent, toWrite } from './convert.js';
+import '../shared/dark.css';
 
 const COLORS = ['#ffd400', '#7ee081', '#6cc7f5', '#ff8fb1', '#ffa94d', '#c19bff', '#d1242f', '#1f6feb', '#1a7f37', '#111111'];
 const MAX_UNDO = 40;

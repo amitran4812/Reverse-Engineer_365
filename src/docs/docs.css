@@ -2,17 +2,17 @@
 .doc-page {
   --margin: 1in;
   zoom: var(--zoom);
-  width: 8.5in; min-height: 11in; margin: 0 auto; background: #fff;
+  width: 8.5in; min-height: 11in; margin: 0 auto; background: var(--page);
   box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 2px 8px rgba(15,23,42,.12);
   padding: var(--margin);
   /* faint page boundaries every 11in */
-  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(11in - 1px), #e3e6ea calc(11in - 1px), #e3e6ea 11in);
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(11in - 1px), var(--page-line) calc(11in - 1px), var(--page-line) 11in);
 }
-.doc-page.landscape { width: 11in; min-height: 8.5in; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(8.5in - 1px), #e3e6ea calc(8.5in - 1px), #e3e6ea 8.5in); }
+.doc-page.landscape { width: 11in; min-height: 8.5in; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(8.5in - 1px), var(--page-line) calc(8.5in - 1px), var(--page-line) 8.5in); }
 
 .doc-page .ProseMirror {
   outline: none; min-height: calc(11in - 2 * var(--margin));
-  font-family: Calibri, Carlito, "Segoe UI", system-ui, sans-serif; font-size: 11pt; line-height: 1.15; color: #1f2328;
+  font-family: Calibri, Carlito, "Segoe UI", system-ui, sans-serif; font-size: 11pt; line-height: 1.15; color: var(--page-text);
   word-wrap: break-word; white-space: pre-wrap;
 }
 .ProseMirror p { margin: 0 0 8pt; }
@@ -64,7 +64,8 @@
 
 /* Notes mode: same page, a softer card with ruled, grid or dotted paper. */
 .doc-canvas.notes-canvas { background: #eef0f4; }
-.doc-page.notes { --line: 24px; --rule: #dfe3ea; background-color: var(--note-bg, #fff); background-image: none; border-radius: 14px; box-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .08); }
+.doc-page { --note-bg: var(--note-bg-light, var(--page)); }
+.doc-page.notes { --line: 24px; --rule: #dfe3ea; background-color: var(--note-bg, var(--page)); background-image: none; border-radius: 14px; box-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .08); }
 .doc-page.notes.paper-lined { background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px), var(--rule) var(--line)); background-position: 0 calc(var(--margin) - 2px); }
 .doc-page.notes.paper-grid { background-image: linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px); background-size: var(--line) var(--line); }
 .doc-page.notes.paper-dots { background-image: radial-gradient(circle, #c9ced8 1.2px, transparent 1.4px); background-size: var(--line) var(--line); }

@@ -8,6 +8,7 @@ import { ClaudePane } from './claude-pane.js';
 import { accountChip, accountsSection } from './accounts.js';
 import { aiSettings, pasteCopiedKey } from './ai-settings.js';
 import { updateSettings, watchUpdates } from './updates.js';
+import { themeButton, themeSettings } from './theme.js';
 import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
 export const APPS = {
@@ -169,7 +170,7 @@ export async function createShell(opts) {
   const shareBtn = h('button', 'titlebar-share', `${icon('share', 16)}<span>Share</span>`);
   shareBtn.title = 'Share with people by email';
   shareBtn.onclick = () => shareDialog(shell);
-  titlebar.append(...[mark, qa, titleText, search, accountChip(info.account), shareBtn, h('div', 'titlebar-spacer')].filter(Boolean));
+  titlebar.append(...[mark, qa, titleText, search, accountChip(info.account), shareBtn, themeButton(), h('div', 'titlebar-spacer')].filter(Boolean));
 
   const ribbonHost = h('div');
   const tabs = [...opts.tabs, ...(opts.claudeTab ? [opts.claudeTab] : [])];
@@ -459,7 +460,7 @@ class Backstage {
       }
       c.append(list);
     } else if (section === 'options') {
-      c.append(h('h1', '', 'Options'));
+      c.append(h('h1', '', 'Options'), await themeSettings());
       const mount = async () => {
         const form = await settingsForm(() => {
           mount();

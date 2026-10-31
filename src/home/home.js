@@ -10,6 +10,8 @@ import { accountSwitcher, accountsSection } from '../shared/accounts.js';
 import { aiSettings } from '../shared/ai-settings.js';
 import { updateSettings, watchUpdates } from '../shared/updates.js';
 import { openCiteDialog } from '../shared/cite.js';
+import { themeButton, themeSettings } from '../shared/theme.js';
+import '../shared/dark.css';
 
 const info = await window.office.launchInfo();
 watchUpdates();
@@ -29,6 +31,7 @@ root.innerHTML = `
     </nav>
     <main class="home-main"></main>
   </div>`;
+root.querySelector('.titlebar').append(h('div', 'titlebar-fill'), themeButton(), h('div', 'titlebar-spacer'));
 document.body.append(root);
 const main = root.querySelector('.home-main');
 root.querySelector('.home-version').before(accountSwitcher(info.account, () => show('options').then(() => main.querySelector('.acct-settings')?.scrollIntoView())));
@@ -128,7 +131,7 @@ async function show(view) {
     main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md, .txt and .tex in Write, .xlsx and .csv in Plot, .reaslides in Present, and PDFs in Read. From Google Drive, Google Sheets and Docs open too.'));
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'options') {
-    main.append(h('h1', '', 'Options'), await settingsForm(() => show('options')), await aiSettings(() => pane?.loadSettings()), await cloudSettings(), await accountsSection(), await updateSettings());
+    main.append(h('h1', '', 'Options'), await themeSettings(), await settingsForm(() => show('options')), await aiSettings(() => pane?.loadSettings()), await cloudSettings(), await accountsSection(), await updateSettings());
   }
 }
 
