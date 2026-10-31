@@ -69,6 +69,57 @@ export function menuAt(x, y, items) {
   return p;
 }
 
+// Line-editing keys for formula fields, as in the usual expression editors:
+// Ctrl+D duplicates the line, Ctrl+L deletes it, Ctrl+T swaps it with the one
+// above, Ctrl+U / Ctrl+Shift+U change case, Ctrl+Shift+Delete deletes to the
+// end of the line, Tab / Shift+Tab indent selected lines.
+export function exprKeys(e) {
+  const el = e.target;
+  if (!el || !/^(INPUT|TEXTAREA)$/.test(el.tagName)) return false;
+  const ctrl = e.ctrlKey || e.metaKey;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  const v = el.value;
+  const a = el.selectionStart;
+  const b = el.selectionEnd;
+  const lineStart = v.lastIndexOf('\n', a - 1) + 1;
+  let lineEnd = v.indexOf('\n', b);
+  if (lineEnd < 0) lineEnd = v.length;
+  const put = (text, from, to, selA, selB = selA) => {
+    el.setRangeText(text, from, to);
+    el.selectionStart = selA;
+    el.selectionEnd = selB;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const line = v.slice(lineStart, lineEnd);
+  const multi = el.tagName === 'TEXTAREA';
+  if (!multi && ['d', 'l', 't'].includes(k)) return false;
+  if (ctrl && !e.shiftKey && k === 'd') {
+    put(`${line}\n${line}`, lineStart, lineEnd, a + line.length + 1, b + line.length + 1);
+  } else if (ctrl && !e.shiftKey && k === 'l') {
+    const to = lineEnd < v.length ? lineEnd + 1 : lineEnd;
+    const from = to === lineEnd && lineStart > 0 ? lineStart - 1 : lineStart;
+    put('', from, to, Math.min(from, v.length));
+  } else if (ctrl && !e.shiftKey && k === 't') {
+    if (!lineStart) return false;
+    const prevStart = v.lastIndexOf('\n', lineStart - 2) + 1;
+    const prev = v.slice(prevStart, lineStart - 1);
+    put(`${line}\n${prev}`, prevStart, lineEnd, prevStart + (a - lineStart));
+  } else if (ctrl && k === 'u') {
+    if (a === b) return false;
+    const sel = v.slice(a, b);
+    put(e.shiftKey ? sel.toUpperCase() : sel.toLowerCase(), a, b, a, b);
+  } else if (ctrl && e.shiftKey && k === 'Delete') {
+    put('', a, lineEnd, a);
+  } else if (k === 'Tab' && !ctrl && multi && v.slice(a, b).includes('\n')) {
+    const block = v.slice(lineStart, lineEnd);
+    const next = e.shiftKey ? block.replace(/^( {1,2}|\t)/gm, '') : block.replace(/^/gm, '  ');
+    put(next, lineStart, lineEnd, lineStart, lineStart + next.length);
+  } else return false;
+  e.preventDefault();
+  e.stopPropagation();
+  return true;
+}
+
 const mod = navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl';
 export const kbd = (s) => s.replaceAll('Ctrl', mod);
 
@@ -79,6 +130,9 @@ export const SHORTCUTS = [
     ['Ctrl+D', 'Copy the selected visualization onto a new page after this one'],
     ['Ctrl+Shift+D', 'Duplicate this page'],
     ['Ctrl+N', 'New page'],
+    ['Ctrl+T', 'New text area'],
+    ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
+    ['Ctrl+W', 'Close the window'],
     ['Ctrl+Tab / Ctrl+Shift+Tab', 'Next / previous page'],
     ['Ctrl+→ / Ctrl+←', 'Next / previous page'],
     ['Alt+Enter', 'Properties of the selected visualization'],
@@ -90,13 +144,18 @@ export const SHORTCUTS = [
     ['Ctrl+1', 'Show or hide the details table'],
     ['Ctrl+2', 'Cross table'],
     ['Ctrl+3', 'Bar chart'],
+    ['Ctrl+4', 'Waterfall chart'],
     ['Ctrl+5', 'Line chart'],
-    ['Ctrl+6', 'Two-axis line chart'],
+    ['Ctrl+6', 'Combination chart (bars and lines)'],
     ['Ctrl+7', 'Pie chart'],
     ['Ctrl+8', 'Scatter plot'],
     ['Ctrl+9', 'Histogram'],
     ['Ctrl+0', 'Box plot'],
+    ['Ctrl+Shift+2', 'Treemap'],
     ['Ctrl+Shift+3', 'Heat map'],
+    ['Ctrl+Shift+4', 'Parallel coordinate plot'],
+    ['Ctrl+Shift+5', 'Two-axis line chart'],
+    ['Ctrl+Shift+7', 'KPI chart'],
   ] },
   { group: 'Marking and filtering', items: [
     ['Ctrl+A', 'Mark all rows that pass the filters'],
@@ -115,8 +174,17 @@ export const SHORTCUTS = [
     ['Mouse wheel', 'Zoom (Shift: X only)'],
     ['Double-click', 'Show all data again'],
   ] },
+  { group: 'In a formula', items: [
+    ['Ctrl+D', 'Duplicate the line'],
+    ['Ctrl+L', 'Delete the line'],
+    ['Ctrl+T', 'Swap the line with the one above'],
+    ['Ctrl+U / Ctrl+Shift+U', 'Selection to lower / upper case'],
+    ['Ctrl+Shift+Delete', 'Delete to the end of the line'],
+    ['Tab / Shift+Tab', 'Indent / unindent the selected lines'],
+  ] },
   { group: 'File', items: [
     ['Ctrl+O', 'Open a data file'],
+    ['Ctrl+V', 'Paste copied rows (with a header row) as the data table'],
     ['Ctrl+S', 'Save the analysis'],
     ['F1', 'This list of shortcuts'],
   ] },

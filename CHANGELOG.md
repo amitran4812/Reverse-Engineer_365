@@ -2,7 +2,7 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.28: Your own PowerPoint templates
+## 0.2.30: Your own PowerPoint templates
 
 - **Upload your own templates.** On Present's **Design** tab, **Upload Template** takes a PowerPoint template or presentation (.pptx, .potx, .pptm or .potm). Work keeps it, so it shows up next to Paper, Slate and the others from then on, in every Present window.
 - **They show up in Send to Present too.** The template picker in Plot's and Write's **Send to Present** lists your uploaded templates, with an **Upload…** tile to add one right there. The slides it makes use that template.
@@ -10,6 +10,16 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Saving as .pptx puts the template's background and pictures on the slide master, so the deck looks the same in PowerPoint. A saved presentation keeps its template's look even on a computer that doesn't have the template.
 - To remove an uploaded template, point at it in the picker and click **×**, or pick it in Present and click **Remove Template**. Presentations already made with it aren't changed.
 - Older .ppt files can't be read; open them in PowerPoint and save them as .pptx first.
+
+## 0.2.27: More chart types and the rest of the analyst shortcuts in Plot
+
+- New visualizations in Plot's **Analyze** tab: **Waterfall** (running total by category, with a total bar), **Combination** (bars for the first column, lines for the others, optionally on a right axis), **Treemap**, **Parallel coordinates** (one line per row across several number columns; drag on an axis to mark a range) and **KPI** tiles. Each can be marked by clicking, has a tooltip and is in the right-click "change type" grid.
+- **Text area** for notes on a page (Ctrl+T).
+- **Undo and redo** (Ctrl+Z, Ctrl+Y) for plots, pages and filters.
+- **Paste data** (Ctrl+V): rows copied from a spreadsheet or a CSV, header first, open as the data table.
+- New keys: Ctrl+4 waterfall, Ctrl+6 combination (two-axis line moves to Ctrl+Shift+5), Ctrl+Shift+2 treemap, Ctrl+Shift+4 parallel coordinates, Ctrl+Shift+7 KPI, Ctrl+W close.
+- Formula boxes get line-editing keys: Ctrl+D duplicate line, Ctrl+L delete line, Ctrl+T swap with the line above, Ctrl+U / Ctrl+Shift+U lower / upper case, Ctrl+Shift+Delete delete to the end of the line, Tab / Shift+Tab indent.
+- The shortcuts list (F1) shows all of these.
 
 ## 0.2.26: Write anywhere, voice notes, equations and attachments in notes
 
