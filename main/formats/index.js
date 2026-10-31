@@ -6,6 +6,7 @@ const path = require('path');
 const docx = require('./docx');
 const xlsx = require('./xlsx');
 const { exportPptx } = require('./pptx');
+const { importPptx } = require('./pptx-import');
 const imports = require('./imports');
 
 // Which app opens which extension, and what each app can save to.
@@ -25,6 +26,10 @@ const APPS = {
       { name: 'CSV (current sheet)', extensions: ['csv'] },
       { name: 'OpenDocument spreadsheet', extensions: ['ods'] },
     ],
+  },
+  pdf: {
+    open: ['pdf'],
+    save: [{ name: 'PDF', extensions: ['pdf'] }],
   },
   slides: {
     open: ['reaslides', 'pptx', 'odp'],
@@ -88,6 +93,8 @@ async function openFile(file) {
   const app = appForFile(file);
   const name = path.basename(file);
   if (ext === 'tex') return latexProject(file);
+  // Read loads the bytes itself, through its own IPC.
+  if (ext === 'pdf') return { app: 'pdf', path: file, name, ext };
   // Right-click > New makes an empty file; open it as a blank document.
   const { size } = await fs.stat(file);
   if (app && size === 0) return { app, path: file, name, ext, data: BLANK[app]() };
@@ -111,7 +118,7 @@ async function openFile(file) {
       data = imports.importSheetJs(await fs.readFile(file));
       break;
     case 'pptx':
-      data = { deckSpec: await imports.importPptx(await fs.readFile(file)), theme: 'paper' };
+      data = await importPptx(await fs.readFile(file));
       break;
     case 'odp':
       data = { deckSpec: await imports.importOdp(await fs.readFile(file)), theme: 'paper' };

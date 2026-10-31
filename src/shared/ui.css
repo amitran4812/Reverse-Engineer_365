@@ -218,6 +218,7 @@ button { cursor: default; }
 .bs-tile-docs { --accent: #2f5aa8; }
 .bs-tile-sheets { --accent: #1b7a4b; }
 .bs-tile-slides { --accent: #c2532d; }
+.bs-tile-pdf { --accent: #0f7b87; }
 .bs-recent { display: flex; flex-direction: column; max-width: 820px; }
 .bs-recent-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: center; border: 0; background: transparent; padding: 8px 10px; border-radius: 6px; text-align: left; }
 .bs-recent-row:hover { background: var(--hover); }

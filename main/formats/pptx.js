@@ -12,6 +12,7 @@ const { hex } = require('./docx');
 const PX_PER_IN = 96;
 const inch = (px) => Number((px / PX_PER_IN).toFixed(3));
 
+const PRESETS = new Set(Object.values(new PptxGenJS().ShapeType));
 const SHAPES = { rect: 'rect', roundRect: 'roundRect', ellipse: 'ellipse', triangle: 'triangle', arrow: 'rightArrow', line: 'line' };
 
 function textRuns(el) {
@@ -26,10 +27,11 @@ function textRuns(el) {
         underline: r.underline ? { style: 'sng' } : undefined,
         color: hex(r.color) || hex(el.style?.color),
         fontSize: r.size || el.style?.fontSize ? Math.round((r.size || el.style.fontSize) * 0.75) : undefined,
+        fontFace: r.font || undefined,
       };
       if (ri === 0) {
         options.align = p.align || el.style?.align || 'left';
-        if (p.bullet) options.bullet = p.bullet === 'number' ? { type: 'number' } : true;
+        if (p.bullet) options.bullet = p.bullet === 'number' ? { type: 'number' } : typeof p.bullet === 'string' && p.bullet !== '•' ? { characterCode: p.bullet.codePointAt(0).toString(16).padStart(4, '0') } : true;
       }
       if (ri === pruns.length - 1 && pi < paragraphs.length - 1) options.breakLine = true;
       runs.push({ text: r.text, options });
@@ -40,6 +42,12 @@ function textRuns(el) {
 
 function tableRows(el) {
   const accent = hex(el.style?.fill) || '444444';
+  if (el.cells) {
+    return el.cells.map((row, r) => row.filter((c) => !c.merged).map((c, i) => ({
+      text: String(el.rows?.[r]?.[i] ?? ''),
+      options: { fill: hex(c.fill) ? { color: hex(c.fill) } : undefined, colspan: c.colspan, rowspan: c.rowspan, valign: c.valign },
+    })));
+  }
   return el.rows.map((row, r) => row.map((v) => {
     const head = r === 0 && el.header !== false;
     return { text: String(v ?? ''), options: head ? { bold: true, color: 'FFFFFF', fill: { color: accent } } : {} };
@@ -48,7 +56,12 @@ function tableRows(el) {
 
 async function exportPptx(model) {
   const pptx = new PptxGenJS();
-  pptx.layout = 'LAYOUT_16x9';
+  const size = model.size || { w: 960, h: 540 };
+  if (size.w === 960 && size.h === 540) pptx.layout = 'LAYOUT_16x9';
+  else {
+    pptx.defineLayout({ name: 'WORK', width: 10, height: inch((size.h * 960) / size.w) });
+    pptx.layout = 'WORK';
+  }
   pptx.author = 'Work';
   pptx.title = model.title || 'Presentation';
   const theme = model.themeColors || {};
@@ -71,10 +84,11 @@ async function exportPptx(model) {
   for (const s of model.slides || []) {
     const slide = master ? pptx.addSlide({ masterName: 'TEMPLATE' }) : pptx.addSlide();
     const bg = hex(s.bg || (master ? null : theme.bg));
-    if (bg) slide.background = { color: bg };
+    if (s.bgImage) slide.background = { data: s.bgImage.slice(5) };
+    else if (bg) slide.background = { color: bg };
     if (s.notes) slide.addNotes(s.notes);
     for (const el of s.elements || []) {
-      const box = { x: inch(el.x), y: inch(el.y), w: inch(el.w), h: inch(el.h) };
+      const box = { x: inch(el.x), y: inch(el.y), w: inch(el.w), h: inch(el.h), ...(el.style?.rotate ? { rotate: el.style.rotate } : {}) };
       const fill = hex(el.style?.fill);
       if (el.type === 'text') {
         slide.addText(textRuns(el), {
@@ -86,12 +100,17 @@ async function exportPptx(model) {
           fill: fill ? { color: fill } : undefined,
           margin: 6,
         });
+      } else if (el.type === 'shape' && el.svg && !el.prst) {
+        // custom outlines from .pptx go back as pictures of themselves
+        slide.addImage({ ...box, data: `data:image/svg+xml;base64,${Buffer.from(el.svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')).toString('base64')}` });
       } else if (el.type === 'shape') {
-        slide.addShape(SHAPES[el.shape] || 'rect', {
+        slide.addShape(el.line ? 'line' : PRESETS.has(el.prst) ? el.prst : SHAPES[el.shape] || 'rect', {
           ...box,
           fill: fill ? { color: fill } : { type: 'none' },
           line: hex(el.style?.stroke) ? { color: hex(el.style.stroke), width: el.style.strokeWidth || 1 } : undefined,
           rectRadius: el.shape === 'roundRect' ? 0.15 : undefined,
+          flipH: el.flip?.[0] || undefined,
+          flipV: el.flip?.[1] || undefined,
         });
         if (el.paragraphs?.some((p) => p.runs.some((r) => r.text))) {
           slide.addText(textRuns(el), { ...box, fontSize: Math.round((el.style?.fontSize || 20) * 0.75), color: hex(el.style?.color) || 'FFFFFF', valign: 'middle', align: 'center' });

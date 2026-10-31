@@ -89,6 +89,15 @@ contextBridge.exposeInMainWorld('office', {
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
   },
+  // Read (PDFs): the window's own file, saving, PDFs to insert, saved signatures.
+  pdf: {
+    read: () => ipcRenderer.invoke('pdf:read'),
+    save: (req) => ipcRenderer.invoke('pdf:save', req),
+    pick: (opts) => ipcRenderer.invoke('pdf:pick', opts),
+    signatures: () => ipcRenderer.invoke('pdf:signatures'),
+    setSignatures: (list) => ipcRenderer.invoke('pdf:set-signatures', list),
+    user: () => ipcRenderer.invoke('pdf:user'),
+  },
   templates: {
     list: () => ipcRenderer.invoke('templates:list'),
     upload: () => ipcRenderer.invoke('templates:upload'),

@@ -1,6 +1,6 @@
-; Windows integration for Work: Write, Plot and Present show up as three
+; Windows integration for Work: Write, Plot, Present and Read show up as four
 ; apps (Start menu and desktop shortcuts with their own icons and taskbar
-; identity), files get "Open in Write/Plot/Present" on right-click and in
+; identity), files get "Open in Write/Plot/Present/Read" on right-click and in
 ; Open with, and right-click > New can make Write, Plot and Present files.
 ; Included by electron-builder's NSIS script (nsis.include in package.json).
 
@@ -75,7 +75,7 @@
   Pop $R1
   ${if} $R0 == 0
   ${orIf} $R1 == 0
-    MessageBox MB_OKCANCEL|MB_ICONINFORMATION "Work is still running. Save your files, then choose OK to close Write, Plot and Present and continue." /SD IDOK IDOK +2
+    MessageBox MB_OKCANCEL|MB_ICONINFORMATION "Work is still running. Save your files, then choose OK to close Write, Plot, Present and Read and continue." /SD IDOK IDOK +2
     Quit
     !insertmacro workKill "${APP_EXECUTABLE_FILENAME}"
     !insertmacro workKill "Rea Office.exe"
@@ -103,6 +103,7 @@
   !insertmacro workShortcut "Write" "docs" "write"
   !insertmacro workShortcut "Plot" "sheets" "plot"
   !insertmacro workShortcut "Present" "slides" "present"
+  !insertmacro workShortcut "Read" "pdf" "read"
 
   !insertmacro workType "docx" "Write" "Write" "write" "Write document"
   !insertmacro workType "odt" "Write" "Write" "write" "OpenDocument text"
@@ -117,6 +118,7 @@
   !insertmacro workType "reaslides" "Present" "Present" "present" "Present presentation"
   !insertmacro workType "pptx" "Present" "Present" "present" "Presentation"
   !insertmacro workType "odp" "Present" "Present" "present" "OpenDocument presentation"
+  !insertmacro workType "pdf" "Read" "Read" "read" "PDF document"
   ; .reaslides is Work's own format
   WriteRegStr SHCTX "Software\Classes\.reaslides" "" "ReaOffice.Present.reaslides"
 
@@ -136,9 +138,11 @@
   Delete "$SMPROGRAMS\Write.lnk"
   Delete "$SMPROGRAMS\Plot.lnk"
   Delete "$SMPROGRAMS\Present.lnk"
+  Delete "$SMPROGRAMS\Read.lnk"
   Delete "$DESKTOP\Write.lnk"
   Delete "$DESKTOP\Plot.lnk"
   Delete "$DESKTOP\Present.lnk"
+  Delete "$DESKTOP\Read.lnk"
 
   !insertmacro workUntype "docx" "Write"
   !insertmacro workUntype "odt" "Write"
@@ -153,6 +157,7 @@
   !insertmacro workUntype "reaslides" "Present"
   !insertmacro workUntype "pptx" "Present"
   !insertmacro workUntype "odp" "Present"
+  !insertmacro workUntype "pdf" "Read"
 
   DeleteRegKey SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}"
   DeleteRegKey SHCTX "Software\ReaOffice"

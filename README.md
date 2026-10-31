@@ -5,12 +5,13 @@ An installable desktop office suite with AI built in (Claude by default, or Open
 - **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)), and a **Notes mode** for quick notes: switch with **Document / Notes** at the top right, or start with **New > Notes**. Every new line is a bullet, `/` inserts checklists, tables, drawings and plots, and the page can be lined, grid or dotted in six colours. Draw with a mouse, finger or stylus (pen pressure works), and double-click a picture to draw on it. Add write-anywhere areas where you click anywhere to type, voice notes, equations and file attachments. **Send to Present** turns a document's text, lists, pictures and tables into a new presentation, designed by the AI you've connected or laid out one slide per heading without one.
 - **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open. Its **Analysis** tab plots large data files, and **Send to Present** puts the plots you pick, with a table of rows if you like, on a slide in a new presentation.
 - **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides`, exports `.pptx`, and opens `.pptx` and OpenDocument `.odp`.
+- **Read**: a PDF reader and editor. Thumbnails, bookmarks, find, links, night mode and read mode; highlight, underline and strike out text, sticky notes, comments, text boxes, pen drawings and shapes; **Fill & Sign** with a typed, drawn or uploaded signature, initials, dates and check marks; rotate, delete, move, extract and insert pages, and combine PDFs; and **Convert** to a Write document (headings, lists and tables), notes, a Plot workbook or a Present deck. Comments are saved as standard PDF annotations, so other PDF readers show them too, and signatures become part of the page.
 
 - **Claude app**: on the start screen, type what you need ("a 10-slide pitch deck for…", "a monthly budget…") and attach PDFs, images, Word, Excel, CSV or text files. Claude makes the presentation, spreadsheet or document and opens it in the right app.
 - **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Plot.
 - **Share**: the Share button in every app invites people by email with edit or view access, through Google Drive or OneDrive.
 - **Other AIs**: connect OpenAI (ChatGPT models) or Gemini with your own API key and every AI feature works the same way. Claude stays the default.
-- **Windows integration**: Write, Plot and Present each get their own Start menu and desktop shortcut, icon and taskbar group. Right-click a file for **Open in Write / Plot / Present**, or use **Open with**, and **New > Write document / Plot workbook / Present presentation** in Explorer.
+- **Windows integration**: Write, Plot, Present and Read each get their own Start menu and desktop shortcut, icon and taskbar group. Right-click a file for **Open in Write / Plot / Present**, or use **Open with**, and **New > Write document / Plot workbook / Present presentation** in Explorer.
 - **Accounts**: keep personal, college and work apart. Add as many accounts as you like; each has its own Claude key, cloud sign-ins, recent files, history and cache.
 
 Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export, Print, Options), a status bar and a **Claude** tab and side pane.
@@ -53,6 +54,7 @@ To uninstall, use Settings > Apps > Installed apps > Work. The installer and uni
 | Write | `.docx`, `.html`, `.md`, `.txt`, `.tex` (as a LaTeX project) | `.odt` |
 | Plot | `.xlsx`, `.csv`, `.ods` | `.xls`, `.xlsm` (macros are dropped), `.xltx` |
 | Present | `.reaslides` (export `.pptx`) | `.pptx`, `.odp` |
+| Read | `.pdf` | |
 
 Imported presentations keep slide titles, text, two-column layouts and speaker notes; images, charts, animations and exact positions don't come across yet. Legacy Word `.doc` and PowerPoint `.ppt` files don't open yet: save them as `.docx` or `.pptx` first.
 

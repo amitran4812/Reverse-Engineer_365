@@ -6,9 +6,29 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 
 - **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.
 - **System default** follows your computer's light or dark setting (on Windows: Settings › Personalization › Colors), and switches when that setting changes.
-- In dark mode the ribbon, panes, dialogs and the Claude pane turn dark, and so do Write's pages, Notes paper (including its tints), Plot's grid, Plot's charts in Analyze and the LaTeX editor.
-- Some things keep their own colors on purpose: slides in Present, PDF pages in the LaTeX preview, and everything you print or export (PDF, Word, PowerPoint, pictures of charts) stays on white paper.
+- In dark mode the ribbon, panes, dialogs and the Claude pane turn dark, and so do Write's pages, Notes paper (including its tints), Plot's grid, Plot's charts in Analyze, the LaTeX editor and Read's panes around the PDF.
+- Some things keep their own colors on purpose: slides in Present, PDF pages in Read and the LaTeX preview (Read's own **Night** button still darkens a PDF's pages), and everything you print or export (PDF, Word, PowerPoint, pictures of charts) stays on white paper.
 - Text you colored black, and cells or highlights with a light fill, stay readable on the dark page.
+
+## 0.2.36: Read, a PDF reader and editor
+
+- **Read** is a new app for PDFs. Open a PDF from the start screen (**Open a PDF**), **File > Open**, or right-click a PDF in Explorer and choose **Open in Read**. Read never takes over as your default PDF app unless there is none.
+- **Read comfortably**: page thumbnails, bookmarks, find (Ctrl+F) with every match marked, clickable links, fit width or fit page, zoom with Ctrl and the mouse wheel, rotate the view, **Night** pages for reading in the dark, and full-screen **Read Mode**.
+- **Mark it up**: select text and a small bar offers Highlight, Underline, Strikethrough, a comment, Copy and Ask Claude. Add sticky notes, text boxes, pen drawings, rectangles, ovals, lines and arrows in any colour and thickness. Click any mark to recolour it, comment on it, move it, resize it or delete it. The **Comments** panel lists everything by page.
+- **Fill & Sign**: type, draw or upload your signature or initials (saved for next time, encrypted on this computer), then click where it goes. Add text, today's date, check marks, crosses and pictures.
+- **Organize pages**: rotate, delete, move, extract to a new PDF, add a blank page, insert pages from other PDFs, or combine several PDFs into one.
+- **Convert**: open the PDF as a Write document (headings, paragraphs, lists and tables kept), as notes, as a Plot workbook (one sheet per page, tables split into columns), or as a Present deck (one slide per page, with the page's text in the speaker notes). Or save a page as a picture, or all the text as a .txt file.
+- **Claude** reads the PDF with you: summarize it, pull out key points and numbers with page references, explain a passage in simple words, or quiz you on it.
+- Your marks are saved as standard PDF comments, so other PDF readers show them, and Read can edit marks made in other readers. Signatures, dates, check marks and pictures become part of the page when you save.
+- Not yet: changing the PDF's own text and pictures, filling in form fields, saving changes into password-protected PDFs, and reading scanned pages (OCR). These are next.
+
+## 0.2.35: PowerPoint files open the way they look
+
+- **Opening a .pptx keeps its design.** Present now reads the whole file instead of just its text: the slide size, the template's backgrounds and artwork from the master and layouts, theme colours and fonts, and every slide, the first one included.
+- Text keeps its fonts, sizes, colours, bold and italic, alignment, line and paragraph spacing, and the deck's own bullets and numbering at each level.
+- Pictures (with their crops), shapes and their outlines, lines and arrows, grouped objects, tables with their cell colours and borders, charts (column, bar, line, area, pie and doughnut) and SmartArt come across in place.
+- Template artwork stays behind the slide content, so it can't be moved by accident. **New Slide** and **Layout** use the deck's own layouts.
+- Formatting a whole text box from the ribbon still works on opened slides, and saving back to `.pptx` keeps the slide size, backgrounds and fonts.
 
 ## 0.2.34: Send a LaTeX paper to Present, and decks as long as they need to be
 
