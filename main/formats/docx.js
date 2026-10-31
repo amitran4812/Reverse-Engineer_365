@@ -24,11 +24,17 @@ const {
 } = require('docx');
 const mammoth = require('mammoth');
 const JSZip = require('jszip');
+const crypto = require('crypto');
 const { imageSize } = require('./imageSize');
 
 // Notes saved from Write's notes mode carry this keyword, so they reopen as notes.
 const NOTES_KEYWORD = 'Work notes';
 const BOX = { true: '☑', false: '☐' };
+// Notes also keep the editor's own copy of the page (voice notes, attachments
+// and write-anywhere boxes have no Word equivalent). It is used on open only
+// while the Word text is unchanged since Work saved it.
+const NOTES_PART = 'work/notes.json';
+const EQUATION = 'Equation';
 
 const MARGINS = { narrow: 720, normal: 1440, wide: 2160 };
 const HEADINGS = [null, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
@@ -97,7 +103,9 @@ function dataUrlImage(src, attrs = {}) {
     height = Math.round((height * max) / width);
     width = max;
   }
-  return new ImageRun({ type, data, transformation: { width, height } });
+  // Equations keep their TeX in the alt text, so they stay editable when reopened.
+  const altText = attrs.title === EQUATION ? { name: EQUATION, title: EQUATION, description: `${EQUATION}: ${attrs.alt || ''}` } : attrs.alt ? { name: 'Picture', title: '', description: String(attrs.alt) } : undefined;
+  return new ImageRun({ type, data, transformation: { width, height }, ...(altText ? { altText } : {}) });
 }
 
 function inlineChildren(node, extraMarks = []) {
@@ -182,6 +190,16 @@ class Converter {
       }
       case 'table':
         return [this.table(node), new Paragraph({ children: [] })];
+      case 'noteFile': {
+        const a = node.attrs || {};
+        const label = a.kind === 'audio' ? `🎙 Voice note ${duration(a.duration)}` : `📎 ${a.name || 'Attachment'}${a.size ? ` (${bytes(a.size)})` : ''}`;
+        const out = [new Paragraph({ children: [new TextRun({ text: label, bold: true })] })];
+        if (a.transcript) out.push(...String(a.transcript).split('\n').filter(Boolean).map((line) => new Paragraph({ indent: { left: 360 }, children: [new TextRun({ text: line, italics: true })] })));
+        return out;
+      }
+      case 'noteBoard':
+        // Free-placed boxes read top to bottom, left to right.
+        return boardItems(node).flatMap((item) => boxLines(item.html).map((line) => new Paragraph({ children: [new TextRun(line)] })));
       default:
         return node.content ? this.blocks(node.content, ctx) : [];
     }
@@ -203,6 +221,42 @@ class Converter {
     return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } });
   }
 }
+
+function duration(secs) {
+  const t = Math.max(0, Math.round(Number(secs) || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
+
+function bytes(n) {
+  const v = Number(n) || 0;
+  if (v < 1024) return `${v} B`;
+  if (v < 1048576) return `${Math.round(v / 1024)} KB`;
+  return `${(v / 1048576).toFixed(1)} MB`;
+}
+
+function boardItems(node) {
+  let items = node.attrs?.items;
+  if (typeof items === 'string') {
+    try {
+      items = JSON.parse(items);
+    } catch {
+      items = [];
+    }
+  }
+  return (Array.isArray(items) ? items : []).slice().sort((a, b) => (Math.abs(a.y - b.y) < 12 ? a.x - b.x : a.y - b.y));
+}
+
+// A box's HTML as lines of plain text.
+function boxLines(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(div|p|li)\b[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+const hashOf = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
 function numberingConfig() {
   const formats = [LevelFormat.DECIMAL, LevelFormat.LOWER_LETTER, LevelFormat.LOWER_ROMAN];
@@ -242,7 +296,36 @@ async function exportDocx({ json, title, page = {}, notes = false }) {
       children: children.length ? children : [new Paragraph({ children: [] })],
     }],
   });
-  return Packer.toBuffer(doc);
+  const buffer = await Packer.toBuffer(doc);
+  return notes ? withNotesPart(buffer, json) : buffer;
+}
+
+async function withNotesPart(buffer, json) {
+  const zip = await JSZip.loadAsync(buffer);
+  const body = await zip.file('word/document.xml').async('string');
+  zip.file(NOTES_PART, JSON.stringify({ version: 1, documentHash: hashOf(body), doc: json }));
+  const types = await zip.file('[Content_Types].xml').async('string');
+  if (!/Extension="json"/.test(types)) zip.file('[Content_Types].xml', types.replace(/<Types[^>]*>/, '$&<Default Extension="json" ContentType="application/json"/>'));
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+// The editor copy saved with notes, when the Word text still matches it.
+async function notesPart(buffer) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const part = await zip.file(NOTES_PART)?.async('string');
+    if (!part) return null;
+    const saved = JSON.parse(part);
+    const body = await zip.file('word/document.xml').async('string');
+    return saved?.doc?.type === 'doc' && saved.documentHash === hashOf(body) ? saved.doc : null;
+  } catch {
+    return null;
+  }
+}
+
+// Pictures saved as equations come back as editable equations.
+function equations(html) {
+  return html.replace(/<img([^>]*?) alt="Equation: ([^"]*)"/g, '<img$1 alt="$2" title="Equation"');
 }
 
 // Runs of "☐ text" / "☑ text" paragraphs become a checklist again.
@@ -264,7 +347,9 @@ async function isNotes(buffer) {
 
 async function importDocx(buffer) {
   const result = await mammoth.convertToHtml({ buffer });
-  return { html: checklists(result.value), notes: await isNotes(buffer), warnings: result.messages.map((m) => m.message) };
+  const notes = await isNotes(buffer);
+  const json = notes ? await notesPart(buffer) : null;
+  return { html: equations(checklists(result.value)), ...(json ? { json } : {}), notes, warnings: result.messages.map((m) => m.message) };
 }
 
-module.exports = { exportDocx, importDocx, hex, halfPoints };
+module.exports = { exportDocx, importDocx, hex, halfPoints, boxLines, boardItems, equations };
