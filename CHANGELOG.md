@@ -2,12 +2,21 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.29: Send a LaTeX paper to Present, and decks as long as they need to be
+## 0.2.32: Send a LaTeX paper to Present, and decks as long as they need to be
 
 - **Send to Present in LaTeX mode**: on the Home tab (and the LaTeX Helper tab), turn the whole project, or the part you selected, into a presentation. The title and authors open the deck; the abstract, sections, lists, theorems, figures, tables and display equations all come across. Files pulled in with `\input` and `\include` count too, figures are found through `\graphicspath` (PNG, JPG, SVG and PDF figures), and `\ref` turns into the right number.
 - **Equations on slides**: the AI can give an important equation a slide of its own, drawn sharp and in the template's text colour (light on dark templates). Equations in Write documents get the same treatment.
 - **No slide limit**: the AI now makes as many slides as the document needs, instead of aiming for 5-12. Type a number in the new **Number of slides** box, or ask for one in the notes box ("about 10 slides"), when you want a set length.
 - The progress box counts the slides as the AI writes them.
+
+## 0.2.31: Cite a paper in APA, MLA, IEEE, BibTeX and more
+
+- **Cite a paper** from Home: pick or drop a PDF or Word file, or type its DOI, arXiv id, ISBN, link or title. Work finds the paper's DOI on its first pages and fetches the full reference from doi.org (Crossref and DataCite), arXiv or Open Library. Papers without an identifier are matched by title on Crossref, and you pick the right one.
+- **Eight styles**: APA 7, MLA 9, Chicago (author-date), Harvard, IEEE, Vancouver, BibTeX and RIS (for Zotero, Mendeley and EndNote). Switch with one click; the style you used last is remembered.
+- **One-click copy**: Copy reference keeps the italics when pasted into Word, Google Docs or Write. The in-text citation, like (LeCun et al., 2015) or [1], has its own Copy button.
+- **Edit details** fixes anything the lookup got wrong, and the reference updates as you type. Offline, or with no match, the reference is built from the file's own title, author and date for you to check.
+- **Write**: Cite on the Insert tab looks up the open document when it carries a DOI or arXiv id, and inserts the reference or the in-text citation at the cursor.
+- **LaTeX**: Cite a paper on the Insert tab adds the BibTeX entry to the project's `.bib` file (or a new `references.bib`) and puts `\cite{key}` at the cursor.
 
 ## 0.2.27: More chart types and the rest of the analyst shortcuts in Plot
 

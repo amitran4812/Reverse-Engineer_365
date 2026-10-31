@@ -1,0 +1,38 @@
+/* ---- Cite dialog ---- */
+.cite-box { width: 640px; max-width: calc(100vw - 32px); max-height: calc(100vh - 48px); overflow: auto; position: relative; }
+.cite-box.drop { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.cite-box .modal-title { display: flex; align-items: center; gap: 8px; }
+.cite-file { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--muted); max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cite-find { display: flex; gap: 8px; }
+.cite-find input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; outline: 0; }
+.cite-find input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cite-find .btn, .cite-box .modal-actions .btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cite-status { min-height: 18px; margin: 10px 0 6px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.cite-status.ok { color: #1a7f37; }
+.cite-status.warn { color: #9a6700; }
+.cite-status.error { color: #b42318; }
+.cite-spin { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: cite-spin .8s linear infinite; }
+@keyframes cite-spin { to { transform: rotate(360deg); } }
+.cite-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; max-height: 190px; overflow: auto; }
+.cite-list-head { font-size: 12px; }
+.cite-cand { text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; }
+.cite-cand:hover { background: var(--hover); }
+.cite-cand.active { border-color: var(--accent); background: var(--accent-softer); }
+.cite-cand b { font-weight: 600; }
+.cite-cand span { font-size: 12px; color: var(--muted); }
+.cite-styles { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+.cite-style { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 3px 11px; font-size: 12px; }
+.cite-style:hover { background: var(--hover); }
+.cite-style.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cite-out { border: 1px solid var(--line); border-radius: 8px; background: var(--accent-softer); }
+.cite-ref { padding: 12px 14px 12px 38px; text-indent: -24px; font: 14px/1.5 Georgia, 'Times New Roman', serif; user-select: text; word-break: break-word; }
+.cite-ref.code { padding: 10px 12px; text-indent: 0; }
+.cite-ref pre { margin: 0; font: 12px/1.45 Consolas, 'Cascadia Mono', Menlo, monospace; white-space: pre-wrap; }
+.cite-intext { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 6px 10px 6px 14px; font-size: 12px; }
+.cite-intext code { flex: 1; font: 13px Georgia, serif; user-select: text; }
+.cite-intext .btn { padding: 3px 10px; display: inline-flex; align-items: center; gap: 5px; }
+.cite-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; margin-top: 12px; }
+.cite-edit .span2 { grid-column: span 2; }
+.cite-grow { flex: 1; }
+.cite-box .btn:disabled { opacity: .5; pointer-events: none; }
+.bs-tile-cite { --accent: #6b4fa0; }
