@@ -13,6 +13,7 @@ import { createShell, dialog, h, toast } from '../shared/shell.js';
 import { markdownToHtml } from '../shared/claude-pane.js';
 import { popup } from '../shared/ribbon.js';
 import { sendToPresent } from './to-present.js';
+import { openCiteDialog } from '../shared/cite.js';
 import { NotesKeys, createNotes, notesHtml, notesPlaceholder, notesState } from './notes.js';
 import { NoteFile } from './notes-media.js';
 import { NoteBoard } from './notes-board.js';
@@ -176,6 +177,16 @@ function insertMarkdown(md, replace = false) {
   else chain().insertContent(html).run();
 }
 
+// Cite: the reference for this document when it is a paper, or for any paper by DOI or title.
+function citePaper() {
+  openCiteDialog({ text: plainText().slice(0, 30000), fileName: shell.state.name, auto: 'id' }, {
+    actions: [
+      { label: 'Insert reference', icon: 'plus', run: (item, f) => chain().insertContent(f.code ? `<pre><code>${f.html}</code></pre>` : `<p>${f.html}</p>`).run() },
+      { label: 'Insert in text', icon: 'cite', run: (item, f) => chain().insertContent(f.inText).run() },
+    ],
+  });
+}
+
 const notes = createNotes({ editor, paper, canvas, getShell: () => shell, insertTable, insertImage, toPresent: () => toPresent() });
 
 const homeTab = {
@@ -255,6 +266,7 @@ const insertTab = {
     { label: 'Illustrations', items: [{ type: 'big', icon: 'image', label: 'Pictures', run: insertImage }] },
     { label: 'Symbols', items: [{ type: 'big', icon: 'equation', label: 'Equation', title: 'Type an equation, or describe it for the AI to write. Double-click an equation to edit it.', run: () => notes.equation() }] },
     { label: 'Links', items: [{ type: 'big', icon: 'link', label: 'Link', shortcut: 'Ctrl+K', run: insertLink, active: is('link') }] },
+    { label: 'Citations', items: [{ type: 'big', icon: 'cite', label: 'Cite', title: 'Make a reference in APA, MLA, IEEE, BibTeX and more, for this paper or any paper by DOI or title', run: citePaper }] },
     { label: 'Text', items: [
       { type: 'stack', items: [
         { type: 'small', icon: 'hr', label: 'Horizontal line', run: () => chain().setHorizontalRule().run() },

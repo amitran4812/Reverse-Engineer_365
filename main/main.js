@@ -320,6 +320,18 @@ ipcMain.handle('accounts:remove', safe((e, id) => profiles.remove(id)));
 ipcMain.handle('accounts:open', safe((e, id) => profiles.open(id)));
 ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
 ipcMain.handle('web:data', safe(async (e, kind, params) => ({ value: await require('./webdata').data(kind, params) })));
+// References for papers (the Cite dialog).
+ipcMain.handle('cite:lookup', safe((e, req) => require('./cite').lookup(req)));
+ipcMain.handle('cite:search', safe((e, text) => require('./cite').search(text)));
+ipcMain.handle('cite:open-file', safe(async (e) => {
+  const res = await dialog.showOpenDialog(senderWin(e), {
+    title: 'Pick a paper to cite',
+    properties: ['openFile'],
+    filters: [{ name: 'Papers', extensions: ['pdf', 'docx', 'txt', 'md', 'html'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  return res.canceled ? null : require('./cite').readFile(res.filePaths[0]);
+}));
+ipcMain.handle('cite:read-path', safe((e, file) => require('./cite').readFile(file)));
 
 ipcMain.handle('settings:get', () => settings.publicSettings());
 ipcMain.handle('settings:set', (e, patch) => {
