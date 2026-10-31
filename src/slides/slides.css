@@ -88,3 +88,14 @@
   .print-page { position: relative; width: 10in; height: 5.625in; overflow: hidden; break-after: page; }
   .print-page .slide { transform: scale(1); transform-origin: 0 0; }
 }
+.el.layer { pointer-events: none; }
+.el.free .el-text { overflow: visible; }
+.el-geom { position: absolute; inset: 0; pointer-events: none; }
+.el-geom svg { display: block; overflow: visible; }
+.svg-shape .el-text { position: relative; }
+.el-text [data-bu]::before { content: attr(data-bu); display: inline-block; min-width: var(--bi, 1.2em); text-indent: 0; color: var(--bc, inherit); font-family: var(--bf, inherit); font-size: var(--bs, 1em); font-weight: 400; font-style: normal; text-decoration: none; }
+.el-image { overflow: hidden; }
+.img-border { position: absolute; inset: 0; pointer-events: none; }
+.slide-table.cells { height: 100%; color: inherit; white-space: normal; }
+.slide-table.cells td { white-space: normal; border-bottom: 0; overflow: visible; line-height: 1.2; }
+.slide-table.cells tr:nth-child(even) td { background: none; }
