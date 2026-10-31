@@ -361,3 +361,10 @@ button { cursor: default; }
 .theme-art .a { top: 33%; width: 16%; height: 4%; }
 .theme-art .b { top: 50%; width: 66%; opacity: .45; }
 .theme-art .b2 { top: 64%; width: 48%; opacity: .45; }
+.theme-pick { position: relative; }
+.theme-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-art .deco { position: absolute; display: block; height: auto; border-radius: 0; object-fit: fill; }
+.theme-remove { position: absolute; top: 0; right: 0; width: 18px; height: 18px; line-height: 16px; border-radius: 50%; background: #fff; border: 1px solid var(--line); color: var(--muted); font-size: 13px; display: none; }
+.theme-pick:hover .theme-remove { display: block; }
+.theme-remove:hover { color: #c0392b; border-color: #c0392b; }
+.theme-upload .theme-art { display: flex; align-items: center; justify-content: center; border-style: dashed; font-size: 22px; color: var(--muted); }

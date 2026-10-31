@@ -53,7 +53,8 @@ async function toFileInfo(spec) {
       notes: String(sl.notes || ''),
       elements: (sl.elements || []).filter((el) => ['text', 'image', 'table'].includes(el?.type) && el.id),
     }));
-    return { app: 'slides', path: null, name: title, generated: true, data: { slides, theme: THEMES.includes(spec.theme) ? spec.theme : 'paper' } };
+    const custom = spec.themeData?.custom && spec.themeData.id === spec.theme ? spec.themeData : null;
+    return { app: 'slides', path: null, name: title, generated: true, data: { slides, theme: custom ? custom.id : THEMES.includes(spec.theme) ? spec.theme : 'paper', ...(custom ? { themeData: custom } : {}) } };
   }
   throw new Error('Nothing to open: Claude answered in the chat.');
 }
