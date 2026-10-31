@@ -2,7 +2,7 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## 0.2.34: PowerPoint files open the way they look
+## 0.2.35: PowerPoint files open the way they look
 
 - **Opening a .pptx keeps its design.** Present now reads the whole file instead of just its text: the slide size, the template's backgrounds and artwork from the master and layouts, theme colours and fonts, and every slide, the first one included.
 - Text keeps its fonts, sizes, colours, bold and italic, alignment, line and paragraph spacing, and the deck's own bullets and numbering at each level.
