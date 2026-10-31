@@ -34,6 +34,9 @@ const options = {
 // Equations load their TeX engine on first use, from a bundle of its own.
 const math = { ...options, entryPoints: { mathjax: join(here, 'src', 'docs', 'mathjax.js') } };
 
+// The Cite dialog reads PDFs with pdf.js, also from a bundle of its own.
+const pdfText = { ...options, entryPoints: { pdftext: join(here, 'src', 'shared', 'pdf-text.js') } };
+
 // Plot's analysis data engine runs in a classic worker of its own.
 const worker = {
   ...options,
@@ -42,7 +45,7 @@ const worker = {
 };
 
 if (watch) {
-  for (const o of [options, math, worker]) await (await context(o)).watch();
+  for (const o of [options, math, pdfText, worker]) await (await context(o)).watch();
 } else {
-  await Promise.all([build(options), build(math), build(worker)]);
+  await Promise.all([build(options), build(math), build(pdfText), build(worker)]);
 }
