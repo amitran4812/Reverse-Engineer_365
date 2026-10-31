@@ -15,6 +15,8 @@ import './latex.css';
 import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { icon } from '../shared/icons.js';
 import { popup, closePopup } from '../shared/ribbon.js';
+import { openCiteDialog } from '../shared/cite.js';
+import cite from '../../common/cite.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { bibEntries, labels, outline, userCommands, userEnvironments, fileKind, findMain, parseSynctex, synctexForward, synctexBackward } from '../../common/latex.js';
 import { latexCompletions, COMMANDS } from './completions.js';
@@ -245,6 +247,7 @@ const insertTab = {
     { label: 'References', items: [
       { type: 'stack', items: [
         { type: 'small', icon: 'cite', label: 'Citation', run: () => insert('\\cite{${}}', { select: true }) },
+        { type: 'small', icon: 'bibFile', label: 'Cite a paper…', title: 'Find a paper by DOI, arXiv id, title or PDF and add it to the .bib file', run: () => citePaper() },
         { type: 'small', icon: 'link', label: 'Cross-reference', run: () => insert('\\ref{${}}', { select: true }) },
         { type: 'small', icon: 'label', label: 'Label', run: () => insert('\\label{${key}}') },
       ] },
@@ -1231,6 +1234,51 @@ function insert(text, { select = false } = {}) {
   snippet(text.replace('${$SEL}', chosen || '${}').replace('$SEL', chosen || '${}'))(view, null, sel.from, sel.to);
   view.focus();
   if (select) startCompletion(view);
+}
+
+// A paper found by the Cite dialog goes into the project's .bib file and is cited at the cursor.
+function citePaper() {
+  openCiteDialog({}, {
+    style: 'bibtex',
+    actions: [{ label: 'Add to .bib and cite', icon: 'bibFile', run: (item, f) => addToBib(item) }],
+  });
+}
+
+async function addToBib(item) {
+  const entry = cite.format(item, 'bibtex').text;
+  const key = cite.bibKey(item);
+  const bib = files.find((f) => f.kind === 'bib')?.path || 'references.bib';
+  const buf = buffers.get(bib);
+  const state = buf ? (bib === current && view ? view.state : buf.state) : null;
+  let text = state ? state.doc.toString() : '';
+  if (!buf && files.some((f) => f.path === bib)) {
+    const res = await api.read(bib);
+    if (res?.error) return toast(res.error, 'error');
+    text = res.text || '';
+  }
+  const known = new RegExp(`@\\w+\\s*\\{\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,`).test(text);
+  if (!known) {
+    const add = `${text && !text.endsWith('\n') ? '\n' : ''}${text ? '\n' : ''}${entry}\n`;
+    if (buf) {
+      const tr = state.update({ changes: { from: state.doc.length, insert: add } });
+      if (bib === current && view) view.dispatch(tr);
+      else buf.state = tr.state;
+      buf.dirty = true;
+      updateDirty();
+      drawTree();
+    } else {
+      const res = await api.write(bib, text + add);
+      if (res?.error) return toast(res.error, 'error');
+      if (!files.some((f) => f.path === bib)) await refreshFiles();
+      else await reindex();
+    }
+    buildIndex();
+  }
+  if (current && fileKind(current) === 'tex' && view) {
+    const sel = view.state.selection.main;
+    view.dispatch({ changes: { from: sel.from, to: sel.to, insert: `\\cite{${key}}` } });
+  }
+  toast(known ? `Already in ${bib}: cited as ${key}` : `Added to ${bib} as ${key}`);
 }
 
 function insertBlock(text) {
