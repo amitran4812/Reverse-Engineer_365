@@ -225,7 +225,7 @@ button { cursor: default; }
 .bs-recent-row div { display: flex; flex-direction: column; min-width: 0; }
 .bs-recent-row span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bs-recent-row time { color: var(--muted); font-size: 12px; }
-.bs-recent-row span .ico { vertical-align: -2px; margin-right: 4px; }
+.bs-recent-row span .ico { display: inline-block; vertical-align: -2px; margin-right: 4px; }
 .bs-recent-tools { display: flex; gap: 2px; opacity: 0; }
 .bs-recent-row:hover .bs-recent-tools, .bs-recent-row:focus-visible .bs-recent-tools, .bs-recent-row.pinned .bs-recent-tools { opacity: 1; }
 .bs-recent-tool { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 4px; color: var(--muted); }
