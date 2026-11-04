@@ -7,6 +7,7 @@
 // Coordinates are in a 960x540 canvas, which maps to the 10in x 5.625in 16:9 layout.
 
 const PptxGenJS = require('pptxgenjs');
+const JSZip = require('jszip');
 const { hex } = require('./docx');
 
 const PX_PER_IN = 96;
@@ -131,7 +132,25 @@ async function exportPptx(model) {
       }
     }
   }
-  return pptx.write({ outputType: 'nodebuffer' });
+  return withTransitions(await pptx.write({ outputType: 'nodebuffer' }), model.slides || []);
+}
+
+// Slide transitions go in each slide's XML, where PowerPoint and others read them.
+const TRANSITION_XML = { fade: '<p:fade/>', push: '<p:push dir="l"/>', wipe: '<p:wipe dir="l"/>', cover: '<p:cover dir="l"/>', zoom: '<p:zoom/>', split: '<p:split orient="vert" dir="out"/>' };
+
+async function withTransitions(buffer, slides) {
+  if (!slides.some((s) => TRANSITION_XML[s.transition?.type])) return buffer;
+  const zip = await JSZip.loadAsync(buffer);
+  for (const [i, s] of slides.entries()) {
+    const effect = TRANSITION_XML[s.transition?.type];
+    const file = zip.file(`ppt/slides/slide${i + 1}.xml`);
+    if (!effect || !file) continue;
+    const speed = ['fast', 'med', 'slow'].includes(s.transition.speed) ? s.transition.speed : 'med';
+    const xml = (await file.async('string')).replace(/<p:transition\b[\s\S]*?(<\/p:transition>|\/>)/, '');
+    const tr = `<p:transition spd="${speed}">${effect}</p:transition>`;
+    zip.file(file.name, /<p:timing\b/.test(xml) ? xml.replace(/<p:timing\b/, `${tr}<p:timing`) : xml.replace(/<\/p:sld>\s*$/, `${tr}</p:sld>`));
+  }
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
 module.exports = { exportPptx };

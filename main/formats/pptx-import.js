@@ -1043,6 +1043,20 @@ async function backgroundOf(doc, ctx, rels) {
   return { bg: fill.hex ? `#${fill.hex}` : '#FFFFFF', bgCss: paintCss(fill), bgImage: fill.image };
 }
 
+// ---------- transitions
+const KNOWN_TRANSITIONS = new Set(['fade', 'push', 'wipe', 'cover', 'zoom', 'split']);
+function transitionOf(doc) {
+  const tr = desc(doc, 'transition')[0];
+  if (!tr) return null;
+  const effect = kids(tr).find((k) => !['sndAc', 'extLst'].includes(local(k)));
+  if (!effect) return null;
+  const type = KNOWN_TRANSITIONS.has(local(effect)) ? local(effect) : 'fade';
+  const dur = Number(tr.getAttribute('p14:dur'));
+  const spd = attr(tr, 'spd');
+  const speed = dur ? (dur < 450 ? 'fast' : dur > 750 ? 'slow' : 'med') : ['fast', 'med', 'slow'].includes(spd) ? spd : 'med';
+  return { type, speed };
+}
+
 // ---------- notes
 
 async function notesOf(pkg, rels) {
@@ -1137,6 +1151,8 @@ async function importPptx(buffer) {
     };
     if (bg?.bgCss && bg.bgCss !== bg.bg) s.bgCss = bg.bgCss;
     if (attr(doc.documentElement, 'show') === '0') s.hidden = true;
+    const transition = transitionOf(doc);
+    if (transition) s.transition = transition;
     slides.push(s);
   }
   // Layouts for new slides, keyed by PowerPoint's layout type (title, obj, twoObj, ...).

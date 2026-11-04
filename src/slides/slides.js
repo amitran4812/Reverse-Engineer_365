@@ -53,6 +53,7 @@ const pptElements = (ppt) => JSON.parse(JSON.stringify(ppt.elements)).map((e) =>
 let deck = { theme: 'paper', slides: [newSlide('title')] };
 let current = 0;
 let selected = null; // element id
+let also = new Set(); // more element ids picked with Shift+click, for Align and Distribute
 let editingId = null;
 let undoStack = [];
 let redoStack = [];
@@ -173,6 +174,7 @@ function renderSlideInto(container, s, { interactive = false } = {}) {
     const node = elementNode(el, s, t);
     if (interactive) {
       if (el.id === selected) node.classList.add('selected');
+      if (also.has(el.id)) node.classList.add('selected', 'also');
       if (el.id === selected && el.id !== editingId) {
         for (const d of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
           const hd = h('div', `handle h-${d}`);
@@ -297,6 +299,7 @@ function renderAll() {
 
 function go(i) {
   finishEditing();
+  also = new Set();
   current = Math.max(0, Math.min(deck.slides.length - 1, i));
   selected = null;
   renderAll();
@@ -409,6 +412,7 @@ stage.addEventListener('mousedown', (e) => {
   if (node && node.dataset.id === editingId && !handle) return; // let the caret move
   if (!node) {
     finishEditing();
+    also = new Set();
     if (selected) {
       selected = null;
       renderStage();
@@ -420,13 +424,23 @@ stage.addEventListener('mousedown', (e) => {
   if (editingId && node.dataset.id !== editingId) finishEditing();
   const id = node.dataset.id;
   const el = slide().elements.find((x) => x.id === id);
+  if (e.shiftKey && selected && selected !== id && !handle) {
+    if (also.has(id)) also.delete(id);
+    else also.add(id);
+    renderStage();
+    shell.refresh();
+    return;
+  }
   if (selected !== id) {
     selected = id;
+    if (!also.has(id)) also = new Set();
+    also.delete(id);
     renderStage();
     shell.refresh();
   }
   const scale = Number(getComputedStyle(stage).getPropertyValue('--scale')) || 1;
-  drag = { id, dir: handle?.dataset.dir || 'move', x: e.clientX, y: e.clientY, start: { x: el.x, y: el.y, w: el.w, h: el.h }, scale, moved: false };
+  const group = [...also].map((x) => slide().elements.find((g) => g.id === x)).filter(Boolean).map((g) => ({ el: g, x: g.x, y: g.y }));
+  drag = { id, dir: handle?.dataset.dir || 'move', x: e.clientX, y: e.clientY, start: { x: el.x, y: el.y, w: el.w, h: el.h }, scale, moved: false, group };
 });
 
 stage.addEventListener('dblclick', (e) => {
@@ -469,6 +483,12 @@ window.addEventListener('mousemove', (e) => {
     if (e.shiftKey && el.type !== 'text') {
       const ratio = s.w / s.h;
       if (d.length === 2) hh = w / ratio;
+    }
+  }
+  if (d === 'move') {
+    for (const g of drag.group) {
+      Object.assign(g.el, { x: Math.round(g.x + x - s.x), y: Math.round(g.y + y - s.y) });
+      Object.assign(stage.querySelector(`[data-id="${g.el.id}"]`).style, { left: `${g.el.x}px`, top: `${g.el.y}px` });
     }
   }
   Object.assign(el, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(hh) });
@@ -605,8 +625,9 @@ function addImage() {
 function deleteSelected() {
   if (!selected) return;
   snapshot();
-  slide().elements = slide().elements.filter((e) => e.id !== selected);
+  slide().elements = slide().elements.filter((e) => e.id !== selected && !also.has(e.id));
   selected = null;
+  also = new Set();
   renderStage();
   updateThumb();
   shell.refresh();
@@ -622,6 +643,92 @@ function arrange(dir) {
   slide().elements = list;
   renderStage();
   updateThumb();
+}
+
+// Align picked boxes to each other, or one box to the slide; spread three or more evenly.
+const picked = () => [selected, ...also].map((id) => slide().elements.find((e) => e.id === id)).filter(Boolean);
+
+function alignTo(edge) {
+  const els = picked();
+  if (!els.length) return toast('Select a box first (Shift+click to pick more)');
+  snapshot();
+  const one = els.length === 1;
+  const box = one ? { x0: 0, y0: 0, x1: W, y1: H } : {
+    x0: Math.min(...els.map((e) => e.x)), y0: Math.min(...els.map((e) => e.y)),
+    x1: Math.max(...els.map((e) => e.x + e.w)), y1: Math.max(...els.map((e) => e.y + e.h)),
+  };
+  for (const e of els) {
+    if (edge === 'left') e.x = box.x0;
+    if (edge === 'center') e.x = Math.round((box.x0 + box.x1 - e.w) / 2);
+    if (edge === 'right') e.x = box.x1 - e.w;
+    if (edge === 'top') e.y = box.y0;
+    if (edge === 'middle') e.y = Math.round((box.y0 + box.y1 - e.h) / 2);
+    if (edge === 'bottom') e.y = box.y1 - e.h;
+  }
+  renderStage();
+  updateThumb();
+}
+
+function distribute(axis) {
+  const els = picked();
+  if (els.length < 3) return toast('Shift+click to pick three or more boxes to distribute');
+  snapshot();
+  const [pos, size] = axis === 'h' ? ['x', 'w'] : ['y', 'h'];
+  const sorted = [...els].sort((a, b) => a[pos] - b[pos]);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const total = sorted.reduce((n, e) => n + e[size], 0);
+  const gap = (last[pos] + last[size] - first[pos] - total) / (sorted.length - 1);
+  let at = first[pos];
+  for (const e of sorted) {
+    e[pos] = Math.round(at);
+    at += e[size] + gap;
+  }
+  renderStage();
+  updateThumb();
+}
+
+// ---------- transitions ----------
+const TRANSITIONS = [
+  { id: 'none', label: 'None' },
+  { id: 'fade', label: 'Fade' },
+  { id: 'push', label: 'Push' },
+  { id: 'wipe', label: 'Wipe' },
+  { id: 'cover', label: 'Cover' },
+  { id: 'zoom', label: 'Zoom' },
+  { id: 'split', label: 'Split' },
+];
+const SPEEDS = { fast: 300, med: 550, slow: 900 };
+
+function setTransition(type, all = false) {
+  snapshot();
+  for (const s of all ? deck.slides : [slide()]) {
+    if (type === 'none') delete s.transition;
+    else s.transition = { type, speed: s.transition?.speed || deck.slides[current].transition?.speed || 'med' };
+  }
+  shell.markDirty();
+  shell.refresh();
+  previewTransition();
+}
+
+function setSpeed(speed) {
+  if (!slide().transition) return toast('Pick a transition first');
+  snapshot();
+  slide().transition.speed = speed;
+  shell.markDirty();
+  shell.refresh();
+}
+
+function animateIn(node, tr) {
+  if (!tr || tr.type === 'none') return;
+  node.style.setProperty('--tr-ms', `${SPEEDS[tr.speed] || SPEEDS.med}ms`);
+  node.classList.remove(...TRANSITIONS.map((t) => `tr-${t.id}`));
+  void node.offsetWidth;
+  node.classList.add(`tr-${tr.type}`);
+}
+
+function previewTransition() {
+  animateIn(stage, slide().transition);
 }
 
 // Formatting applies to the selection while typing, or to the whole box otherwise.
@@ -734,14 +841,16 @@ async function present(from = 0) {
 }
 function presentGo(i) {
   if (i >= deck.slides.length) return endPresent();
+  const forward = i > presentIndex;
   presentIndex = Math.max(0, i);
-  showPresented();
+  showPresented(forward);
 }
-function showPresented() {
+function showPresented(animate = false) {
   const s = deck.slides[presentIndex];
   presenter.innerHTML = '';
   const frame = h('div', 'present-frame');
   renderSlideInto(frame, s);
+  if (animate) animateIn(frame, s.transition);
   const room = coachOn ? Math.max(160, window.innerHeight * 0.3) : 0;
   const scale = Math.min(window.innerWidth / W, (window.innerHeight - room) / H);
   frame.style.setProperty('--scale', scale);
@@ -1195,6 +1304,18 @@ const homeTab = {
         { type: 'small', icon: 'front', label: 'Bring to front', run: () => arrange(1) },
         { type: 'small', icon: 'backward', label: 'Send to back', run: () => arrange(-1) },
       ] },
+      { type: 'menu', big: true, icon: 'alignCenter', label: 'Align', title: 'Line boxes up with the slide, or with each other (Shift+click to pick more boxes)', items: [
+        { label: 'Align left', icon: 'alignLeft', run: () => alignTo('left') },
+        { label: 'Align center', icon: 'alignCenter', run: () => alignTo('center') },
+        { label: 'Align right', icon: 'alignRight', run: () => alignTo('right') },
+        '-',
+        { label: 'Align top', icon: 'up', run: () => alignTo('top') },
+        { label: 'Align middle', icon: 'alignCenter', run: () => alignTo('middle') },
+        { label: 'Align bottom', icon: 'down', run: () => alignTo('bottom') },
+        '-',
+        { label: 'Distribute horizontally', icon: 'insertCol', run: () => distribute('h') },
+        { label: 'Distribute vertically', icon: 'insertRow', run: () => distribute('v') },
+      ] },
     ] },
     { label: 'Claude', items: [{ type: 'big', icon: 'sparkle', label: 'Ask Claude', title: 'Open Claude (Ctrl+J)', run: () => shell.claude.toggle() }] },
   ],
@@ -1234,6 +1355,25 @@ const designTab = {
       { type: 'color', icon: 'background', title: 'Slide background', initial: '#fff4e6', allowNone: true, pick: (c) => setBackground(c) },
     ] },
     { label: 'Designer', items: [{ type: 'big', icon: 'wand', label: 'Improve Slide', run: () => shell.claude.runQuick(QUICK.improve) }] },
+  ],
+};
+
+const trIs = (id) => () => (slide()?.transition?.type || 'none') === id;
+const transitionsTab = {
+  id: 'transitions',
+  label: 'Transitions',
+  groups: [
+    { label: 'Preview', items: [{ type: 'big', icon: 'play', label: 'Preview', run: previewTransition, enabled: () => !!slide()?.transition }] },
+    { label: 'Transition to This Slide', items: [{ type: 'gallery', items: () => TRANSITIONS.map((t) => ({
+      label: t.label,
+      html: `<span class="tr-tile tr-tile-${t.id}"><i></i></span><small>${t.label}</small>`,
+      run: () => setTransition(t.id),
+      active: trIs(t.id),
+    })) }] },
+    { label: 'Timing', items: [
+      { type: 'select', title: 'Speed', width: 96, options: [{ value: 'fast', label: 'Fast' }, { value: 'med', label: 'Medium' }, { value: 'slow', label: 'Slow' }], value: () => slide()?.transition?.speed || 'med', change: setSpeed },
+      { type: 'small', icon: 'duplicate', label: 'Apply to All', title: 'Use this slide’s transition on every slide', run: () => setTransition(slide()?.transition?.type || 'none', true) },
+    ] },
   ],
 };
 
@@ -1289,7 +1429,7 @@ await loadTemplates();
 const shell = await createShell({
   app: 'slides',
   defaultExt: 'reaslides',
-  tabs: [homeTab, insertTab, designTab, showTab, viewTab],
+  tabs: [homeTab, insertTab, designTab, transitionsTab, showTab, viewTab],
   claudeTab,
   undo,
   redo,

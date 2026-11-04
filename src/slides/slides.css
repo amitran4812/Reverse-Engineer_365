@@ -99,3 +99,31 @@
 .slide-table.cells { height: 100%; color: inherit; white-space: normal; }
 .slide-table.cells td { white-space: normal; border-bottom: 0; overflow: visible; line-height: 1.2; }
 .slide-table.cells tr:nth-child(even) td { background: none; }
+
+/* Shift+click picks more boxes. */
+.el.also { outline: 1.5px dashed var(--accent); outline-offset: 1px; }
+
+/* Slide transitions, played in the show and as a preview. */
+.tr-fade { animation: tr-fade var(--tr-ms, 550ms) ease both; }
+.tr-push { animation: tr-push var(--tr-ms, 550ms) cubic-bezier(.2,.7,.2,1) both; }
+.tr-wipe { animation: tr-wipe var(--tr-ms, 550ms) ease-out both; }
+.tr-cover { animation: tr-cover var(--tr-ms, 550ms) ease-out both; box-shadow: -12px 0 30px rgba(0,0,0,.35); }
+.tr-zoom { animation: tr-zoom var(--tr-ms, 550ms) cubic-bezier(.2,.7,.2,1) both; }
+.tr-split { animation: tr-split var(--tr-ms, 550ms) ease-out both; }
+@keyframes tr-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tr-push { from { translate: 100% 0; } to { translate: 0 0; } }
+@keyframes tr-wipe { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0); } }
+@keyframes tr-cover { from { translate: 60% 0; opacity: .4; } to { translate: 0 0; opacity: 1; } }
+@keyframes tr-zoom { from { scale: .55; opacity: 0; } to { scale: 1; opacity: 1; } }
+@keyframes tr-split { from { clip-path: inset(0 50%); } to { clip-path: inset(0); } }
+.present-frame { overflow: hidden; }
+.tr-tile { display: block; width: 46px; height: 28px; margin: 2px auto 0; border-radius: 3px; background: #dfe3ea; position: relative; overflow: hidden; }
+.tr-tile i { position: absolute; inset: 0; background: var(--accent); opacity: .85; }
+.tr-tile-none i { display: none; }
+.tr-tile-fade i { opacity: .35; }
+.tr-tile-push i { left: 45%; }
+.tr-tile-wipe i { left: 60%; background: linear-gradient(90deg, transparent, var(--accent) 40%); }
+.tr-tile-cover i { left: 30%; box-shadow: -4px 0 6px rgba(0,0,0,.3); }
+.tr-tile-zoom i { inset: 7px 12px; border-radius: 2px; }
+.tr-tile-split i { left: 35%; right: 35%; }
+@media (prefers-reduced-motion: reduce) { [class*=" tr-"] { animation-duration: 1ms !important; } }
