@@ -6,11 +6,16 @@
 
 const {
   AlignmentType,
+  Bookmark,
   BorderStyle,
+  CommentRangeEnd,
+  CommentRangeStart,
+  CommentReference,
   Document,
   ExternalHyperlink,
   HeadingLevel,
   ImageRun,
+  InternalHyperlink,
   LevelFormat,
   Packer,
   PageBreak,
@@ -26,6 +31,7 @@ const mammoth = require('mammoth');
 const JSZip = require('jszip');
 const crypto = require('crypto');
 const { imageSize } = require('./imageSize');
+const { commentSpans, headingOutline, applyCommentMarkers, readCommentsXml, markCommentRanges } = require('../../common/outline');
 
 // Notes saved from Write's notes mode carry this keyword, so they reopen as notes.
 const NOTES_KEYWORD = 'Work notes';
@@ -108,14 +114,24 @@ function dataUrlImage(src, attrs = {}) {
   return new ImageRun({ type, data, transformation: { width, height }, ...(altText ? { altText } : {}) });
 }
 
+// Set while one document converts: its comments (with the text nodes where each starts and ends).
+let current = { comments: {}, ids: new Map(), headings: 0, toc: false };
+
 function inlineChildren(node, extraMarks = []) {
   const out = [];
   for (const child of node.content || []) {
     if (child.type === 'text') {
       const marks = [...extraMarks, ...(child.marks || [])];
       const link = marks.find((m) => m.type === 'link');
+      const notes = (child.marks || []).filter((m) => m.type === 'comment' && current.ids.has(m.attrs?.id));
+      for (const m of notes) if (current.comments[m.attrs.id].firstNode === child) out.push(new CommentRangeStart(current.ids.get(m.attrs.id)));
       const run = new TextRun({ text: child.text, ...runOptions(marks), ...(link ? { style: 'Hyperlink' } : {}) });
       out.push(link ? new ExternalHyperlink({ link: link.attrs.href, children: [run] }) : run);
+      for (const m of notes) {
+        if (current.comments[m.attrs.id].lastNode !== child) continue;
+        const n = current.ids.get(m.attrs.id);
+        out.push(new CommentRangeEnd(n), new TextRun({ children: [new CommentReference(n)] }));
+      }
     } else if (child.type === 'hardBreak') {
       out.push(new TextRun({ break: 1 }));
     } else if (child.type === 'image') {
@@ -156,8 +172,21 @@ class Converter {
         if (ctx.task) children.unshift(new TextRun(`${ctx.task} `));
         return [new Paragraph({ ...this.paragraphProps(node, ctx), children })];
       }
-      case 'heading':
-        return [new Paragraph({ ...this.paragraphProps(node, ctx), heading: HEADINGS[node.attrs?.level || 1], children: inlineChildren(node) })];
+      case 'heading': {
+        // With a table of contents, each heading carries a bookmark its entry links to.
+        const children = inlineChildren(node);
+        const id = `_Toc_w${current.headings++}`;
+        return [new Paragraph({ ...this.paragraphProps(node, ctx), heading: HEADINGS[node.attrs?.level || 1], children: current.toc ? [new Bookmark({ id, children })] : children })];
+      }
+      case 'tableOfContents':
+        return [
+          new Paragraph({ style: TOC_TITLE, children: [new TextRun('Contents')] }),
+          ...current.outline.map((it) => new Paragraph({
+            style: TOC_STYLE,
+            indent: { left: 360 * (Math.min(it.level, 4) - 1) },
+            children: [new InternalHyperlink({ anchor: `_Toc_w${it.index}`, children: [new TextRun({ text: it.text || ' ', style: 'Hyperlink' })] })],
+          })),
+        ];
       case 'bulletList':
       case 'orderedList': {
         const level = ctx.list || ctx.task ? ctx.level + 1 : 0;
@@ -274,17 +303,49 @@ function numberingConfig() {
   };
 }
 
+// Table of contents lines use their own paragraph styles, so they come back as a table of contents.
+const TOC_STYLE = 'WorkContents';
+const TOC_TITLE = 'WorkContentsTitle';
+
+function hasToc(node) {
+  return node?.type === 'tableOfContents' || (node?.content || []).some(hasToc);
+}
+
+function commentList(json) {
+  const spans = commentSpans(json);
+  const ids = new Map();
+  const out = [];
+  for (const [id, c] of Object.entries(spans)) {
+    ids.set(id, out.length);
+    const date = new Date(c.date);
+    out.push({ id: out.length, author: c.author || 'Author', initials: (c.author || 'A').split(/\s+/).map((w) => w[0]).join('').slice(0, 3).toUpperCase(), ...(Number.isNaN(date.getTime()) ? {} : { date }), children: String(c.text || '').split('\n').map((line) => new Paragraph({ children: [new TextRun(line)] })) });
+  }
+  return { spans, ids, out };
+}
+
 async function exportDocx({ json, title, page = {}, notes = false }) {
   const margin = MARGINS[page.margins] || MARGINS.normal;
   const landscape = page.orientation === 'landscape';
-  const children = new Converter().blocks(json?.content);
+  const cm = commentList(json);
+  current = { comments: cm.spans, ids: cm.ids, headings: 0, toc: hasToc(json), outline: headingOutline(json) };
+  let children;
+  try {
+    children = new Converter().blocks(json?.content);
+  } finally {
+    current = { comments: {}, ids: new Map(), headings: 0, toc: false };
+  }
   const doc = new Document({
     title: title || 'Document',
     creator: 'Work',
     ...(notes ? { keywords: NOTES_KEYWORD } : {}),
     styles: {
       default: { document: { run: { font: 'Calibri', size: 22 } } },
+      paragraphStyles: [
+        { id: TOC_TITLE, name: 'Work Contents Title', basedOn: 'Normal', next: 'Normal', run: { size: 32, color: '2F5496' }, paragraph: { spacing: { before: 240, after: 120 } } },
+        { id: TOC_STYLE, name: 'Work Contents', basedOn: 'Normal', next: 'Normal', paragraph: { spacing: { after: 60 } } },
+      ],
     },
+    ...(cm.out.length ? { comments: { children: cm.out } } : {}),
     numbering: numberingConfig(),
     sections: [{
       properties: {
@@ -345,10 +406,29 @@ async function isNotes(buffer) {
   }
 }
 
-async function importDocx(buffer) {
-  const result = await mammoth.convertToHtml({ buffer });
-  const notes = await isNotes(buffer);
-  const json = notes ? await notesPart(buffer) : null;
+// Word comments become comment marks: their ranges are marked in the text before conversion.
+async function withCommentMarkers(buffer) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const xml = await zip.file('word/comments.xml')?.async('string');
+    if (!xml) return { buffer, comments: {} };
+    const comments = readCommentsXml(xml);
+    const doc = await zip.file('word/document.xml').async('string');
+    zip.file('word/document.xml', markCommentRanges(doc));
+    return { buffer: await zip.generateAsync({ type: 'nodebuffer' }), comments };
+  } catch {
+    return { buffer, comments: {} };
+  }
+}
+
+const tocBack = (html) => html.replace(/(?:<p class="work-toc">[\s\S]*?<\/p>)+/g, '<div data-toc=""></div>');
+
+async function importDocx(original) {
+  const { buffer, comments } = await withCommentMarkers(original);
+  const converted = await mammoth.convertToHtml({ buffer }, { styleMap: ["p[style-name='Work Contents Title'] => p.work-toc:fresh", "p[style-name='Work Contents'] => p.work-toc:fresh"] });
+  const result = { ...converted, value: tocBack(applyCommentMarkers(converted.value, comments)) };
+  const notes = await isNotes(original);
+  const json = notes ? await notesPart(original) : null;
   return { html: equations(checklists(result.value)), ...(json ? { json } : {}), notes, warnings: result.messages.map((m) => m.message) };
 }
 
