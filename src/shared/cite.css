@@ -36,3 +36,25 @@
 .cite-grow { flex: 1; }
 .cite-box .btn:disabled { opacity: .5; pointer-events: none; }
 .bs-tile-cite { --accent: #6b4fa0; }
+.cite-off { display: none !important; }
+.cite-lib-btn { margin-left: 8px; padding: 3px 10px; display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; }
+.cite-lib-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cite-file:empty + .cite-lib-btn { margin-left: auto; }
+.cite-lib-bar { display: flex; gap: 8px; }
+.cite-lib-q { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; outline: 0; background: var(--surface); color: var(--text); }
+.cite-lib-q:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cite-lib-bar .btn, .cite-lib-foot .btn, .cite-lib-acts .btn { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.cite-lib-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 6px; }
+.cite-lib-rows { display: flex; flex-direction: column; gap: 4px; max-height: 340px; min-height: 120px; overflow: auto; margin-bottom: 10px; }
+.cite-lib-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px 6px 10px; background: var(--surface); }
+.cite-lib-row.on { border-color: var(--accent); background: var(--accent-softer); }
+.cite-lib-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cite-lib-info b { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cite-lib-info span { font-size: 12px; color: var(--muted); }
+.cite-lib-info em { font-size: 11px; font-style: normal; color: var(--accent-dark); }
+.cite-lib-acts { display: flex; gap: 4px; }
+.cite-lib-acts .btn { padding: 2px 8px; font-size: 12px; }
+.cite-lib-empty { padding: 18px 8px; font-size: 13px; line-height: 1.5; }
+.cite-lib-foot { display: flex; align-items: center; gap: 8px; }
+.cite-lib-foot select { height: 30px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); }
+.cite-lib-all { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }

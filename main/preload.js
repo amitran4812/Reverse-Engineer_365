@@ -69,6 +69,15 @@ contextBridge.exposeInMainWorld('office', {
     openFile: () => ipcRenderer.invoke('cite:open-file'),
     readFile: (file) => ipcRenderer.invoke('cite:read-path', webUtils.getPathForFile(file)),
   },
+  // My Library: every reference cited or saved, kept for this account.
+  library: {
+    list: () => ipcRenderer.invoke('library:list'),
+    add: (item, tags) => ipcRenderer.invoke('library:add', item, tags),
+    update: (id, patch) => ipcRenderer.invoke('library:update', id, patch),
+    remove: (ids) => ipcRenderer.invoke('library:remove', ids),
+    importFile: () => ipcRenderer.invoke('library:import'),
+    exportFile: (ids, style) => ipcRenderer.invoke('library:export', ids, style),
+  },
   latex: {
     openFolder: (opts) => ipcRenderer.invoke('latex:open-folder', opts),
     openZip: (file) => ipcRenderer.invoke('latex:open-zip', file ? webUtils.getPathForFile(file) : null),

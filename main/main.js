@@ -360,6 +360,24 @@ ipcMain.handle('cite:open-file', safe(async (e) => {
   return res.canceled ? null : require('./cite').readFile(res.filePaths[0]);
 }));
 ipcMain.handle('cite:read-path', safe((e, file) => require('./cite').readFile(file)));
+ipcMain.handle('library:list', safe(() => require('./library').list()));
+ipcMain.handle('library:add', safe((e, item, tags) => require('./library').add(item, tags)));
+ipcMain.handle('library:update', safe((e, id, patch) => require('./library').update(id, patch)));
+ipcMain.handle('library:remove', safe((e, ids) => require('./library').remove(ids)));
+ipcMain.handle('library:import', safe(async (e) => {
+  const res = await dialog.showOpenDialog(senderWin(e), {
+    title: 'Add references from a file',
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'References', extensions: ['bib', 'ris', 'txt'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  return res.canceled ? null : require('./library').importFiles(res.filePaths);
+}));
+ipcMain.handle('library:export', safe(async (e, ids, style) => {
+  const lib = require('./library');
+  const { ext, name } = lib.exportKind(style);
+  const res = await dialog.showSaveDialog(senderWin(e), { title: 'Export references', defaultPath: `references.${ext}`, filters: [{ name, extensions: [ext] }] });
+  return res.canceled ? null : lib.exportTo(res.filePath, ids, style);
+}));
 
 ipcMain.handle('settings:get', () => settings.publicSettings());
 ipcMain.handle('settings:set', (e, patch) => {

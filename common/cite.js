@@ -664,4 +664,6 @@ module.exports = {
   format,
   inText,
   bibKey,
+  bibtex,
+  ris,
 };
