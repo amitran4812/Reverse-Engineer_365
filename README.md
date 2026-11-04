@@ -4,7 +4,7 @@ An installable desktop office suite with AI built in (Claude by default, or Open
 
 - **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)), and a **Notes mode** for quick notes: switch with **Document / Notes** at the top right, or start with **New > Notes**. Every new line is a bullet, `/` inserts checklists, tables, drawings and plots, and the page can be lined, grid or dotted in six colours. Draw with a mouse, finger or stylus (pen pressure works), and double-click a picture to draw on it. Add write-anywhere areas where you click anywhere to type, voice notes, equations and file attachments. **Send to Present** turns a document's text, lists, pictures and tables into a new presentation, designed by the AI you've connected or laid out one slide per heading without one.
 - **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open. Its **Analysis** tab plots large data files, and **Send to Present** puts the plots you pick, with a table of rows if you like, on a slide in a new presentation.
-- **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves `.reaslides`, exports `.pptx`, and opens `.pptx` and OpenDocument `.odp`.
+- **Present**: a presentation editor with themes, layouts, shapes, images, speaker notes and a full-screen slide show. It saves PowerPoint `.pptx` and opens `.pptx` and OpenDocument `.odp`.
 - **Read**: a PDF reader and editor. Thumbnails, bookmarks, find, links, night mode and read mode; highlight, underline and strike out text, sticky notes, comments, text boxes, pen drawings and shapes; **Fill & Sign** with a typed, drawn or uploaded signature, initials, dates and check marks; rotate, delete, move, extract and insert pages, and combine PDFs; and **Convert** to a Write document (headings, lists and tables), notes, a Plot workbook or a Present deck. Comments are saved as standard PDF annotations, so other PDF readers show them too, and signatures become part of the page.
 
 - **Claude app**: on the start screen, type what you need ("a 10-slide pitch deck for…", "a monthly budget…") and attach PDFs, images, Word, Excel, CSV or text files. Claude makes the presentation, spreadsheet or document and opens it in the right app.
@@ -53,12 +53,14 @@ To uninstall, use Settings > Apps > Installed apps > Work. The installer and uni
 | --- | --- | --- |
 | Write | `.docx`, `.html`, `.md`, `.txt`, `.tex` (as a LaTeX project) | `.odt` |
 | Plot | `.xlsx`, `.csv`, `.ods` | `.xls`, `.xlsm` (macros are dropped), `.xltx` |
-| Present | `.reaslides` (export `.pptx`) | `.pptx`, `.odp` |
+| Present | `.pptx` saved by Present | `.pptx` from other apps, `.odp`, `.reaslides` (older Present files) |
 | Read | `.pdf` | |
+
+Every file Work saves is a standard format that opens in Word, Excel, PowerPoint, Google Docs, LibreOffice and Keynote on any computer. A `.pptx` that Present saved reopens in Present exactly as you left it (themes and template artwork included) as long as its slides weren't changed in another app; otherwise Present reads the slides as it does any other `.pptx`.
 
 Imported presentations keep slide titles, text, two-column layouts and speaker notes; images, charts, animations and exact positions don't come across yet. Legacy Word `.doc` and PowerPoint `.ppt` files don't open yet: save them as `.docx` or `.pptx` first.
 
-On Windows the installer registers these types, so **Open with** lists Write, Plot and Present, and the right-click menu has **Open in Write / Plot / Present** (on Windows 11 it's under **Show more options**). It only becomes the default app for a type that has no other app, and `.reaslides`. Pick defaults yourself in **Settings > Apps > Default apps > Work**. **New > Write document** (and Plot, Present) appears in Explorer when no other app already provides a new-file entry for that type.
+On Windows the installer registers these types, so **Open with** lists Write, Plot and Present, and the right-click menu has **Open in Write / Plot / Present** (on Windows 11 it's under **Show more options**). It only becomes the default app for a type that has no other app, and for old `.reaslides` files. Pick defaults yourself in **Settings > Apps > Default apps > Work**. **New > Write document** (and Plot, Present) appears in Explorer when no other app already provides a new-file entry for that type.
 
 ## LaTeX projects
 
@@ -92,7 +94,7 @@ Open from the cloud with **File > Open > Google Drive / OneDrive** (or **Open** 
 
 | Source | What happens |
 | --- | --- |
-| Excel (.xlsx), Word (.docx), CSV, text, .reaslides | Downloaded, edited, and uploaded back when you save |
+| Excel (.xlsx), Word (.docx), PowerPoint (.pptx) saved by Present, CSV, text | Downloaded, edited, and uploaded back when you save |
 | Google Docs | Opened as .docx; saving converts it back into the same Google Doc |
 | Google Sheets | Opened live: cell values and formulas sync both ways every few seconds while the workbook is open, including tabs you add, rename or delete. Formatting changes stay local. |
 

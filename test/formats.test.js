@@ -141,6 +141,7 @@ test('openFile / saveFile route by extension', async () => {
   assert.equal(appForFile('a.DOCX'), 'docs');
   assert.equal(appForFile('a.csv'), 'sheets');
   assert.equal(appForFile('a.reaslides'), 'slides');
+  assert.equal(appForFile('a.pptx'), 'slides');
   assert.equal(appForFile('a.pdf'), 'pdf');
   assert.equal(appForFile('a.zip'), null);
 
@@ -150,11 +151,30 @@ test('openFile / saveFile route by extension', async () => {
   assert.equal(opened.app, 'docs');
   assert.match(opened.data.html, /<h1>Title<\/h1>/);
 
-  const deck = path.join(dir, 'talk.reaslides');
-  await saveFile('slides', deck, { theme: 'midnight', slides: [{ id: 's', elements: [] }], export: { slides: [] } });
+  const deck = path.join(dir, 'talk.pptx');
+  await saveFile('slides', deck, { theme: 'midnight', slides: [{ id: 's', elements: [] }], export: { slides: [{ elements: [] }] } });
   const reopened = await openFile(deck);
+  assert.equal(reopened.path, deck);
   assert.equal(reopened.data.theme, 'midnight');
   assert.equal(reopened.data.export, undefined);
+
+  // Edited outside Work: the slides no longer match, so the .pptx itself is read.
+  const zip = await JSZip.loadAsync(fs.readFileSync(deck));
+  zip.file('ppt/slides/slide1.xml', (await zip.file('ppt/slides/slide1.xml').async('string')).replace('</p:spTree>', '<!-- edited --></p:spTree>'));
+  const edited = path.join(dir, 'edited.pptx');
+  fs.writeFileSync(edited, await zip.generateAsync({ type: 'nodebuffer' }));
+  const foreign = await openFile(edited);
+  assert.equal(foreign.path, null);
+  assert.notEqual(foreign.data.theme, 'midnight');
+
+  // Older versions saved .reaslides: it opens as a copy that saves as .pptx.
+  const old = path.join(dir, 'old.reaslides');
+  fs.writeFileSync(old, JSON.stringify({ format: 'rea-slides', version: 1, theme: 'slate', slides: [] }));
+  const legacy = await openFile(old);
+  assert.equal(legacy.app, 'slides');
+  assert.equal(legacy.path, null);
+  assert.equal(legacy.data.theme, 'slate');
+  await assert.rejects(saveFile('slides', old, { slides: [] }));
 
   const html = path.join(dir, 'page.html');
   await saveFile('docs', html, { html: '<p>Hi &amp; bye</p>' });

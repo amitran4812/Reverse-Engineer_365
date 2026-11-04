@@ -227,10 +227,6 @@ export async function createShell(opts) {
         suggestedName: ext ? `${baseName}.${ext}` : state.path || `${baseName}.${opts.defaultExt}`,
       });
       if (!res) return false;
-      if (res.exported) {
-        toast(`Exported ${res.name}`);
-        return true;
-      }
       state.path = res.path;
       state.name = res.name;
       shell.markClean();

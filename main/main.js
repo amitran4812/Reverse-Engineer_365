@@ -208,17 +208,16 @@ ipcMain.handle('app:save', async (e, { app: appName, payload, path: current, sav
   }
   try {
     const saved = await formats.saveFile(appName, file, payload);
-    const exported = appName === 'slides' && saved.ext === 'pptx';
     if (cloud.bindingFor(file)) {
       try {
-        return { ...saved, exported, cloud: await cloud.uploadBack(file) };
+        return { ...saved, cloud: await cloud.uploadBack(file) };
       } catch (err) {
         dialog.showErrorBox('Couldn’t upload', `Your changes are saved on this computer, but uploading them failed: ${err.message || err}`);
         return null;
       }
     }
-    if (!exported) settings.addRecent(appName, file);
-    return { ...saved, exported };
+    settings.addRecent(appName, file);
+    return saved;
   } catch (err) {
     dialog.showErrorBox('Couldn’t save', String(err.message || err));
     return null;

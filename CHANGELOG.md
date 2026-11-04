@@ -2,6 +2,14 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## Next: Present saves PowerPoint files
+
+- **Present now saves .pptx.** Ctrl+S and **File › Save As** write a PowerPoint file, so anyone can open your deck in PowerPoint, Keynote, Google Slides or LibreOffice, on Windows, Mac or Linux. There is no Work-only file type any more: Write saves .docx, Plot saves .xlsx or .csv, and Present saves .pptx.
+- A deck Present saved reopens in Present exactly as you left it, themes and template artwork included. If someone edits the slides in PowerPoint, Present opens their version instead.
+- A .pptx made in another app still opens as a copy, so saving never overwrites the original by surprise; the first save asks where to put it.
+- Older **.reaslides** files still open. Save them once and they become .pptx.
+- In Explorer, **New › Present presentation** now makes a .pptx.
+
 ## 0.2.37: Light, dark or system theme
 
 - **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.

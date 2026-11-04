@@ -5,7 +5,7 @@ const fsSync = require('fs');
 const path = require('path');
 const docx = require('./docx');
 const xlsx = require('./xlsx');
-const { exportPptx } = require('./pptx');
+const { exportPptx, workDeck } = require('./pptx');
 const { importPptx } = require('./pptx-import');
 const imports = require('./imports');
 
@@ -32,16 +32,16 @@ const APPS = {
     save: [{ name: 'PDF', extensions: ['pdf'] }],
   },
   slides: {
-    open: ['reaslides', 'pptx', 'odp'],
-    save: [
-      { name: 'Present presentation', extensions: ['reaslides'] },
-      { name: 'PowerPoint presentation (export)', extensions: ['pptx'] },
-    ],
+    // .reaslides is the format older versions saved; it still opens.
+    open: ['pptx', 'odp', 'reaslides'],
+    save: [{ name: 'PowerPoint presentation', extensions: ['pptx'] }],
   },
 };
 
 // Formats Work reads but can't write back: they open as an unsaved copy.
-const IMPORT_ONLY = ['odt', 'xlsm', 'xltx', 'xls', 'pptx', 'odp'];
+// A .pptx Work saved itself opens in place; other .pptx files open as a copy
+// so saving never rewrites someone's PowerPoint deck by surprise.
+const IMPORT_ONLY = ['odt', 'xlsm', 'xltx', 'xls', 'pptx', 'odp', 'reaslides'];
 
 const BLANK = {
   docs: () => ({ html: '' }),
@@ -97,7 +97,7 @@ async function openFile(file) {
   if (ext === 'pdf') return { app: 'pdf', path: file, name, ext };
   // Right-click > New makes an empty file; open it as a blank document.
   const { size } = await fs.stat(file);
-  if (app && size === 0) return { app, path: file, name, ext, data: BLANK[app]() };
+  if (app && size === 0) return { app, path: ext === 'reaslides' ? null : file, name, ext, data: BLANK[app]() };
   if (app === 'sheets') {
     const big = await analysisLaunch(file, ext, name, size);
     if (big) return big;
@@ -117,9 +117,13 @@ async function openFile(file) {
     case 'ods':
       data = imports.importSheetJs(await fs.readFile(file));
       break;
-    case 'pptx':
-      data = await importPptx(await fs.readFile(file));
+    case 'pptx': {
+      const buf = await fs.readFile(file);
+      const own = await workDeck(buf);
+      if (own) return { app, path: file, name, ext, data: own };
+      data = await importPptx(buf);
       break;
+    }
     case 'odp':
       data = { deckSpec: await imports.importOdp(await fs.readFile(file)), theme: 'paper' };
       break;
@@ -217,8 +221,7 @@ async function saveFile(appName, file, payload) {
     else if (ext === 'ods') out = xlsx.exportOds(payload);
   } else if (appName === 'slides') {
     const { export: resolved, ...native } = payload;
-    if (ext === 'reaslides') out = JSON.stringify(native);
-    else if (ext === 'pptx') out = await exportPptx({ ...(resolved || native), title });
+    if (ext === 'pptx') out = await exportPptx({ ...(resolved || native), title }, native);
   }
   if (out === undefined) throw new Error(`Can't save ${appName} as .${ext}`);
   await fs.writeFile(file, out);
