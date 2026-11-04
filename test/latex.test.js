@@ -214,3 +214,39 @@ test('a project .zip unpacks safely', async () => {
   await assert.rejects(project.importZip(path.join(tmp, 'bad.zip'), target), /isn’t a .zip/);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('a project downloads as a .zip with its files, unsaved edits and PDF', async () => {
+  const JSZip = require('jszip');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'work-latex-out-'));
+  const root = path.join(tmp, 'thesis');
+  fs.mkdirSync(path.join(root, 'figs'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'chapters'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'main.tex'), 'saved');
+  fs.writeFileSync(path.join(root, 'refs.bib'), '@misc{a, title={A}}');
+  fs.writeFileSync(path.join(root, 'chapters', 'intro.tex'), 'intro');
+  fs.writeFileSync(path.join(root, 'figs', 'plot.png'), Buffer.from('89504e470d0a1a0a', 'hex'));
+  fs.writeFileSync(path.join(root, 'main.aux'), 'clutter');
+  fs.writeFileSync(path.join(root, '.hidden'), 'x');
+  const pdf = path.join(tmp, 'main.pdf');
+  fs.writeFileSync(pdf, '%PDF-1.5');
+  const out = path.join(root, 'thesis.zip');
+  const res = await project.exportZip(root, out, { overrides: { 'main.tex': 'unsaved', 'chapters/new.tex': 'new' }, pdf, pdfName: 'main.pdf' });
+  assert.equal(res.files, 5);
+  const zip = await JSZip.loadAsync(fs.readFileSync(out));
+  const names = Object.values(zip.files).filter((f) => !f.dir).map((f) => f.name).sort();
+  assert.deepEqual(names, ['chapters/intro.tex', 'chapters/new.tex', 'figs/plot.png', 'main.pdf', 'main.tex', 'refs.bib']);
+  assert.equal(await zip.file('main.tex').async('string'), 'unsaved');
+  assert.equal(fs.readFileSync(path.join(root, 'main.tex'), 'utf8'), 'saved');
+  assert.deepEqual([...(await zip.file('figs/plot.png').async('nodebuffer'))], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  // Saving again over the same .zip inside the project leaves the old one out.
+  const again = await JSZip.loadAsync(fs.readFileSync(out)).then(() => project.exportZip(root, out));
+  assert.equal(again.files, 4);
+  const back = path.join(tmp, 'back');
+  assert.deepEqual((await project.importZip(out, back)).added.sort(), ['chapters/intro.tex', 'figs/plot.png', 'main.tex', 'refs.bib']);
+  await assert.rejects(project.exportZip(root, null, { overrides: { '../escape.tex': 'x' } }), /outside the project/);
+  const empty = path.join(tmp, 'empty');
+  fs.mkdirSync(empty);
+  await assert.rejects(project.exportZip(empty, path.join(tmp, 'e.zip')), /no files/);
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

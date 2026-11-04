@@ -501,6 +501,20 @@ ipcMain.handle('latex:save-pdf', safe(async (e, main) => {
   await require('fs/promises').copyFile(pdf, res.filePath);
   return { ok: true, path: res.filePath, name: path.basename(res.filePath) };
 }));
+ipcMain.handle('latex:save-zip', safe(async (e, opts = {}) => {
+  const root = latexRoot(e);
+  const main = typeof opts.main === 'string' ? opts.main : await latex.mainFile(root);
+  const res = await dialog.showSaveDialog(senderWin(e), {
+    defaultPath: path.join(path.dirname(root), `${path.basename(root) || 'project'}.zip`),
+    filters: [{ name: 'Zip archive', extensions: ['zip'] }],
+  });
+  if (res.canceled || !res.filePath) return null;
+  const overrides = opts.overrides && typeof opts.overrides === 'object' ? opts.overrides : {};
+  const pdf = opts.pdf === false ? null : await latex.lastPdf(root, main);
+  const pdfName = main ? main.replace(/\.[^./\\]+$/, '') + '.pdf' : null;
+  const out = await latex.exportZip(root, res.filePath, { overrides, pdf, pdfName });
+  return { ok: true, path: res.filePath, name: path.basename(res.filePath), files: out.files };
+}));
 ipcMain.handle('latex:open-pdf-external', safe(async (e, main) => {
   const pdf = await latex.lastPdf(latexRoot(e), main);
   if (!pdf) throw new Error('Compile the project first.');

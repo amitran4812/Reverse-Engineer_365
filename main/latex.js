@@ -177,6 +177,41 @@ async function importZip(zipPath, dest, dir = '') {
   return { ok: true, added };
 }
 
+// Packs the project into a .zip: every file the Files pane shows (sources,
+// .bib, images, styles, data), with unsaved editor text in place of what's on
+// disk and the last compiled PDF if the project doesn't already have one by
+// that name. Build clutter (.aux, .log, ...) stays out, and so does the .zip
+// itself when it's saved inside the project.
+async function exportZip(root, outPath, { overrides, pdf, pdfName } = {}) {
+  const JSZip = require('jszip');
+  const zip = new JSZip();
+  const out = outPath ? path.resolve(outPath) : null;
+  const names = new Set();
+  for (const f of await list(root)) {
+    if (f.dir) continue;
+    const full = path.join(root, f.path);
+    if (out && path.resolve(full) === out) continue;
+    const text = overrides && Object.prototype.hasOwnProperty.call(overrides, f.path) ? overrides[f.path] : null;
+    zip.file(f.path, text != null ? String(text) : await fsp.readFile(full), { date: (await fsp.stat(full)).mtime });
+    names.add(f.path.toLowerCase());
+  }
+  for (const [rel, text] of Object.entries(overrides || {})) {
+    const clean = toRel(root, inside(root, rel));
+    if (!names.has(clean.toLowerCase())) {
+      zip.file(clean, String(text));
+      names.add(clean.toLowerCase());
+    }
+  }
+  if (!names.size) throw new Error('The project has no files to download.');
+  if (pdf && fs.existsSync(pdf)) {
+    const rel = toRel(root, inside(root, pdfName || path.basename(pdf)));
+    if (!names.has(rel.toLowerCase())) zip.file(rel, await fsp.readFile(pdf));
+  }
+  const data = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 }, platform: 'DOS' });
+  if (out) await fsp.writeFile(out, data);
+  return { ok: true, files: names.size, bytes: data.length, data: out ? undefined : data };
+}
+
 // Folder for a project unpacked from a .zip: next to the .zip, named after it.
 function zipFolder(zipPath) {
   const base = path.join(path.dirname(zipPath), path.basename(zipPath, path.extname(zipPath)).trim() || 'project');
@@ -477,4 +512,4 @@ async function lastPdf(root, main) {
   return fs.existsSync(file) ? file : null;
 }
 
-module.exports = { inside, list, read, sources, write, create, rename, importPaths, importZip, zipFolder, scaffold, mainFile, engines, compile, stop, lastPdf, sourcePath };
+module.exports = { inside, list, read, sources, write, create, rename, importPaths, importZip, exportZip, zipFolder, scaffold, mainFile, engines, compile, stop, lastPdf, sourcePath };
