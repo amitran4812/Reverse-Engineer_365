@@ -111,7 +111,8 @@ export class PlotView {
     close.title = 'Remove this plot';
     close.onclick = () => ctx.remove?.(this);
     tools.append(reset, close);
-    head.append(h('span', 'viz-type', icon(PLOT_TYPES[spec.type]?.icon || 'chartScatter', 14)), this.titleEl, tools);
+    this.typeEl = h('span', 'viz-type');
+    head.append(this.typeEl, this.titleEl, tools);
     this.body = h('div', 'viz-body');
     this.back = h('canvas', 'viz-canvas');
     this.glCanvas = h('canvas', 'viz-canvas');
@@ -148,6 +149,10 @@ export class PlotView {
 
   updateHead() {
     this.titleEl.textContent = this.spec.title || autoTitle(this.spec);
+    if (this.typeEl && this.typeEl.dataset.type !== this.spec.type) {
+      this.typeEl.dataset.type = this.spec.type;
+      this.typeEl.innerHTML = icon(PLOT_TYPES[this.spec.type]?.icon || 'chartScatter', 14);
+    }
     const zoomable = ['scatter', 'line', 'histogram'].includes(this.spec.type);
     this.toolButtons.zoom.hidden = !zoomable;
     this.toolButtons.pan.hidden = !zoomable;
