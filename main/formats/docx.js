@@ -201,6 +201,8 @@ class Converter {
       }
       case 'blockquote':
         return this.blocks(node.content, { ...ctx, quote: true });
+      case 'callout':
+        return this.blocks(node.content, { ...ctx, quote: true });
       case 'codeBlock': {
         const lines = (node.content || []).map((t) => t.text).join('').split('\n');
         return lines.map((line) => new Paragraph({

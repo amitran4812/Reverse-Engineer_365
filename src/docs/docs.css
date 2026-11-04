@@ -229,3 +229,24 @@
   .doc-nav, .doc-comments { display: none !important; }
   .ProseMirror .doc-comment { background: transparent; border: 0; }
 }
+
+/* Notes blocks: callouts and toggles. */
+.ProseMirror .note-callout { display: flex; gap: 10px; margin: 0 0 8pt; padding: 8pt 10pt; border-radius: 6px; background: #eef4fc; border: 1px solid #d3e2f6; }
+.ProseMirror .note-callout[data-callout="tip"] { background: #edf7ef; border-color: #cfe7d4; }
+.ProseMirror .note-callout[data-callout="warn"] { background: #fdf4e3; border-color: #f2ddb0; }
+.ProseMirror .note-callout[data-callout="idea"] { background: #f4effb; border-color: #e0d4f2; }
+.note-callout-mark { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 0; display: grid; place-items: center; font: 700 12px var(--ui-font); color: #fff; background: #3b78c4; cursor: pointer; margin-top: 1px; }
+.note-callout[data-callout="tip"] .note-callout-mark { background: #2f8a46; }
+.note-callout[data-callout="warn"] .note-callout-mark { background: #c27c0e; }
+.note-callout[data-callout="idea"] .note-callout-mark { background: #7a52b3; }
+.note-callout-body { flex: 1; min-width: 0; color: #1f2328; }
+.note-callout-body > :last-child { margin-bottom: 0; }
+.ProseMirror .note-toggle { display: flex; gap: 4px; margin: 0 0 4pt; }
+.note-toggle-arrow { flex: none; width: 20px; height: 20px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; margin-top: 1px; position: relative; }
+.note-toggle-arrow:hover { background: rgba(0,0,0,.06); }
+.note-toggle-arrow::before { content: ""; position: absolute; left: 7px; top: 5px; border: 5px solid transparent; border-left: 7px solid #6b7280; border-right: 0; transform: rotate(90deg); transform-origin: 3px 5px; transition: transform .15s; }
+.note-toggle.closed > .note-toggle-arrow::before { transform: none; }
+.note-toggle-body { flex: 1; min-width: 0; }
+.note-toggle-body > p:first-child { font-weight: 600; }
+.note-toggle.closed > .note-toggle-body > :not(:first-child) { display: none; }
+@media print { .note-toggle.closed > .note-toggle-body > :not(:first-child) { display: block; } }

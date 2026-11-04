@@ -18,6 +18,7 @@ import { NotesKeys, createNotes, notesHtml, notesPlaceholder, notesState } from 
 import { NoteFile } from './notes-media.js';
 import { NoteBoard } from './notes-board.js';
 import { Comment, TableOfContents, createReview } from './review.js';
+import { Callout, Toggle } from './notes-blocks.js';
 import '../shared/dark.css';
 
 const FONTS = ['Calibri', 'Arial', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New', 'Consolas'];
@@ -64,6 +65,8 @@ const editor = new Editor({
     PageBreak,
     Comment,
     TableOfContents,
+    Callout,
+    Toggle,
   ],
   content: '<p></p>',
   autofocus: true,
