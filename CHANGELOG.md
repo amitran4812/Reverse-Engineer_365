@@ -11,6 +11,14 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Documents that ask for Calibri, Cambria, Arial, Helvetica, Times New Roman or Courier New keep their layout on computers without those fonts: a free font with the same letter widths stands in.
 - Fonts are kept when you save: Word files, PowerPoint files and Plot's Excel files (fonts and sizes of cells, also when you open one).
 
+## 0.2.38: Excel files from other programs open
+
+- **Workbooks that showed "Cannot read properties of undefined (reading 'sheets')" now open.** Many programs besides Excel (bank and accounting exports, reporting tools, apps built on Microsoft's .NET library) save .xlsx files in a slightly different way. Plot now reads them, with their formatting.
+- Files saved in Excel's **Strict Open XML** format open too.
+- A file that ends in .xlsx but is really an older .xls, a web page table or CSV opens instead of failing.
+- The same files work in **Analyze** (big files), **Add rows / Add columns**, and when you attach them to Claude.
+- A password-protected workbook now says so: remove the password in Excel and open it again.
+
 ## 0.2.37: Light, dark or system theme
 
 - **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.

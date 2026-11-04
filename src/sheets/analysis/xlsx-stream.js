@@ -88,14 +88,18 @@ async function streamEntry(reader, entry, onText) {
   onText(decoder.decode());
 }
 
+// Tags written with a namespace prefix (<x:row>, from .NET's Open XML SDK and
+// many report exporters) read the same as Excel's plain ones.
+const unprefix = (s) => (s.includes(':') ? s.replace(/<(\/?)[A-Za-z_][\w.-]*:/g, '<$1') : s);
+
 async function entryText(reader, entries, name) {
-  const e = entries.get(name);
+  const e = name && entries.get(name);
   if (!e) return null;
   let s = '';
   await streamEntry(reader, e, (t) => {
     s += t;
   });
-  return s;
+  return unprefix(s);
 }
 
 const unescapeXml = (s) => s.replace(/&(lt|gt|amp|quot|apos|#\d+|#x[0-9a-f]+);/gi, (m, e) => {
@@ -111,24 +115,50 @@ const attr = (s, name) => {
   return m ? (m[1].includes('&') ? unescapeXml(m[1]) : m[1]) : null;
 };
 
-function resolveTarget(target) {
-  const t = target.replace(/^\//, '');
-  return t.startsWith('xl/') ? t : `xl/${t.replace(/^\.\//, '')}`;
+// A relationship target, relative to the folder of the part that points at it.
+function resolveTarget(target, dir = 'xl/') {
+  if (target.startsWith('/')) return target.slice(1);
+  const parts = `${dir}${target}`.split('/');
+  const out = [];
+  for (const p of parts) {
+    if (p === '..') out.pop();
+    else if (p && p !== '.') out.push(p);
+  }
+  return out.join('/');
+}
+
+function relsOf(xml, dir) {
+  const out = [];
+  for (const m of (xml || '').matchAll(/<Relationship\b[^>]*>/g)) {
+    if (attr(m[0], 'TargetMode') === 'External') continue;
+    out.push({ id: attr(m[0], 'Id'), type: (attr(m[0], 'Type') || '').split('/').pop(), path: resolveTarget(attr(m[0], 'Target') || '', dir) });
+  }
+  return out;
+}
+
+// The workbook part, its sheets, shared strings and styles. Excel keeps the
+// workbook at xl/workbook.xml, but the package's own relationships decide.
+async function workbookParts(reader, entries) {
+  const root = relsOf(await entryText(reader, entries, '_rels/.rels'), '');
+  let book = root.find((r) => r.type === 'officeDocument')?.path;
+  if (!book || !entries.has(book)) book = 'xl/workbook.xml';
+  const wb = await entryText(reader, entries, book);
+  if (!wb) throw new Error('This file is not a valid .xlsx workbook');
+  const dir = book.includes('/') ? book.slice(0, book.lastIndexOf('/') + 1) : '';
+  const rels = relsOf(await entryText(reader, entries, `${dir}_rels/${book.slice(dir.length)}.rels`), dir);
+  const byId = Object.fromEntries(rels.map((r) => [r.id, r.path]));
+  const sheets = [];
+  for (const m of wb.matchAll(/<sheet\b[^>]*>/g)) {
+    const id = attr(m[0], 'r:id') || attr(m[0], 'id');
+    if (byId[id]) sheets.push({ name: attr(m[0], 'name'), path: byId[id] });
+  }
+  const part = (type, fallback) => rels.find((r) => r.type === type)?.path || fallback;
+  return { sheets, strings: part('sharedStrings', 'xl/sharedStrings.xml'), styles: part('styles', 'xl/styles.xml') };
 }
 
 export async function xlsxSheets(reader, entries = null) {
   entries ||= await zipEntries(reader);
-  const wb = await entryText(reader, entries, 'xl/workbook.xml');
-  if (!wb) throw new Error('This file is not a valid .xlsx workbook');
-  const rels = (await entryText(reader, entries, 'xl/_rels/workbook.xml.rels')) || '';
-  const targets = {};
-  for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) targets[attr(m[0], 'Id')] = attr(m[0], 'Target');
-  const sheets = [];
-  for (const m of wb.matchAll(/<sheet\b[^>]*>/g)) {
-    const id = attr(m[0], 'r:id') || attr(m[0], 'id');
-    if (targets[id]) sheets.push({ name: attr(m[0], 'name'), path: resolveTarget(targets[id]) });
-  }
-  return sheets;
+  return (await workbookParts(reader, entries)).sheets;
 }
 
 const BUILTIN_DATES = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 45, 46, 47, 50, 51, 52, 53, 54, 55, 56, 57, 58]);
@@ -148,13 +178,13 @@ function dateStyles(styles) {
   return out;
 }
 
-async function sharedStrings(reader, entries) {
-  const e = entries.get('xl/sharedStrings.xml');
+async function sharedStrings(reader, entries, name) {
+  const e = entries.get(name);
   const out = [];
   if (!e) return out;
   let buf = '';
   await streamEntry(reader, e, (t) => {
-    buf += t;
+    buf = unprefix(buf + t);
     let end = buf.lastIndexOf('</si>');
     if (end < 0) return;
     end += 5;
@@ -182,11 +212,12 @@ const colOf = (ref) => {
 
 export async function parseXlsx(reader, { sheet = 0, onProgress } = {}) {
   const entries = await zipEntries(reader);
-  const sheets = await xlsxSheets(reader, entries);
+  const parts = await workbookParts(reader, entries);
+  const { sheets } = parts;
   const pick = typeof sheet === 'string' ? sheets.find((s) => s.name === sheet) : sheets[sheet];
   if (!pick) throw new Error('That sheet is not in the workbook');
-  const strings = await sharedStrings(reader, entries);
-  const isDate = dateStyles(await entryText(reader, entries, 'xl/styles.xml'));
+  const strings = await sharedStrings(reader, entries, parts.strings);
+  const isDate = dateStyles(await entryText(reader, entries, parts.styles));
   const entry = entries.get(pick.path);
   if (!entry) throw new Error(`The workbook is missing ${pick.path}`);
 
@@ -254,6 +285,7 @@ export async function parseXlsx(reader, { sheet = 0, onProgress } = {}) {
   };
 
   const scan = () => {
+    buf = unprefix(buf);
     re.lastIndex = 0;
     let m;
     let last = 0;

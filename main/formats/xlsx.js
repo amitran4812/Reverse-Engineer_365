@@ -128,9 +128,92 @@ function plainInput(cell) {
   return String(v);
 }
 
-async function importXlsx(buffer) {
+// Some tools write valid workbooks that ExcelJS can't read: tags with a namespace
+// prefix (<x:workbook>, from .NET's Open XML SDK and many report exporters) or
+// Strict Open XML namespaces. Rewrite those parts the way Excel itself saves them.
+const NS_ALIASES = {
+  'http://purl.oclc.org/ooxml/spreadsheetml/main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+  'http://purl.oclc.org/ooxml/officeDocument/relationships': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+};
+const PLAIN_NS = new Set([
+  'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+  'http://schemas.openxmlformats.org/package/2006/relationships',
+  'http://schemas.openxmlformats.org/package/2006/content-types',
+]);
+
+function plainXml(xml) {
+  let out = xml;
+  for (const [strict, transitional] of Object.entries(NS_ALIASES)) out = out.split(strict).join(transitional);
+  out = out.replace(/(Type|Target)="http:\/\/purl\.oclc\.org\/ooxml\/officeDocument\/relationships\//g, '$1="http://schemas.openxmlformats.org/officeDocument/2006/relationships/');
+  for (const m of [...out.matchAll(/\sxmlns:([\w.-]+)="([^"]*)"/g)]) {
+    const [decl, prefix, ns] = m;
+    if (!PLAIN_NS.has(ns)) continue;
+    const esc = prefix.replace(/[.-]/g, '\\$&');
+    out = out.replace(new RegExp(`<(/?)${esc}:`, 'g'), '<$1');
+    const root = /<[A-Za-z][^>]*>/.exec(out.replace(/^<\?[^>]*\?>/, ''))?.[0] || '';
+    out = out.replace(decl, / xmlns="/.test(root) ? '' : ` xmlns="${ns}"`);
+  }
+  return out;
+}
+
+async function normalizePackage(buffer) {
+  const JSZip = require('jszip');
+  const zip = await JSZip.loadAsync(buffer);
+  let changed = false;
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir || !/\.(xml|rels)$/i.test(entry.name)) continue;
+    const xml = await entry.async('string');
+    const fixed = plainXml(xml);
+    if (fixed !== xml) {
+      zip.file(entry.name, fixed);
+      changed = true;
+    }
+  }
+  return changed ? zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }) : null;
+}
+
+// Loads a workbook with ExcelJS, rewriting unusual packages first when needed.
+async function loadWorkbook(buffer) {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
+  try {
+    await wb.xlsx.load(buffer);
+    // ExcelJS only looks for xl/workbook.xml; elsewhere it quietly finds no sheets.
+    if (!wb.worksheets.length) throw new Error('This workbook has no sheets ExcelJS can read');
+    return wb;
+  } catch (err) {
+    const fixed = await normalizePackage(buffer).catch(() => null);
+    if (!fixed) throw err;
+    const again = new ExcelJS.Workbook();
+    await again.xlsx.load(fixed);
+    if (!again.worksheets.length) throw err;
+    return again;
+  }
+}
+
+// ExcelJS keeps styles; SheetJS reads the rest (workbooks stored at odd paths,
+// binary .xlsb parts, and anything ExcelJS still can't parse).
+async function importOoxml(buffer) {
+  try {
+    return await importXlsx(buffer);
+  } catch (err) {
+    try {
+      return require('./imports').importSheetJs(buffer);
+    } catch (sheetJsErr) {
+      throw readError(/password/i.test(sheetJsErr?.message) ? sheetJsErr : err);
+    }
+  }
+}
+
+function readError(err) {
+  const msg = String(err?.message || err);
+  if (/encrypt|password/i.test(msg)) {
+    return new Error('Work couldn’t read this workbook. If it is password protected, remove the password in Excel and try again.');
+  }
+  return new Error(`Work couldn’t read this workbook. It may be damaged or saved in a format Work doesn’t know yet (${msg}).`);
+}
+
+async function importXlsx(buffer) {
+  const wb = await loadWorkbook(buffer);
   const sheets = [];
   wb.eachSheet((ws) => {
     const cells = {};
@@ -235,4 +318,4 @@ function exportOds(model) {
   return XLSX.write(wb, { type: 'buffer', bookType: 'ods' });
 }
 
-module.exports = { exportXlsx, importXlsx, importCsv, exportCsv, exportOds };
+module.exports = { exportXlsx, importXlsx, importOoxml, loadWorkbook, importCsv, exportCsv, exportOds };

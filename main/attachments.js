@@ -22,9 +22,7 @@ const clip = (s) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}\n…(truncat
 const textBlock = (name, body) => ({ type: 'text', text: `<attachment name="${name.replace(/"/g, "'")}">\n${clip(body)}\n</attachment>` });
 
 async function xlsxText(buf) {
-  const ExcelJS = require('exceljs');
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buf);
+  const wb = await require('./formats/xlsx').loadWorkbook(buf);
   const parts = [];
   wb.eachSheet((ws) => {
     const rows = [];
