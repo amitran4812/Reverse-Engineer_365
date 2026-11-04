@@ -2,6 +2,15 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## Next: More fonts everywhere
+
+- **60 fonts included with Work**, so they look the same on every computer and work offline: sans serif (Inter, Roboto, Open Sans, Lato, Montserrat, Poppins and more), serif (Merriweather, Lora, Playfair Display, EB Garamond and more), monospace (Fira Code, JetBrains Mono, Source Code Pro and more), display, handwriting, and Hindi, Bengali, Tamil, Arabic and Hebrew faces.
+- **Your computer's own fonts** are listed too, under **On this computer**. Type any font name in the search box and press Enter to use it.
+- **One font picker everywhere**: search, sections for recently used, included and installed fonts, each name shown in its own face. It's in Write and Notes, in Present (Home › Font, new), in Plot (Home › Font, new, with a font size) and in the LaTeX editor (View › Editor font, monospace fonts).
+- Read's **Fill & Sign** offers ten included handwriting fonts for typed signatures, plus the handwriting fonts your computer has.
+- Documents that ask for Calibri, Cambria, Arial, Helvetica, Times New Roman or Courier New keep their layout on computers without those fonts: a free font with the same letter widths stands in.
+- Fonts are kept when you save: Word files, PowerPoint files and Plot's Excel files (fonts and sizes of cells, also when you open one).
+
 ## 0.2.37: Light, dark or system theme
 
 - **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.

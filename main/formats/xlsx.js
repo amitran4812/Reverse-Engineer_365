@@ -76,8 +76,8 @@ async function exportXlsx(model) {
         }
       }
       const s = cell.s || {};
-      if (s.b || s.i || s.u || s.color) {
-        c.font = { bold: !!s.b, italic: !!s.i, underline: !!s.u, ...(hex(s.color) ? { color: { argb: `FF${hex(s.color)}` } } : {}) };
+      if (s.b || s.i || s.u || s.color || s.font || s.size) {
+        c.font = { name: s.font || 'Calibri', size: s.size || 11, bold: !!s.b, italic: !!s.i, underline: !!s.u, ...(hex(s.color) ? { color: { argb: `FF${hex(s.color)}` } } : {}) };
       }
       if (hex(s.bg)) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex(s.bg)}` } };
       if (s.align) c.alignment = { horizontal: s.align };
@@ -148,10 +148,16 @@ async function importXlsx(buffer) {
         if (cell.font?.italic) s.i = true;
         if (cell.font?.underline) s.u = true;
         if (argbToCss(cell.font?.color)) s.color = argbToCss(cell.font.color);
+        if (cell.font?.name && cell.font.name !== 'Calibri') s.font = String(cell.font.name);
+        if (cell.font?.size && cell.font.size !== 11 && cell.font.size >= 4 && cell.font.size <= 96) s.size = Number(cell.font.size);
         if (cell.fill?.type === 'pattern' && argbToCss(cell.fill.fgColor)) s.bg = argbToCss(cell.fill.fgColor);
         if (['left', 'center', 'right'].includes(cell.alignment?.horizontal)) s.align = cell.alignment.horizontal;
         const fmt = guessFmt(cell.numFmt);
         if (fmt) s.fmt = fmt;
+        if (v === '') {
+          delete s.font;
+          delete s.size;
+        }
         if (v === '' && !Object.keys(s).length) return;
         const out = Object.keys(s).length ? { v, s } : { v };
         if (v.startsWith('=') && r !== undefined) out.r = r;

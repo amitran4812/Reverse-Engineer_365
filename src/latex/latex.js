@@ -24,6 +24,7 @@ import { PdfView, pdfPicture } from './pdf-view.js';
 import { presentDialog, preparePictures } from '../docs/to-present.js';
 import { keepLoadedImages } from '../docs/deck.js';
 import { findGraphic, readLatex } from '../docs/tex-deck.js';
+import { fontStack } from '../shared/fonts.js';
 import '../shared/dark.css';
 
 const info = await window.office.launchInfo();
@@ -77,7 +78,8 @@ const highlight = HighlightStyle.define([
 ]);
 const texLanguage = StreamLanguage.define(stex);
 const fontTheme = new Compartment();
-const fontCss = (px) => EditorView.theme({ '&': { fontSize: `${px}px` } });
+const fontCss = (px, family = prefs.fontFamily) => EditorView.theme({ '&': { fontSize: `${px}px` }, ...(family ? { '&.cm-editor .cm-scroller': { fontFamily: fontStack(family) } } : {}) });
+const MONO_NAME = /mono|code|consol|courier|cousine|menlo|cascadia|inconsolata|terminal|hack|iosevka/i;
 
 const commandInfo = new Map(COMMANDS.map(([name, , detail]) => [name, detail]));
 const commandHover = hoverTooltip((view, pos) => {
@@ -283,10 +285,16 @@ const viewTab = {
       { type: 'big', icon: 'find', label: 'Fit Width', run: () => pdf.setZoom('fit') },
     ] },
     { label: 'Editor', items: [
+      { type: 'font', title: 'Editor font', width: 120, value: () => prefs.fontFamily || 'Default', filter: (n, g) => g === 'mono' || (!g && MONO_NAME.test(n)), change: (f) => setEditorFont(f) },
       { type: 'select', title: 'Editor font size', width: 70, options: [11, 12, 13, 14, 15, 16, 18, 20, 24].map((n) => ({ value: String(n), label: `${n} px` })), value: () => String(prefs.fontSize), change: (v) => setFontSize(Number(v)) },
     ] },
   ],
 };
+
+function setEditorFont(family) {
+  prefs.fontFamily = family;
+  setFontSize(prefs.fontSize);
+}
 
 function setFontSize(px) {
   prefs.fontSize = px;

@@ -17,9 +17,9 @@ import { openCiteDialog } from '../shared/cite.js';
 import { NotesKeys, createNotes, notesHtml, notesPlaceholder, notesState } from './notes.js';
 import { NoteFile } from './notes-media.js';
 import { NoteBoard } from './notes-board.js';
+import { firstFamily, fontStack } from '../shared/fonts.js';
 import '../shared/dark.css';
 
-const FONTS = ['Calibri', 'Arial', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New', 'Consolas'];
 const SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72];
 const MARGINS = { narrow: '0.5in', normal: '1in', wide: '1.5in' };
 
@@ -204,7 +204,7 @@ const homeTab = {
     ] },
     { label: 'Font', items: [
       { type: 'row', items: [
-        { type: 'select', title: 'Font', width: 132, options: FONTS.map((f) => ({ value: f, label: f, style: `font-family:${f}` })), value: () => (editor.getAttributes('textStyle').fontFamily || 'Calibri').replace(/["']/g, '').split(',')[0], change: (f) => chain().setFontFamily(f).run() },
+        { type: 'font', title: 'Font', width: 132, value: () => firstFamily(editor.getAttributes('textStyle').fontFamily) || 'Calibri', change: (f) => chain().setFontFamily(fontStack(f)).run() },
         { type: 'select', title: 'Font size', width: 56, options: SIZES.map((s) => ({ value: String(s), label: String(s) })), value: currentFontSize, change: (s) => chain().setFontSize(`${s}pt`).run() },
       ] },
       { type: 'row', items: [

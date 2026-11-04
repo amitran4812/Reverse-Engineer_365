@@ -105,6 +105,21 @@ button { cursor: default; }
 .rb-group-body:has(> .rb-row) { flex-direction: column; justify-content: flex-start; }
 .rb-select { height: 24px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); padding: 0 4px; margin-right: 3px; }
 .rb-select:hover { border-color: #b8bec8; }
+.rb-font { display: inline-flex; align-items: center; gap: 4px; text-align: left; color: var(--text); cursor: pointer; }
+.rb-font-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.rb-font-caret { display: flex; color: var(--muted); }
+.font-popup { overflow: hidden; padding: 0; }
+.font-menu { display: flex; flex-direction: column; width: 290px; max-height: min(440px, 100%); min-height: 0; }
+.font-search { margin: 8px; height: 28px; border: 1px solid var(--line); border-radius: 5px; padding: 0 8px; background: var(--surface); color: var(--text); outline: 0; }
+.font-search:focus { border-color: var(--accent); }
+.font-list { overflow: auto; min-height: 0; padding: 0 6px 6px; }
+.font-head { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 8px 6px 4px; }
+.font-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; border: 0; background: transparent; color: var(--text); padding: 5px 8px; border-radius: 5px; text-align: left; }
+.font-item:hover { background: var(--hover); }
+.font-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.font-face { font-size: 15px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.font-name { color: var(--muted); font-size: 11px; }
+.font-empty { color: var(--muted); padding: 10px 8px; font-size: 12px; }
 .rb-split { display: flex; align-items: center; }
 .rb-split .rb-icon { width: 24px; border-radius: 4px 0 0 4px; }
 .rb-drop { width: 13px; height: 24px; justify-content: center; border-radius: 0 4px 4px 0; }

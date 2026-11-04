@@ -8,6 +8,7 @@ import { createShell, dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
 import { closePopup, popup } from '../shared/ribbon.js';
+import { fontStack } from '../shared/fonts.js';
 import { createAnalysis } from './analysis/workspace.js';
 import { appendTable, joinTable, JOINS, matchHeaders, tableOf } from './combine.js';
 import '../shared/dark.css';
@@ -123,6 +124,10 @@ function nearBlack(c) {
   return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) < 60;
 }
 
+// Sizes are points as in other spreadsheet apps; 11 pt is the grid's 13 px.
+const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36];
+const cellPx = (pt) => `${Math.round((pt * 13 / 11) * 10) / 10}px`;
+
 function renderCell(r, c) {
   const cell = td(r, c);
   if (!cell) return;
@@ -136,6 +141,8 @@ function renderCell(r, c) {
   const st = cell.style;
   st.fontWeight = s.b ? '700' : '';
   st.fontStyle = s.i ? 'italic' : '';
+  st.fontFamily = s.font ? fontStack(s.font) : '';
+  st.fontSize = s.size ? cellPx(s.size) : '';
   st.textDecoration = s.u ? 'underline' : '';
   st.color = s.color || '';
   st.background = s.bg || '';
@@ -327,6 +334,8 @@ function startEdit(initial = null) {
   const s = cellAt(row, col)?.s || {};
   editor.style.fontWeight = s.b ? '700' : '';
   editor.style.fontStyle = s.i ? 'italic' : '';
+  editor.style.fontFamily = s.font ? fontStack(s.font) : '';
+  editor.style.fontSize = s.size ? cellPx(s.size) : '';
   editor.focus();
   editor.setSelectionRange(editor.value.length, editor.value.length);
 }
@@ -1545,6 +1554,10 @@ const homeTab = {
       ] },
     ] },
     { label: 'Font', items: [
+      { type: 'row', items: [
+        { type: 'font', title: 'Font', width: 120, value: () => cellAt(sel.a.row, sel.a.col)?.s?.font || 'Calibri', change: (f) => styleSelection({ font: f === 'Calibri' ? null : f }) },
+        { type: 'select', title: 'Font size', width: 50, options: FONT_SIZES.map((n) => ({ value: String(n), label: String(n) })), value: () => String(cellAt(sel.a.row, sel.a.col)?.s?.size || 11), change: (v) => styleSelection({ size: Number(v) === 11 ? null : Number(v) }) },
+      ] },
       { type: 'row', items: [
         { type: 'text', text: 'B', style: 'font-weight:700', title: 'Bold', shortcut: 'Ctrl+B', run: () => toggleStyle('b'), active: active('b') },
         { type: 'text', text: 'I', style: 'font-style:italic', title: 'Italic', shortcut: 'Ctrl+I', run: () => toggleStyle('i'), active: active('i') },
