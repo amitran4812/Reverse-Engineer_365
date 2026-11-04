@@ -147,3 +147,17 @@ li[aria-selected] .cm-completionDetail { color: rgba(255,255,255,.85); }
 .tex-raw summary { cursor: default; color: var(--muted); }
 .tex-raw pre { font: 11.5px/1.45 Consolas, "Courier New", monospace; white-space: pre-wrap; word-break: break-word; background: #f7f8fa; border: 1px solid var(--line-soft); border-radius: 4px; padding: 8px; max-height: none; }
 .tex-status-path { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* Word count and the symbol palette. */
+.tex-count { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 8px; }
+.tex-count th, .tex-count td { color: var(--text); background: transparent; padding: 5px 10px; border-bottom: 1px solid var(--line-soft); text-align: right; }
+.tex-count th:first-child, .tex-count td:first-child { text-align: left; }
+.tex-count th { font-weight: 600; color: var(--muted) !important; font-size: 12px; }
+.tex-count tr.total td { font-weight: 700; border-bottom: 2px solid var(--line); }
+.tex-symbols { width: 330px; padding: 6px; }
+.tex-sym-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 6px; }
+.tex-sym-tabs button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 2px 9px; font-size: 12px; }
+.tex-sym-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tex-sym-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
+.tex-sym { height: 34px; border: 1px solid var(--line-soft); background: var(--surface); color: var(--text); border-radius: 4px; font: 17px "Cambria Math", "STIX Two Math", "Latin Modern Math", Cambria, serif; }
+.tex-sym:hover { background: var(--hover); border-color: var(--accent); }
