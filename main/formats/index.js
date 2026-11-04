@@ -107,12 +107,11 @@ async function openFile(file) {
     case 'odt':
       data = await imports.importOdt(await fs.readFile(file));
       break;
+    case 'xlsx':
     case 'xlsm':
-    case 'xltx': {
-      const buf = await fs.readFile(file);
-      data = await xlsx.importXlsx(buf).catch(() => imports.importSheetJs(buf));
+    case 'xltx':
+      data = await xlsx.importOoxml(await fs.readFile(file));
       break;
-    }
     case 'xls':
     case 'ods':
       data = imports.importSheetJs(await fs.readFile(file));
@@ -143,9 +142,6 @@ async function openFile(file) {
       data = { html: text.split(/\r?\n/).map((l) => `<p>${escapeHtml(l)}</p>`).join('') };
       break;
     }
-    case 'xlsx':
-      data = await xlsx.importXlsx(await fs.readFile(file));
-      break;
     case 'csv':
       data = xlsx.importCsv(await fs.readFile(file, 'utf8'));
       break;
@@ -173,10 +169,7 @@ async function readTable(file) {
   if (ext === 'csv') data = xlsx.importCsv(await fs.readFile(file, 'utf8'));
   else if (ext === 'tsv' || ext === 'tab' || ext === 'txt') data = xlsx.importCsv(await fs.readFile(file, 'utf8'), '\t');
   else if (ext === 'xls' || ext === 'ods') data = imports.importSheetJs(await fs.readFile(file));
-  else {
-    const buf = await fs.readFile(file);
-    data = await xlsx.importXlsx(buf).catch(() => imports.importSheetJs(buf));
-  }
+  else data = await xlsx.importOoxml(await fs.readFile(file));
   return { name: path.basename(file), data };
 }
 
