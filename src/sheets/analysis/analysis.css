@@ -135,6 +135,9 @@
 .viz-type { color: var(--muted); }
 .viz-title { flex: 1; font-weight: 600; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viz-tools { display: flex; gap: 1px; }
+/* Plot tools show on the selected plot or under the mouse, so a page of plots stays calm. */
+.viz-tools { transition: opacity .12s; }
+.viz:not(.active):not(:hover):not(:focus-within) .viz-tools { opacity: 0; }
 .viz-btn { width: 24px; height: 22px; border: 1px solid transparent; border-radius: 4px; background: transparent; display: inline-flex; align-items: center; justify-content: center; color: #4a5059; }
 .viz-btn:hover { background: var(--hover); }
 .viz-btn.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, white); color: var(--accent-dark); }

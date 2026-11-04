@@ -84,6 +84,9 @@ button { cursor: default; }
 .ribbon.collapsed .rb-collapse { transform: none; }
 .ribbon.collapsed .rb-panels { display: none; }
 .rb-panels { height: 96px; background: var(--surface); border-top: 1px solid var(--line-soft); margin: 0 6px 6px; border-radius: 0 0 8px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow-x: auto; overflow-y: hidden; }
+/* A thin scrollbar when the ribbon is wider than the window, so it doesn't cover the group names. */
+.rb-panels::-webkit-scrollbar { height: 4px; }
+.rb-panels::-webkit-scrollbar-thumb { background: #c3c8d0; border: 0; border-radius: 2px; }
 .rb-panel { display: none; height: 100%; padding: 4px 4px 0; }
 .rb-panel.active { display: flex; }
 .rb-group { display: flex; flex-direction: column; padding: 0 6px; border-right: 1px solid var(--line-soft); flex: none; }

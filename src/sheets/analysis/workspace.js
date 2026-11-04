@@ -34,7 +34,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     source: null,
     projectPath: null,
     calculated: [],
-    table: { open: true, source: 'auto', height: 210 },
+    table: { open: false, source: 'auto', height: 210 },
     panels: { left: true, right: true },
     undo: null,
   };
@@ -189,7 +189,9 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       }
       if (restore.filters) st.info = await client.call('restoreFilters', restore.filters).catch(() => st.info);
       restorePages(restore.pages || [{ title: 'Page 1', plots: restore.plots || [] }], restore.page || 0);
-      if (restore.table) Object.assign(st.table, restore.table);
+      // Files saved before 0.2.38 always had the details table open; they now
+      // open with it closed so the plots fill the screen.
+      if (restore.table) Object.assign(st.table, restore.table, restore.table.v ? {} : { open: false });
     } else {
       const cols = new Set(info.columns.map((c) => c.name));
       const fits = (v) => [v.spec.x, v.spec.color, ...(v.spec.y || []).map((s) => s.col)].filter(Boolean).every((n) => cols.has(n));
@@ -1619,7 +1621,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       calculated: st.calculated,
       pages: st.pages.map((pg) => ({ title: pg.title, plots: pg.plots.map((v) => v.spec) })),
       page: st.page,
-      table: { open: st.table.open, source: st.table.source, height: st.table.height },
+      table: { v: 2, open: st.table.open, source: st.table.source, height: st.table.height },
     };
   }
 
