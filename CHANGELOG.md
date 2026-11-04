@@ -7,7 +7,7 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Ctrl+D copies have their own marking.** Rows you mark in a copy no longer light up in the original (and the other way round), so a copy you change to a scatter plot, or any other type, works on its own.
 - **Pick a marking for any visualization.** In **Properties › Data › Marking**, choose **Marking** to link a visualization with the others again, pick another marking such as **Marking (2)**, or make a **New marking**. Visualizations with the same marking highlight the same rows, as in Spotfire. The status bar, details table, Clear Marking and Filter to Marked follow the selected visualization's marking.
 - The small chart icon on a visualization's title bar now changes when you change its type.
-- **A cleaner Analyze page that fits on one screen.** Analyze now opens with the details table closed, so the plots fill the window without scrolling. Open the table with **Details** on the View tab or the button on the left rail; your choice is saved with the analysis. Analyses saved before this version also open with the table closed.
+- **A cleaner Analyze page that fits on one screen.** Analyze now opens with the details table closed, so the plots fill the window without scrolling. Open the table with **Details** in the ribbon's **Show** group or the button on the left rail; your choice is saved with the analysis. Analyses saved before this version also open with the table closed.
 - Each plot's zoom, pan and settings buttons now show only on the selected plot or when you point at it, so a page of plots looks calmer.
 - The ribbon's scrollbar on small screens is now thin and no longer covers the group names.
 
