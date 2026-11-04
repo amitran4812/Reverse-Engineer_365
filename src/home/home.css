@@ -18,3 +18,47 @@
 .home-claude { flex: 1; display: flex; flex-direction: column; min-width: 0; max-width: 860px; margin: 0 auto; height: 100%; }
 .home-claude.claude-pane { border-left: 0; width: auto; }
 .home-claude .cp-head .cp-icon:last-child { display: none; }
+.home .bs-recent-row { grid-template-columns: 30px 1fr auto auto; }
+.bs-recent-add { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; opacity: 0; }
+.bs-recent-row:hover .bs-recent-add, .bs-recent-add:focus { opacity: 1; }
+.bs-recent-add:hover { background: var(--press); }
+.pj-lead { max-width: 720px; line-height: 1.5; }
+.pj-bar { display: flex; gap: 8px; margin: 16px 0 20px; }
+.pj-bar .btn, .pj-tools .btn { display: inline-flex; align-items: center; gap: 6px; }
+.pj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; max-width: 980px; }
+.pj-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+.pj-card:hover { border-color: var(--claude); box-shadow: 0 0 0 2px var(--claude-soft); }
+.pj-card .ico .a { fill: var(--claude); }
+.pj-card b { font-size: 15px; }
+.pj-card span { color: var(--muted); font-size: 12px; }
+.pj-card small { color: var(--muted); font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pj-page { flex: 1; display: flex; min-width: 0; height: 100%; }
+.pj-side { width: 400px; flex: none; display: flex; flex-direction: column; min-height: 0; padding: 18px 18px 10px 24px; border-right: 1px solid var(--line); overflow: hidden; }
+.pj-side.pj-dropping { background: var(--claude-soft); outline: 2px dashed var(--claude); outline-offset: -6px; }
+.pj-back { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); padding: 4px 6px; border-radius: 6px; font-size: 13px; }
+.pj-back:hover { background: var(--hover); color: var(--text); }
+.pj-title { display: flex; align-items: center; gap: 10px; margin: 8px 0 10px; }
+.pj-title .ico .a { fill: var(--claude); }
+.pj-title h1 { font-size: 22px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-about { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.pj-about textarea { resize: vertical; font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.pj-tools { display: flex; align-items: center; gap: 6px; margin: 12px 0 8px; }
+.pj-fill { flex: 1; }
+.pj-files { flex: 1; overflow-y: auto; margin: 0 -8px; padding: 0 8px; }
+.pj-file, .pj-folder { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 6px 6px; border-radius: 6px; }
+.pj-file:hover, .pj-file:focus { background: var(--hover); outline: none; }
+.pj-file > div:not(.pj-file-actions) { display: flex; flex-direction: column; min-width: 0; }
+.pj-file b { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-file span, .pj-folder span { color: var(--muted); font-size: 11px; }
+.pj-file.nested { padding-left: 26px; grid-template-columns: 24px 1fr auto; }
+.pj-file.missing b { color: var(--muted); text-decoration: line-through; }
+.pj-folder { grid-template-columns: 24px auto 1fr auto; margin-top: 6px; }
+.pj-folder b { font-size: 13px; }
+.pj-file-actions { display: flex; gap: 2px; opacity: 0; }
+.pj-file:hover .pj-file-actions, .pj-file:focus-within .pj-file-actions { opacity: 1; }
+.pj-file .cp-icon, .pj-folder .cp-icon { width: 26px; height: 26px; }
+.pj-drop-hint { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 34px 16px; margin-top: 8px; border: 2px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+.pj-drop-hint b { color: var(--text); }
+.pj-foot { font-size: 11px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.pj-chat { max-width: none; }
+.cp-project { background: color-mix(in srgb, var(--claude) 20%, var(--surface)); }

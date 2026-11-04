@@ -98,6 +98,24 @@ contextBridge.exposeInMainWorld('office', {
     setSignatures: (list) => ipcRenderer.invoke('pdf:set-signatures', list),
     user: () => ipcRenderer.invoke('pdf:user'),
   },
+  projects: {
+    list: () => ipcRenderer.invoke('projects:list'),
+    get: (id) => ipcRenderer.invoke('projects:get', id),
+    // { name, instructions, paths?, copy? }
+    create: (spec) => ipcRenderer.invoke('projects:create', spec),
+    update: (id, patch) => ipcRenderer.invoke('projects:update', id, patch),
+    remove: (id) => ipcRenderer.invoke('projects:remove', id),
+    addDialog: (id, folder) => ipcRenderer.invoke('projects:add-dialog', id, !!folder),
+    addPaths: (id, paths, opts) => ipcRenderer.invoke('projects:add-paths', id, paths, opts),
+    // Dropped File objects: copied into the project.
+    addFiles: (id, files) => ipcRenderer.invoke('projects:add-paths', id, [...files].map((f) => webUtils.getPathForFile(f)), { copy: true }),
+    removeItem: (id, itemId) => ipcRenderer.invoke('projects:remove-item', id, itemId),
+    pdfBytes: (id, file) => ipcRenderer.invoke('projects:pdf-bytes', id, file),
+    saveText: (id, key, text) => ipcRenderer.invoke('projects:save-text', id, key, text),
+    forPath: (file) => ipcRenderer.invoke('projects:for-path', file),
+    reveal: (id, file) => ipcRenderer.invoke('projects:reveal', id, file),
+    openFile: (file) => ipcRenderer.invoke('projects:open-file', file),
+  },
   templates: {
     list: () => ipcRenderer.invoke('templates:list'),
     upload: () => ipcRenderer.invoke('templates:upload'),

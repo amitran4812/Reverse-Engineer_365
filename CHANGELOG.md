@@ -2,6 +2,15 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.39: Projects, so Claude knows the whole piece of work
+
+- **Projects** keep the files for one piece of work together, and Claude reads all of them. Open **Projects** on the start screen, choose **New project**, give it a name and, if you like, a line about what it is for (for example "Literature review for chapter 3; review/ is my LaTeX draft"). Claude reads that first.
+- **Put anything in it**: research papers (PDF), Word, Excel and PowerPoint files, OpenDocument files, Present decks, LaTeX sources and .bib files, Markdown and text, code, CSV and pictures. **Add files** (or drag them onto the list) copies them into the project. **Add folder** links a folder such as a LaTeX project, so Claude always reads its files as they are now.
+- **Add files you made earlier, any time**: in Write, Plot, Present and Read use **File › Add to project** (a LaTeX project adds its whole folder), or hover a file under **Recent** on the start screen and click the project button. The file stays where it is and Claude reads its latest saved version.
+- **Chat with the project**: the project page has its own Claude chat with one-click **What's in this project**, **Compare the papers**, **Literature review** (opens in Write) and **Make a deck** (opens in Present). Answers name the files they come from.
+- **Claude in every app can use a project too**: click the folder button at the top of the Claude pane and pick one. A file that belongs to a project opens with Claude already reading that project; click the × on the "Project" chip to stop.
+- PDFs are read once when you add them, so later questions are quick, and the project is cached between messages so follow-up questions cost less. Claude reads up to about 150k tokens of text from a project (a dozen or more full papers); long files share the room fairly so none is left out. With a 1M-token model you can raise it to about 600k tokens in the project's options.
+
 ## 0.2.37: Light, dark or system theme
 
 - **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.

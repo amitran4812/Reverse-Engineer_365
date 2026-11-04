@@ -2,7 +2,7 @@
 import '../shared/ui.css';
 import './home.css';
 import { icon } from '../shared/icons.js';
-import { APPS, escapeHtml, h, latexTile, latexZipTile, notesTile, settingsForm, startApp } from '../shared/shell.js';
+import { APPS, dialog, escapeHtml, h, latexTile, latexZipTile, notesTile, settingsForm, startApp } from '../shared/shell.js';
 import { CLOUDS, cloudSettings, openFromCloud } from '../shared/cloud.js';
 import { ClaudePane } from '../shared/claude-pane.js';
 import { MAKE, SYSTEM } from './make.js';
@@ -11,6 +11,8 @@ import { aiSettings } from '../shared/ai-settings.js';
 import { updateSettings, watchUpdates } from '../shared/updates.js';
 import { openCiteDialog } from '../shared/cite.js';
 import { themeButton, themeSettings } from '../shared/theme.js';
+import { addToProject } from '../shared/projects.js';
+import { projectPage, projectsList } from './project-view.js';
 import '../shared/dark.css';
 
 const info = await window.office.launchInfo();
@@ -25,6 +27,7 @@ root.innerHTML = `
     <nav class="home-nav">
       <button data-view="start" class="active">${icon('home', 18)}<span>Home</span></button>
       <button data-view="claude">${icon('sparkle', 18)}<span>Claude</span></button>
+      <button data-view="projects">${icon('project', 18)}<span>Projects</span></button>
       <button data-view="open">${icon('open', 18)}<span>Open</span></button>
       <button data-view="options">${icon('settings', 18)}<span>Options</span></button>
       <div class="home-version">Version ${escapeHtml(info.version)}</div>
@@ -51,6 +54,15 @@ async function recent() {
     const row = h('button', 'bs-recent-row', `${icon(m.mark, 22)}<div><b>${escapeHtml(name)}</b><span>${escapeHtml(r.path)}</span></div><time>${new Date(r.at).toLocaleDateString()}</time>`);
     row.style.setProperty('--accent', m.accent);
     row.onclick = () => window.office.openPath(r.path);
+    // Files made earlier can join a project any time.
+    const add = h('span', 'bs-recent-add', icon('project', 16));
+    add.title = 'Add to a project';
+    add.setAttribute('role', 'button');
+    add.onclick = (e) => {
+      e.stopPropagation();
+      addToProject(dialog, r.path);
+    };
+    row.querySelector('time').before(add);
     list.append(row);
   }
   return list;
@@ -91,10 +103,16 @@ function citeTile() {
   return t;
 }
 
-async function show(view) {
+const projectPanes = new Map();
+
+async function show(view, arg = null) {
   root.querySelectorAll('.home-nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   main.innerHTML = '';
   main.classList.toggle('chat', view === 'claude');
+  if (view === 'projects') {
+    if (arg) return projectPage(main, arg, { back: () => show('projects'), panes: projectPanes });
+    return projectsList(main, (id) => show('projects', id));
+  }
   if (view === 'claude') {
     claudePane();
     main.append(claudeHost);

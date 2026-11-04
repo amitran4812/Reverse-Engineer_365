@@ -101,8 +101,14 @@ function fromImages(list) {
   return id;
 }
 
+// Blocks made in the main process (a project's files), stored under a fixed id.
+function put(id, name, list) {
+  store.set(id, { name, kind: 'project', size: 0, blocks: list });
+  return id;
+}
+
 function blocks(ids) {
   return (ids || []).flatMap((id) => store.get(id)?.blocks || []);
 }
 
-module.exports = { EXTENSIONS, loadAll, fromImages, blocks };
+module.exports = { EXTENSIONS, loadAll, fromImages, blocks, put };
