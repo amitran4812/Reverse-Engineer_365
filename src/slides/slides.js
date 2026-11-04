@@ -225,15 +225,50 @@ function cellsTable(el) {
   return table;
 }
 
-function fitStage() {
+// Zoom: null fits the slide to the window, a number is a percent of the slide's real size.
+let zoom = null;
+
+function fitScale() {
   const pad = 32;
-  const availW = stageWrap.clientWidth - pad * 2;
-  const availH = stageWrap.clientHeight - pad * 2;
-  const scale = Math.max(0.1, Math.min(availW / W, availH / H));
+  return Math.max(0.1, Math.min((stageWrap.clientWidth - pad * 2) / W, (stageWrap.clientHeight - pad * 2) / H));
+}
+
+function fitStage() {
+  const scale = zoom == null ? fitScale() : zoom / 100;
   stage.style.setProperty('--scale', scale);
   stage.style.width = `${W * scale}px`;
   stage.style.height = `${H * scale}px`;
+  stageWrap.classList.toggle('zoomed', zoom != null);
+  if (typeof zoomLabel !== 'undefined') {
+    const pct = Math.round(scale * 100);
+    zoomLabel.textContent = `${pct}%`;
+    zoomRange.value = pct;
+    fitBtn.classList.toggle('on', zoom == null);
+  }
   return scale;
+}
+
+const ZOOM_STEPS = [10, 25, 33, 50, 66, 75, 85, 100, 125, 150, 175, 200, 250, 300, 400];
+
+function setZoom(z, anchor) {
+  const before = Number(stage.style.getPropertyValue('--scale')) || fitScale();
+  const rect = stageWrap.getBoundingClientRect();
+  const ax = anchor ? anchor.x - rect.left : stageWrap.clientWidth / 2;
+  const ay = anchor ? anchor.y - rect.top : stageWrap.clientHeight / 2;
+  const sx = (stageWrap.scrollLeft + ax - stage.offsetLeft) / before;
+  const sy = (stageWrap.scrollTop + ay - stage.offsetTop) / before;
+  zoom = z == null ? null : Math.max(10, Math.min(400, Math.round(z)));
+  const after = fitStage();
+  if (zoom != null) {
+    stageWrap.scrollLeft = sx * after + stage.offsetLeft - ax;
+    stageWrap.scrollTop = sy * after + stage.offsetTop - ay;
+  }
+}
+
+function zoomStep(dir) {
+  const now = Math.round((Number(stage.style.getPropertyValue('--scale')) || fitScale()) * 100);
+  const next = dir > 0 ? ZOOM_STEPS.find((v) => v > now) ?? 400 : [...ZOOM_STEPS].reverse().find((v) => v < now) ?? 10;
+  setZoom(next);
 }
 
 function renderStage() {
@@ -481,8 +516,14 @@ window.addEventListener('mouseup', () => {
   drag = null;
 });
 
-window.addEventListener('resize', fitStage);
-new ResizeObserver(fitStage).observe(stageWrap);
+window.addEventListener('resize', () => fitStage());
+new ResizeObserver(() => fitStage()).observe(stageWrap);
+stageWrap.addEventListener('wheel', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  const now = (Number(stage.style.getPropertyValue('--scale')) || fitScale()) * 100;
+  setZoom(now * Math.exp(-e.deltaY / 1000), { x: e.clientX, y: e.clientY });
+}, { passive: false });
 
 notes.addEventListener('focus', () => snapshot());
 notes.addEventListener('input', () => {
@@ -882,6 +923,12 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.target.closest?.('input, textarea, select, .claude-host, .modal')) return;
+  if (mod && !e.altKey && ['=', '+', '-', '0'].includes(e.key)) {
+    e.preventDefault();
+    if (e.key === '0') setZoom(null);
+    else zoomStep(e.key === '-' ? -1 : 1);
+    return;
+  }
   if (editingId) {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -1258,6 +1305,12 @@ const viewTab = {
   id: 'view',
   label: 'View',
   groups: [
+    { label: 'Zoom', items: [
+      { type: 'big', icon: 'zoomIn', label: 'Zoom In', shortcut: 'Ctrl+=', run: () => zoomStep(1) },
+      { type: 'big', icon: 'zoomOut', label: 'Zoom Out', shortcut: 'Ctrl+-', run: () => zoomStep(-1) },
+      { type: 'small', icon: 'find', label: '100%', run: () => setZoom(100) },
+      { type: 'small', icon: 'fitView', label: 'Fit to Window', shortcut: 'Ctrl+0', run: () => setZoom(null), active: () => zoom == null },
+    ] },
     { label: 'Show', items: [
       { type: 'big', icon: 'notes', label: 'Notes', run: () => root.classList.toggle('hide-notes'), active: () => !root.classList.contains('hide-notes') },
     ] },
@@ -1332,7 +1385,17 @@ const notesBtn = h('button', 'status-btn', 'Notes');
 notesBtn.onclick = () => root.classList.toggle('hide-notes');
 const playBtn = h('button', 'status-btn', 'Slide Show');
 playBtn.onclick = () => present(current);
-shell.statusRight.append(notesBtn, playBtn);
+const zoomBox = h('div', 'zoom', '<button title="Zoom out (Ctrl+-)">−</button><input type="range" min="10" max="400"><button title="Zoom in (Ctrl+=)">+</button><span class="zoom-pct"></span>');
+const zoomRange = zoomBox.querySelector('input');
+const zoomLabel = zoomBox.querySelector('span');
+const fitBtn = h('button', 'status-btn zoom-fit', icon('fitView'));
+fitBtn.title = 'Fit slide to window (Ctrl+0)';
+fitBtn.onclick = () => setZoom(null);
+zoomRange.oninput = () => setZoom(Number(zoomRange.value));
+zoomBox.querySelectorAll('button')[0].onclick = () => zoomStep(-1);
+zoomBox.querySelectorAll('button')[1].onclick = () => zoomStep(1);
+zoomBox.append(fitBtn);
+shell.statusRight.append(notesBtn, playBtn, zoomBox);
 
 const opened = shell.info.file?.data;
 if (opened?.themeData?.custom && opened.themeData.id === opened.theme) fileTemplates[opened.theme] = opened.themeData;
