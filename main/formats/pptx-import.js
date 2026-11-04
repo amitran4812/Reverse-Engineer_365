@@ -350,6 +350,7 @@ function parseBodyPr(b) {
   if (!b) return {};
   const out = {};
   if (attr(b, 'anchor')) out.anchor = attr(b, 'anchor');
+  if (attr(b, 'anchorCtr')) out.anchorCtr = attr(b, 'anchorCtr') === '1';
   for (const k of ['lIns', 'tIns', 'rIns', 'bIns']) if (attr(b, k) != null) out[k] = num(attr(b, k));
   if (attr(b, 'wrap')) out.wrap = attr(b, 'wrap');
   if (attr(b, 'vert')) out.vert = attr(b, 'vert');
@@ -845,7 +846,7 @@ async function readShape(node, ctx, part, out, tf) {
   el.style.color = first.color || baseColor || schemeColor('tx1', ctx) || '#000000';
   el.style.fontFamily = fontName(first.font, ctx) || ctx.theme.minor;
   el.style.bold = !!first.b;
-  el.style.align = { ctr: 'center', r: 'right', just: 'justify' }[first.algn] || 'left';
+  el.style.align = { ctr: 'center', r: 'right', just: 'justify' }[first.algn] || (body.anchorCtr ? 'center' : 'left');
   el.style.valign = { ctr: 'middle', b: 'bottom' }[body.anchor] || 'top';
   const ins = (v, d) => round((v ?? d) * k);
   el.style.pad = [ins(body.tIns, 45720), ins(body.rIns, 91440), ins(body.bIns, 45720), ins(body.lIns, 91440)];
@@ -1162,4 +1163,4 @@ async function importPptx(buffer) {
   return { format: 'rea-slides', version: 1, theme: 'paper', size, layers, layouts, slides };
 }
 
-module.exports = { importPptx, presetPath };
+module.exports = { importPptx, presetPath, shapeSvg, paintCss };

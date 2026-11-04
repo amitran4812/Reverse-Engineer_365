@@ -345,8 +345,104 @@ async function isNotes(buffer) {
   }
 }
 
+// ---------- formatting mammoth leaves out
+
+// Word's highlight names to colours.
+const HIGHLIGHT = { yellow: '#ffff00', green: '#00ff00', cyan: '#00ffff', magenta: '#ff00ff', blue: '#0000ff', red: '#ff0000', darkBlue: '#000080', darkCyan: '#008080', darkGreen: '#008000', darkMagenta: '#800080', darkRed: '#800000', darkYellow: '#808000', darkGray: '#808080', lightGray: '#c0c0c0', black: '#000000', white: '#ffffff' };
+const JC = { center: 'center', right: 'right', end: 'right', both: 'justify', distribute: 'justify' };
+const M = { open: '\uE000', close: '\uE002', sep: '\uE001', para: '\uE003', size: '\uE004' };
+
+// Marks runs with colours, fonts, sizes and highlights, paragraphs with their
+// alignment and pictures with their size, as private-use text that mammoth
+// passes through; restoreMarks turns the marks back into HTML.
+async function markFormatting(buffer) {
+  const { DOMParser, XMLSerializer } = require('@xmldom/xmldom');
+  const zip = await JSZip.loadAsync(buffer);
+  const file = zip.file('word/document.xml');
+  if (!file) return { buffer, spans: [] };
+  const doc = new DOMParser({ onError: () => {} }).parseFromString(await file.async('string'), 'application/xml');
+  const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const el = (name) => Array.from(doc.getElementsByTagNameNS(W, name));
+  const child = (n, name) => Array.from(n?.childNodes || []).find((c) => c.localName === name && c.namespaceURI === W);
+  const val = (n) => n?.getAttributeNS(W, 'val') || n?.getAttribute('w:val') || '';
+  const text = (t) => {
+    const r = doc.createElementNS(W, 'w:r');
+    const node = doc.createElementNS(W, 'w:t');
+    node.setAttribute('xml:space', 'preserve');
+    node.appendChild(doc.createTextNode(t));
+    r.appendChild(node);
+    return r;
+  };
+  const spans = [];
+  for (const p of el('p')) {
+    const jc = JC[val(child(child(p, 'pPr'), 'jc'))];
+    if (!jc) continue;
+    const first = Array.from(p.childNodes).find((c) => c.localName !== 'pPr');
+    p.insertBefore(text(`${M.para}${jc}${M.sep}`), first || null);
+  }
+  for (const r of el('r')) {
+    const rPr = child(r, 'rPr');
+    if (!rPr || !Array.from(r.childNodes).some((c) => ['t', 'drawing', 'tab', 'br'].includes(c.localName))) continue;
+    const css = [];
+    const color = val(child(rPr, 'color'));
+    if (/^[0-9a-f]{6}$/i.test(color) && !/^0{6}$/.test(color)) css.push(`color:#${color.toLowerCase()}`);
+    const fonts = child(rPr, 'rFonts');
+    const face = fonts && (fonts.getAttributeNS(W, 'ascii') || fonts.getAttribute('w:ascii') || fonts.getAttribute('w:hAnsi'));
+    if (face) css.push(`font-family:${/\s/.test(face) ? `'${face.replace(/'/g, '')}'` : face}`);
+    const sz = Number(val(child(rPr, 'sz')));
+    if (sz) css.push(`font-size:${sz / 2}pt`);
+    const hl = HIGHLIGHT[val(child(rPr, 'highlight'))] || (/^[0-9a-f]{6}$/i.test(child(rPr, 'shd')?.getAttribute('w:fill') || '') && !/^(ffffff|auto)$/i.test(child(rPr, 'shd').getAttribute('w:fill')) ? `#${child(rPr, 'shd').getAttribute('w:fill').toLowerCase()}` : null);
+    if (!css.length && !hl) continue;
+    const open = `${hl ? `<mark data-color="${hl}" style="background-color:${hl}">` : ''}${css.length ? `<span style="${css.join(';')}">` : ''}`;
+    const close = `${css.length ? '</span>' : ''}${hl ? '</mark>' : ''}`;
+    spans.push({ open, close });
+    const i = spans.length - 1;
+    const t0 = doc.createElementNS(W, 'w:t');
+    t0.setAttribute('xml:space', 'preserve');
+    t0.appendChild(doc.createTextNode(`${M.open}${i}${M.sep}`));
+    const t1 = doc.createElementNS(W, 'w:t');
+    t1.setAttribute('xml:space', 'preserve');
+    t1.appendChild(doc.createTextNode(`${M.close}${i}${M.sep}`));
+    r.insertBefore(t0, rPr.nextSibling);
+    r.appendChild(t1);
+  }
+  // picture sizes ride in the alt text
+  const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+  for (const holder of [...Array.from(doc.getElementsByTagNameNS(WP, 'inline')), ...Array.from(doc.getElementsByTagNameNS(WP, 'anchor'))]) {
+    const ext = Array.from(holder.childNodes).find((c) => c.localName === 'extent');
+    const pr = Array.from(holder.childNodes).find((c) => c.localName === 'docPr');
+    const cx = Number(ext?.getAttribute('cx'));
+    const cy = Number(ext?.getAttribute('cy'));
+    if (!pr || !cx || !cy) continue;
+    pr.setAttribute('descr', `${pr.getAttribute('descr') || ''}${M.size}${Math.round(cx / 9525)}x${Math.round(cy / 9525)}${M.sep}`);
+  }
+  zip.file('word/document.xml', new XMLSerializer().serializeToString(doc));
+  return { buffer: await zip.generateAsync({ type: 'nodebuffer' }), spans };
+}
+
+function restoreMarks(html, spans) {
+  const S = M.sep;
+  return html
+    .replace(new RegExp(`<(p|h[1-6])>${M.para}(\\w+)${S}`, 'g'), (m, tag, a) => `<${tag} style="text-align:${a}">`)
+    .replace(new RegExp(`${M.open}(\\d+)${S}`, 'g'), (m, i) => spans[i]?.open || '')
+    .replace(new RegExp(`${M.close}(\\d+)${S}`, 'g'), (m, i) => spans[i]?.close || '')
+    .replace(/<img\b[^>]*>/g, (tag) => {
+      const m = new RegExp(`${M.size}(\\d+)x(\\d+)${S}`).exec(tag);
+      if (!m) return tag;
+      return tag.replace(m[0], '').replace(/ alt=""/, '').replace(/\s*\/?>$/, ` width="${m[1]}" height="${m[2]}" />`);
+    })
+    .replace(new RegExp(`${M.para}\\w+${S}|${M.size}\\d+x\\d+${S}|[${M.open}${M.close}]\\d+${S}`, 'g'), '');
+}
+
 async function importDocx(buffer) {
-  const result = await mammoth.convertToHtml({ buffer });
+  let marked = { buffer, spans: [] };
+  try {
+    marked = await markFormatting(buffer);
+  } catch {
+    // fall back to mammoth's own reading
+  }
+  const result = await mammoth.convertToHtml({ buffer: marked.buffer }, { styleMap: ['u => u', 'strike => s', "p[style-name='Title'] => h1:fresh", "p[style-name='Subtitle'] => h2:fresh"] });
+  result.value = restoreMarks(result.value, marked.spans);
   const notes = await isNotes(buffer);
   const json = notes ? await notesPart(buffer) : null;
   return { html: equations(checklists(result.value)), ...(json ? { json } : {}), notes, warnings: result.messages.map((m) => m.message) };

@@ -8,6 +8,8 @@ const xlsx = require('./xlsx');
 const { exportPptx } = require('./pptx');
 const { importPptx } = require('./pptx-import');
 const imports = require('./imports');
+const { importOdp } = require('./odp-import');
+const { importOdt } = require('./odt-import');
 
 // Which app opens which extension, and what each app can save to.
 const APPS = {
@@ -105,7 +107,8 @@ async function openFile(file) {
   let data;
   switch (ext) {
     case 'odt':
-      data = await imports.importOdt(await fs.readFile(file));
+    case 'fodt':
+      data = await importOdt(await fs.readFile(file));
       break;
     case 'xlsx':
     case 'xlsm':
@@ -120,7 +123,8 @@ async function openFile(file) {
       data = await importPptx(await fs.readFile(file));
       break;
     case 'odp':
-      data = { deckSpec: await imports.importOdp(await fs.readFile(file)), theme: 'paper' };
+    case 'fodp':
+      data = await importOdp(await fs.readFile(file));
       break;
     case 'docx':
       data = await docx.importDocx(await fs.readFile(file));

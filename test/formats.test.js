@@ -54,7 +54,8 @@ test('docx export produces a document that imports back with the same content', 
   assert.match(xml, /w:sz w:val="28"/); // 14pt
   assert.match(xml, /w:br w:type="page"/);
   const { html } = await importDocx(buf);
-  assert.match(html, /<h1>Quarterly plan<\/h1>/);
+  assert.match(html, /<h1 style="text-align:center">Quarterly plan<\/h1>/);
+  assert.match(html, /<span style="color:#c0392b;font-size:14pt">red<\/span>/);
   assert.match(html, /<strong>Bold/);
   assert.match(html, /<a href="https:\/\/example.com">/);
   assert.match(html, /<li>First<\/li>/);
@@ -199,10 +200,11 @@ test('imports PowerPoint, OpenDocument and legacy Excel files', async () => {
   const odp = await openFile(fx('deck.odp'));
   assert.equal(odp.app, 'slides');
   assert.equal(odp.path, null);
-  const [first, second, third] = odp.data.deckSpec.slides;
-  assert.deepEqual([first.layout, first.title, first.subtitle, first.notes], ['title', 'Launch plan', 'Q3 review', 'Welcome everyone.']);
-  assert.deepEqual([second.layout, second.bullets, second.notes], ['content', ['Grow revenue', 'Hire two engineers'], 'Focus on revenue first.']);
-  assert.deepEqual([third.layout, third.bullets, third.right_bullets], ['two', ['Slow'], ['Fast']]);
+  const words = (s) => s.elements.map((e) => [e.role, (e.html || '').replace(/<\/div>/g, '\n').replace(/<[^>]+>/g, '').trim()]);
+  const [first, second, third] = odp.data.slides;
+  assert.deepEqual([words(first), first.notes], [[['title', 'Launch plan'], ['subtitle', 'Q3 review']], 'Welcome everyone.']);
+  assert.deepEqual([words(second), second.notes], [[['title', 'Goals'], ['body', 'Grow revenue\nHire two engineers']], 'Focus on revenue first.']);
+  assert.deepEqual(words(third).slice(1), [['body', 'Slow'], ['body', 'Fast']]);
   const pptx = await openFile(fx('deck.pptx'));
   assert.equal(pptx.app, 'slides');
   assert.equal(pptx.path, null);
@@ -214,7 +216,7 @@ test('imports PowerPoint, OpenDocument and legacy Excel files', async () => {
   assert.deepEqual(text(p3).slice(-2), ['Slow', 'Fast']);
   const odt = await openFile(fx('notes.odt'));
   assert.equal(odt.app, 'docs');
-  assert.match(odt.data.html, /<h1>Report<\/h1><p>Hello world.<\/p><ul><li><p>First<\/p><\/li><\/ul><table>/);
+  assert.match(odt.data.html.replace(/<\/?span[^>]*>/g, ''), /<h1>Report<\/h1><p>Hello world.<\/p><ul><li><p>First<\/p><\/li><\/ul><table>/);
   for (const f of ['budget.xls', 'budget.ods']) {
     const r = await openFile(fx(f));
     assert.equal(r.app, 'sheets');
