@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app, safeStorage } = require('electron');
+const { mergeRecent, sortRecent } = require('../common/recent');
 
 const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (best quality)' },
@@ -141,16 +142,32 @@ function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModel
   return publicSettings();
 }
 
-function addRecent(appName, filePath) {
+// extra: { kind, cloud } (see common/recent.js); null clears a field.
+function addRecent(appName, filePath, extra = {}) {
   const raw = readRaw();
-  raw.recent = [{ app: appName, path: filePath, at: Date.now() }, ...raw.recent.filter((r) => r.path !== filePath)].slice(0, 15);
+  raw.recent = mergeRecent(raw.recent, { app: appName, path: filePath, at: Date.now(), ...extra });
   writeRaw(raw);
   // The OS recent list is shared by every account, so only use it when there's one.
-  if (require('./profiles').active().count === 1) app.addRecentDocument?.(filePath);
+  if (!extra.cloud && require('./profiles').active().count === 1) app.addRecentDocument?.(filePath);
 }
 
+function recentEntry(filePath) {
+  return readRaw().recent.find((r) => r.path === filePath) || null;
+}
+
+// Changes an entry without moving it to the top (pin, remove, a newer cloud copy).
+function editRecent(filePath, patch) {
+  const raw = readRaw();
+  raw.recent = patch === null
+    ? raw.recent.filter((r) => r.path !== filePath)
+    : raw.recent.map((r) => (r.path === filePath ? { ...r, ...patch, cloud: patch.cloud ? { ...r.cloud, ...patch.cloud } : r.cloud } : r));
+  writeRaw(raw);
+  return recent();
+}
+
+// Cloud files stay listed even when their cached copy is gone: opening downloads it again.
 function recent() {
-  return readRaw().recent.filter((r) => fs.existsSync(r.path));
+  return sortRecent(readRaw().recent.filter((r) => r.cloud || fs.existsSync(r.path)));
 }
 
 // Merges small internal values (not shown in Options) into the settings file.
@@ -158,4 +175,4 @@ function setRaw(patch) {
   writeRaw({ ...readRaw(), ...patch });
 }
 
-module.exports = { getApiKey, getSecret, setSecret, setRaw, publicSettings, update, addRecent, recent, readRaw };
+module.exports = { getApiKey, getSecret, setSecret, setRaw, publicSettings, update, addRecent, recentEntry, editRecent, recent, readRaw };

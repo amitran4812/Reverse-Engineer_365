@@ -25,6 +25,11 @@ contextBridge.exposeInMainWorld('office', {
   close: () => ipcRenderer.invoke('app:close'),
   fullscreen: (on) => ipcRenderer.invoke('app:fullscreen', on),
   recent: () => ipcRenderer.invoke('app:recent'),
+  // patch: { pinned } or null to remove the file from Recent.
+  editRecent: (file, patch) => ipcRenderer.invoke('app:recent-edit', file, patch),
+  // A newer copy of this window's cloud file arrived while it had unsaved changes.
+  onCloudNewer: (fn) => ipcRenderer.on('app:cloud-newer', (e, label) => fn(label)),
+  useFresh: () => ipcRenderer.invoke('app:use-fresh'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
   newWith: (spec) => ipcRenderer.invoke('app:new-with', spec),
   accounts: {
