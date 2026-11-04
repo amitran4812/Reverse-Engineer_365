@@ -7,7 +7,8 @@ const os = require('node:os');
 const path = require('node:path');
 const JSZip = require('jszip');
 const { exportDocx, importDocx } = require('../main/formats/docx');
-const { exportXlsx, importXlsx, importCsv, exportCsv } = require('../main/formats/xlsx');
+const { exportXlsx, importXlsx, importOoxml, importCsv, exportCsv } = require('../main/formats/xlsx');
+const { reshape } = require('./fixtures/odd-xlsx');
 const { exportPptx } = require('../main/formats/pptx');
 const { openFile, saveFile, appForFile } = require('../main/formats');
 const cellref = require('../common/cellref');
@@ -80,6 +81,28 @@ const book = {
     { name: 'Notes', cells: { A1: { v: 'hello' } }, cols: {} },
   ],
 };
+
+test('xlsx with prefixed tags (x:workbook) opens with its styles', async () => {
+  const buf = await reshape(await exportXlsx(book), { prefix: true });
+  assert.match(await (await JSZip.loadAsync(buf)).file('xl/workbook.xml').async('string'), /<x:workbook/);
+  const back = await importXlsx(buf);
+  assert.deepEqual(back.sheets.map((s) => s.name), ['Budget', 'Notes']);
+  assert.equal(back.sheets[0].cells.A1.v, 'Item');
+  assert.equal(back.sheets[0].cells.A1.s.b, true);
+  assert.equal(back.sheets[0].cells.B4.v, '=SUM(B2:B3)');
+});
+
+test('xlsx with the workbook at another path, or not really xlsx, still opens', async () => {
+  const moved = await importOoxml(await reshape(await exportXlsx(book), { bookPath: 'xl/book.xml' }));
+  assert.deepEqual(moved.sheets.map((s) => s.name), ['Budget', 'Notes']);
+  assert.equal(moved.sheets[0].cells.A1.v, 'Item');
+  const html = await importOoxml(Buffer.from('<table><tr><td>a</td><td>1</td></tr></table>'));
+  assert.equal(html.sheets[0].cells.B1.v, '1');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'odd-xlsx-'));
+  fs.writeFileSync(path.join(dir, 'Report.xlsx'), await reshape(await exportXlsx(book), { prefix: true, bookPath: 'xl/book.xml' }));
+  const opened = await openFile(path.join(dir, 'Report.xlsx'));
+  assert.equal(opened.data.sheets[0].cells.A1.v, 'Item');
+});
 
 test('xlsx round trip keeps values, formulas, styles and sheets', async () => {
   const buf = await exportXlsx(book);
