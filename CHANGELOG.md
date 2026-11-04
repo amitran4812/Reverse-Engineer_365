@@ -2,6 +2,12 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.38: Copied visualizations are independent
+
+- **Ctrl+D copies have their own marking.** Rows you mark in a copy no longer light up in the original (and the other way round), so a copy you change to a scatter plot, or any other type, works on its own.
+- **Pick a marking for any visualization.** In **Properties › Data › Marking**, choose **Marking** to link a visualization with the others again, pick another marking such as **Marking (2)**, or make a **New marking**. Visualizations with the same marking highlight the same rows, as in Spotfire. The status bar, details table, Clear Marking and Filter to Marked follow the selected visualization's marking.
+- The small chart icon on a visualization's title bar now changes when you change its type.
+
 ## 0.2.37: Light, dark or system theme
 
 - **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.
