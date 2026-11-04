@@ -317,3 +317,82 @@ test('reads an uploaded PowerPoint template: colours, fonts, background and mast
   assert.match(layoutXml, /<p:bg>.*blip/s);
   assert.ok(Object.keys(ozip.files).filter((f) => f.startsWith('ppt/media/')).length >= 2);
 });
+
+// Files made in LibreOffice, Google Slides and other apps open with their pictures and formatting.
+const fixture = (f) => path.join(__dirname, 'fixtures', f);
+const plain = (html) => (html || '').replace(/<\/div>/g, '\n').replace(/<[^>]+>/g, '').trim();
+
+test('odp opens with its master background, shapes, pictures, charts and tables', async () => {
+  const { app, path: saved, data } = await openFile(fixture('lo-styled.odp'));
+  assert.equal(app, 'slides');
+  assert.equal(saved, null);
+  assert.deepEqual(data.size, { w: 960, h: 540 });
+  const [s1, s2, s3, s4, s5] = data.slides;
+  assert.match(s1.bgCss, /linear-gradient\(45deg, #0B1F3A/);
+  assert.match(s1.elements[1].html, /color:#ffc040/);
+  assert.match(s2.elements[1].html, /--bc:#c03030[^>]*data-bu="•"/);
+  const shapes = s3.elements.filter((e) => e.type === 'shape' && e.svg);
+  assert.ok(shapes.length >= 6);
+  assert.match(shapes[0].html, /color:#ffffff/);
+  assert.equal(s3.elements.filter((e) => e.type === 'image')[0].src.slice(0, 22), 'data:image/png;base64,');
+  const charts = s4.elements.filter((e) => e.chart);
+  assert.equal(charts.length, 2);
+  assert.match(Buffer.from(charts[0].src.split(',')[1], 'base64').toString(), /Q4/);
+  const table = s5.elements.find((e) => e.type === 'table');
+  assert.deepEqual(table.rows[0], ['Region', 'Q1', 'Q2']);
+  assert.match(table.cells[0][0].fill, /#4f81bd/i);
+});
+
+test('odp drawn in Impress keeps gradients, rotation, groups and custom shapes', async () => {
+  const { data } = await openFile(fixture('impress.odp'));
+  const [, s2, s3] = data.slides;
+  const box = s2.elements.find((e) => plain(e.html) === 'Gradient box');
+  assert.match(box.svg, /linearGradient/);
+  assert.equal(s2.elements.find((e) => plain(e.html) === 'Rotated').style.rotate, 330);
+  assert.ok(s2.elements.filter((e) => e.type === 'shape').length >= 10);
+  assert.ok(s2.elements.some((e) => e.type === 'image'));
+  assert.equal(s3.bg, '#FFF3E0');
+  assert.ok(data.layouts.obj.elements.some((e) => e.role === 'title'));
+});
+
+test('odt, docx and rtf from LibreOffice keep fonts, colours, alignment, lists, tables and pictures', async () => {
+  for (const f of ['writer.odt', 'writer.docx', 'writer.rtf']) {
+    const { app, data } = await openFile(fixture(f));
+    assert.equal(app, 'docs', f);
+    const html = data.html;
+    assert.match(html, /<strong>(<span[^>]*>)?bold/, f);
+    assert.match(html, /<em>(<span[^>]*>)?italic/, f);
+    assert.match(html, /<u>(<span[^>]*>)?underlined/, f);
+    assert.match(html, /color:#cc0000[^>]*>red/, f);
+    assert.match(html, /background-color:#ffff00/, f);
+    assert.match(html, /font-family:Arial;font-size:18pt[^>]*>large Arial/, f);
+    assert.match(html, /<p style="text-align:center">(<span[^>]*>)?This line is centered/, f);
+    assert.match(html, /<p style="text-align:right">/, f);
+    assert.match(html, /<h2>(<strong>)?(<span[^>]*>)?Details/, f);
+    assert.match(html, /<ol>.*Step one/, f);
+    assert.match(html, /<img[^>]*src="data:image\/png;base64,|<img src="data:image\/png;base64,/, f);
+    assert.match(html, /<table>.*Region.*North.*South/, f);
+  }
+});
+
+test('Google Slides style decks keep cropped pictures, picture fills and bullets', async () => {
+  const { data } = await openFile(fixture('google-slides.pptx'));
+  const s = data.slides[1];
+  const pic = s.elements.find((e) => e.type === 'image');
+  assert.deepEqual(pic.style.crop, [0.15, 0, 0, 0.1]);
+  assert.match(pic.src, /^data:image\/jpeg/);
+  assert.match(s.elements.find((e) => e.prst === 'ellipse').svg, /<pattern/);
+  assert.match(s.elements.find((e) => e.role === 'body').html, /--bc:#E06666[^>]*data-bu="●"/);
+  assert.equal(plain(s.elements.find((e) => e.role === 'title').html), 'Made in Google Slides');
+});
+
+test('more file types open in the right app, and Apple files say how to export them', async () => {
+  for (const [f, app] of [['a.ppsx', 'slides'], ['a.potx', 'slides'], ['a.pptm', 'slides'], ['a.fodp', 'slides'], ['a.docm', 'docs'], ['a.dotx', 'docs'], ['a.rtf', 'docs'], ['a.fodt', 'docs'], ['a.xlsb', 'sheets'], ['a.numbers', 'sheets'], ['a.fods', 'sheets']]) assert.equal(appForFile(f), app, f);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'work-'));
+  fs.copyFileSync(fixture('styled.pptx'), path.join(dir, 'show.ppsx'));
+  const show = await openFile(path.join(dir, 'show.ppsx'));
+  assert.equal(show.data.slides.length, 5);
+  assert.equal(show.path, null);
+  fs.writeFileSync(path.join(dir, 'deck.key'), 'PK');
+  await assert.rejects(openFile(path.join(dir, 'deck.key')), /Export To > PowerPoint/);
+});

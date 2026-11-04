@@ -12,6 +12,7 @@
 const JSZip = require('jszip');
 const { DOMParser } = require('@xmldom/xmldom');
 const { chartSvg } = require('./pptx-chart');
+const { sniff } = require('./odf');
 
 const W = 960;
 const parseXml = (text) => new DOMParser({ onError: () => {} }).parseFromString(text, 'application/xml');
@@ -56,11 +57,13 @@ class Pkg {
   }
   async media(file) {
     const ext = (file || '').split('.').pop().toLowerCase();
-    if (!MIME[ext]) return null;
     const key = `media:${file}`;
     if (!this.cache.has(key)) {
       const f = this.zip.file(file);
-      this.cache.set(key, f ? `data:${MIME[ext]};base64,${await f.async('base64')}` : null);
+      // Some apps save pictures without an extension or under the wrong one; go by the bytes.
+      const data = f ? await f.async('nodebuffer') : null;
+      const type = data && (sniff(data) || MIME[ext]);
+      this.cache.set(key, type ? `data:${type};base64,${data.toString('base64')}` : null);
     }
     return this.cache.get(key);
   }

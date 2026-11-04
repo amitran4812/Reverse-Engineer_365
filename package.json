@@ -117,7 +117,8 @@
         {
           "ext": [
             "docx",
-            "odt"
+            "odt",
+            "rtf"
           ],
           "name": "Write document",
           "role": "Editor"
@@ -128,7 +129,9 @@
             "xlsm",
             "xls",
             "ods",
-            "csv"
+            "csv",
+            "xlsb",
+            "numbers"
           ],
           "name": "Plot workbook",
           "role": "Editor"
@@ -137,7 +140,9 @@
           "ext": [
             "reaslides",
             "pptx",
-            "odp"
+            "odp",
+            "ppsx",
+            "potx"
           ],
           "name": "Present presentation",
           "role": "Editor"
@@ -156,7 +161,8 @@
         {
           "ext": [
             "docx",
-            "odt"
+            "odt",
+            "rtf"
           ],
           "name": "Write document",
           "role": "Editor"
@@ -167,7 +173,8 @@
             "xlsm",
             "xls",
             "ods",
-            "csv"
+            "csv",
+            "xlsb"
           ],
           "name": "Plot workbook",
           "role": "Editor"
@@ -176,7 +183,9 @@
           "ext": [
             "reaslides",
             "pptx",
-            "odp"
+            "odp",
+            "ppsx",
+            "potx"
           ],
           "name": "Present presentation",
           "role": "Editor"

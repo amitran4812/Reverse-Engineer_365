@@ -353,7 +353,7 @@ async function readNode(node, ctx, out) {
       }
       el.type = 'image';
       el.src = src;
-      const crop = cropOf(g['fo:clip'], src, ctx);
+      const crop = cropOf(g['fo:clip'], src);
       if (crop) el.style.crop = crop;
       const mirror = g['style:mirror'] || '';
       if (/horizontal/.test(mirror) || /vertical/.test(mirror)) el.style.flip = [/horizontal/.test(mirror) ? -1 : 1, /vertical/.test(mirror) ? -1 : 1];
@@ -466,7 +466,7 @@ function scalePath(d, vx, vy, sx, sy) {
 }
 
 // fo:clip="rect(top, right, bottom, left)" in lengths of the picture's own size.
-function cropOf(clip, src, ctx) {
+function cropOf(clip, src) {
   const m = /rect\(([^)]*)\)/.exec(clip || '');
   if (!m) return null;
   const [t, r, b, l] = m[1].split(/[\s,]+/).map((v) => (v === 'auto' ? 0 : cm(v)));
@@ -476,7 +476,6 @@ function cropOf(clip, src, ctx) {
   const wcm = (size.width / 96) * 2.54;
   const hcm = (size.height / 96) * 2.54;
   const crop = [l / wcm, t / hcm, r / wcm, b / hcm].map((v) => Math.min(0.95, Math.max(0, round(v * 1000) / 1000)));
-  void ctx;
   return crop.some((v) => v) ? crop : null;
 }
 
@@ -559,7 +558,7 @@ async function backgroundOf(styleName, ctx) {
   return { bg: fill.hex ? `#${fill.hex}` : '#FFFFFF', bgCss: paintCss(fill) };
 }
 
-function notesOf(page, ctx) {
+function notesOf(page) {
   const notes = kid(page, 'presentation:notes');
   if (!notes) return '';
   return all(notes, 'draw:frame').filter((f) => attr(f, 'presentation:class') === 'notes')
@@ -613,7 +612,7 @@ async function importOdp(buffer) {
       layers: ids,
       bg: bg?.bg || '#FFFFFF',
       elements: out.map((e, i) => ({ ...e, id: `s${n}e${i}` })),
-      notes: notesOf(page, ctx),
+      notes: notesOf(page),
     };
     if (bg?.bgCss && bg.bgCss !== bg.bg) s.bgCss = bg.bgCss;
     if (pageStyle['presentation:visibility'] === 'hidden') s.hidden = true;
@@ -635,10 +634,8 @@ async function newSlideLayouts(master, styles, base, masterLayer) {
     delete el.cm;
     delete el.rot;
     const st = styleOf(f, ctx);
-    const { first } = textHtml(kid(f, 'draw:text-box') || f, ctx, st);
     await readText({ childNodes: [] }, f, el, st, ctx, out, cls);
     if (out[0]) ph[cls] = { ...out[0], type: 'text', html: '', placeholder: cls === 'title' ? 'Click to add title' : 'Click to add text' };
-    void first;
   }
   const bg = await backgroundOf(attr(master, 'draw:style-name'), ctx);
   const layer = await masterLayer(master);

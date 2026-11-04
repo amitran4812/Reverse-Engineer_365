@@ -2,6 +2,15 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## Next: Files from other apps open with their pictures and formatting
+
+- **Slides from LibreOffice Impress and Google Slides open the way they look.** OpenDocument presentations (.odp) used to bring in only the text. Now they open with their slide size, master artwork and backgrounds (colors, gradients, pictures), pictures (with crops), shapes and lines, rotated and grouped shapes, tables, charts, bullets and numbering, fonts, sizes and colors, and speaker notes. New slides you add use the deck's own master.
+- **.pptx files from Google Slides, LibreOffice and Keynote** keep cropped pictures, shapes filled with a picture, and text centered the way LibreOffice saves it. Pictures saved without a file extension, or under the wrong one, now show.
+- **Documents from LibreOffice Writer and Google Docs keep their look.** .odt files now open with pictures, fonts, sizes, colors, highlight, alignment, indents, headings, bullet and numbered lists, tables, links, footnotes and page breaks (before, only the text came across). .docx files now keep text colors, fonts, sizes, highlight, underline, paragraph alignment and picture sizes.
+- **Rich Text (.rtf) opens in Write**, from WordPad, TextEdit, Word or LibreOffice, with its formatting, lists, tables and pictures.
+- **More file types open:** PowerPoint shows and templates (.ppsx, .potx, .pptm), Word templates and macro documents (.dotx, .docm), Excel binary and macro templates (.xlsb, .xltm), Apple Numbers (.numbers), and the flat and template OpenDocument types (.fodp, .fodt, .fods, .otp, .ott, .ots). They open as a copy you save as .pptx, .docx or .xlsx.
+- Keynote (.key) and Pages (.pages) files explain how to export them: in Keynote choose **File › Export To › PowerPoint**, in Pages **File › Export To › Word**, then open that file here.
+
 ## 0.2.38: Excel files from other programs open
 
 - **Workbooks that showed "Cannot read properties of undefined (reading 'sheets')" now open.** Many programs besides Excel (bank and accounting exports, reporting tools, apps built on Microsoft's .NET library) save .xlsx files in a slightly different way. Plot now reads them, with their formatting.

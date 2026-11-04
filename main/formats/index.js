@@ -10,11 +10,12 @@ const { importPptx } = require('./pptx-import');
 const imports = require('./imports');
 const { importOdp } = require('./odp-import');
 const { importOdt } = require('./odt-import');
+const { importRtf } = require('./rtf-import');
 
 // Which app opens which extension, and what each app can save to.
 const APPS = {
   docs: {
-    open: ['docx', 'odt', 'html', 'htm', 'md', 'txt', 'tex'],
+    open: ['docx', 'docm', 'dotx', 'dotm', 'odt', 'fodt', 'ott', 'rtf', 'html', 'htm', 'md', 'txt', 'tex', 'pages'],
     save: [
       { name: 'Word document', extensions: ['docx'] },
       { name: 'Web page', extensions: ['html'] },
@@ -22,7 +23,7 @@ const APPS = {
     ],
   },
   sheets: {
-    open: ['xlsx', 'xlsm', 'xltx', 'xls', 'ods', 'csv', 'tsv', 'tab', 'parquet', 'workplot'],
+    open: ['xlsx', 'xlsm', 'xltx', 'xltm', 'xlsb', 'xls', 'ods', 'fods', 'ots', 'numbers', 'csv', 'tsv', 'tab', 'parquet', 'workplot'],
     save: [
       { name: 'Excel workbook', extensions: ['xlsx'] },
       { name: 'CSV (current sheet)', extensions: ['csv'] },
@@ -34,7 +35,7 @@ const APPS = {
     save: [{ name: 'PDF', extensions: ['pdf'] }],
   },
   slides: {
-    open: ['reaslides', 'pptx', 'odp'],
+    open: ['reaslides', 'pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm', 'odp', 'fodp', 'otp', 'key'],
     save: [
       { name: 'Present presentation', extensions: ['reaslides'] },
       { name: 'PowerPoint presentation (export)', extensions: ['pptx'] },
@@ -43,7 +44,13 @@ const APPS = {
 };
 
 // Formats Work reads but can't write back: they open as an unsaved copy.
-const IMPORT_ONLY = ['odt', 'xlsm', 'xltx', 'xls', 'pptx', 'odp'];
+const IMPORT_ONLY = ['odt', 'fodt', 'ott', 'rtf', 'docm', 'dotx', 'dotm', 'xlsm', 'xltx', 'xltm', 'xlsb', 'xls', 'fods', 'ots', 'numbers', 'pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm', 'odp', 'fodp', 'otp'];
+
+// Apple's own formats are a private database, not a document; the apps export standard files.
+const APPLE = {
+  key: 'This is a Keynote file. In Keynote choose File > Export To > PowerPoint, then open the .pptx here. Pictures, shapes and layouts come across.',
+  pages: 'This is a Pages file. In Pages choose File > Export To > Word, then open the .docx here.',
+};
 
 const BLANK = {
   docs: () => ({ html: '' }),
@@ -104,30 +111,49 @@ async function openFile(file) {
     const big = await analysisLaunch(file, ext, name, size);
     if (big) return big;
   }
+  if (APPLE[ext]) throw new Error(APPLE[ext]);
   let data;
   switch (ext) {
     case 'odt':
     case 'fodt':
+    case 'ott':
       data = await importOdt(await fs.readFile(file));
       break;
     case 'xlsx':
     case 'xlsm':
     case 'xltx':
+    case 'xltm':
       data = await xlsx.importOoxml(await fs.readFile(file));
       break;
     case 'xls':
+    case 'xlsb':
     case 'ods':
+    case 'fods':
+    case 'ots':
+    case 'numbers':
       data = imports.importSheetJs(await fs.readFile(file));
       break;
     case 'pptx':
+    case 'pptm':
+    case 'ppsx':
+    case 'ppsm':
+    case 'potx':
+    case 'potm':
       data = await importPptx(await fs.readFile(file));
       break;
     case 'odp':
     case 'fodp':
+    case 'otp':
       data = await importOdp(await fs.readFile(file));
       break;
     case 'docx':
+    case 'docm':
+    case 'dotx':
+    case 'dotm':
       data = await docx.importDocx(await fs.readFile(file));
+      break;
+    case 'rtf':
+      data = importRtf(await fs.readFile(file));
       break;
     case 'html':
     case 'htm': {
@@ -161,7 +187,7 @@ async function openFile(file) {
 
 // Reads a spreadsheet file into the sheet model without opening it, for
 // combining it with the open workbook. Big files belong in the analysis workspace.
-const TABLE_EXTS = ['xlsx', 'xlsm', 'xltx', 'xls', 'ods', 'csv', 'tsv', 'tab', 'txt'];
+const TABLE_EXTS = ['xlsx', 'xlsm', 'xltx', 'xltm', 'xlsb', 'xls', 'ods', 'fods', 'ots', 'numbers', 'csv', 'tsv', 'tab', 'txt'];
 const TABLE_MAX = 40 * 1024 * 1024;
 
 async function readTable(file) {
@@ -172,7 +198,7 @@ async function readTable(file) {
   let data;
   if (ext === 'csv') data = xlsx.importCsv(await fs.readFile(file, 'utf8'));
   else if (ext === 'tsv' || ext === 'tab' || ext === 'txt') data = xlsx.importCsv(await fs.readFile(file, 'utf8'), '\t');
-  else if (ext === 'xls' || ext === 'ods') data = imports.importSheetJs(await fs.readFile(file));
+  else if (['xls', 'xlsb', 'ods', 'fods', 'ots', 'numbers'].includes(ext)) data = imports.importSheetJs(await fs.readFile(file));
   else data = await xlsx.importOoxml(await fs.readFile(file));
   return { name: path.basename(file), data };
 }
