@@ -10,6 +10,9 @@ import { fit, polyFit } from '../src/sheets/analysis/fit.js';
 import { Dataset, m4 } from '../src/sheets/analysis/engine.js';
 import { SLIDE_H, SLIDE_W, buildSlide, gridFor, planSlide } from '../src/sheets/analysis/slide.js';
 import { cellText } from '../src/sheets/analysis/columns.js';
+import { createRequire } from 'node:module';
+
+const { reshape } = createRequire(import.meta.url)('./fixtures/odd-xlsx.js');
 
 const reader = (bytes, chunk = 1 << 20) => ({
   size: bytes.length,
@@ -63,6 +66,21 @@ test('xlsx sheets stream with shared strings, numbers and dates', async () => {
   assert.equal(c.Amount.data[499], 249.5);
   const other = await parseXlsx(reader(bytes), { sheet: 'Other' });
   assert.equal(other.sheet, 'Other');
+});
+
+test('xlsx with prefixed tags and a moved workbook part streams too', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Data');
+  ws.addRow(['When', 'Name', 'Amount']);
+  for (let i = 0; i < 300; i += 1) ws.addRow([new Date(Date.UTC(2024, 0, 1 + i)), `n${i % 7}`, i * 0.5]);
+  const bytes = new Uint8Array(await reshape(await wb.xlsx.writeBuffer(), { prefix: true, bookPath: 'xl/book.xml' }));
+  const res = await parseXlsx(reader(bytes));
+  assert.deepEqual(res.sheets, ['Data']);
+  assert.equal(res.rows, 300);
+  const c = byName(res);
+  assert.equal(c.When.type, 'date');
+  assert.equal(cellText(c.Name, 8), 'n1');
+  assert.equal(c.Amount.data[299], 149.5);
 });
 
 test('Parquet files load by row group', async () => {
