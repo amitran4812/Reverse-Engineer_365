@@ -65,6 +65,7 @@ const P = {
   decimalUp: '<path d="M2 15h1"/><path d="M6 10a2.5 3 0 105 0 2.5 3 0 10-5 0"/><path class="a-s" d="M13 7h5m-2-2l2 2-2 2"/>',
   decimalDown: '<path d="M2 15h1"/><path d="M6 10a2.5 3 0 105 0 2.5 3 0 10-5 0"/><path class="a-s" d="M18 7h-5m2-2l-2 2 2 2"/>',
   wrap: '<path d="M3 4h14M3 9h11a3 3 0 010 6h-4"/><path class="a-s" d="M11.5 13l-2 2 2 2"/><path d="M3 15h4"/>',
+  condFormat: '<rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 7.5h15M2.5 12.5h15M8 2.5v15"/><rect class="a" x="8" y="7.5" width="9.5" height="5" opacity=".7"/><path class="a-s" d="M10 15.5h5"/>',
   freeze: '<rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path class="a-s" d="M2.5 7h15M7 2.5v15"/>',
   grid: '<rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 7.5h15M2.5 12.5h15M7.5 2.5v15M12.5 2.5v15"/>',
   fx: '<path class="a-s" d="M9 3.5c-2 0-2.5 1-2.8 3L5 16.5M3.5 8.5h5M11 9l5 6M16 9l-5 6"/>',
