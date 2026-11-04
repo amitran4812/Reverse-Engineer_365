@@ -2,6 +2,14 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.38: Excel files from other programs open
+
+- **Workbooks that showed "Cannot read properties of undefined (reading 'sheets')" now open.** Many programs besides Excel (bank and accounting exports, reporting tools, apps built on Microsoft's .NET library) save .xlsx files in a slightly different way. Plot now reads them, with their formatting.
+- Files saved in Excel's **Strict Open XML** format open too.
+- A file that ends in .xlsx but is really an older .xls, a web page table or CSV opens instead of failing.
+- The same files work in **Analyze** (big files), **Add rows / Add columns**, and when you attach them to Claude.
+- A password-protected workbook now says so: remove the password in Excel and open it again.
+
 ## 0.2.37: Light, dark or system theme
 
 - **Dark mode for night work.** Pick **Light**, **Dark** or **System default** with the sun or moon button at the top right of any window, or under **File › Options › Appearance** (Home has it in **Options** too). The choice applies to every open window straight away and is remembered.
