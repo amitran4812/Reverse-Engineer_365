@@ -14,7 +14,7 @@ import { PDFDocument, blankPage, buildPdf, deletePages, extractPages, insertPdf,
 import { MARKUPS, TYPE_LABELS, bounds, newId } from './annot-data.js';
 import { createSignature } from './sign.js';
 import { paperInfo } from './paper.js';
-import { toPlot, toPresent, toWrite } from './convert.js';
+import { marksToNotes, toPlot, toPresent, toWrite } from './convert.js';
 import '../shared/dark.css';
 
 const COLORS = ['#ffd400', '#7ee081', '#6cc7f5', '#ff8fb1', '#ffa94d', '#c19bff', '#d1242f', '#1f6feb', '#1a7f37', '#111111'];
@@ -516,6 +516,52 @@ async function convert(kind) {
   }
 }
 
+// ---------- read aloud ----------
+// The system's voices read each page's text, one sentence chunk at a time, then go on to the next page.
+const speech = { on: false, page: 0, queue: [] };
+function chunks(text) {
+  const out = [];
+  for (const s of text.replace(/(\w)-\n(\w)/g, '$1$2').replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/)) {
+    if (!s.trim()) continue;
+    if (out.length && (out[out.length - 1] + s).length < 220) out[out.length - 1] += ` ${s}`;
+    else out.push(s);
+  }
+  return out;
+}
+async function readPage(i) {
+  if (!speech.on || i >= reader.pageCount) return stopReading();
+  speech.page = i;
+  reader.scrollToPage?.(i + 1);
+  const parts = chunks((await reader.text(i)).str);
+  if (!parts.length) return readPage(i + 1);
+  let left = parts.length;
+  for (const part of parts) {
+    const u = new SpeechSynthesisUtterance(part);
+    u.rate = speech.rate || 1;
+    u.onend = () => {
+      left -= 1;
+      if (!left && speech.on) readPage(i + 1);
+    };
+    speechSynthesis.speak(u);
+  }
+}
+function readAloud() {
+  if (!('speechSynthesis' in window)) return toast('Reading aloud isn’t available on this computer.', 'error');
+  speechSynthesis.cancel();
+  speech.on = true;
+  toast('Reading aloud. Press Read Aloud again (or Esc) to stop.');
+  readPage(reader.currentPage() - 1);
+  shell.refresh();
+}
+function stopReading() {
+  speech.on = false;
+  speechSynthesis.cancel();
+  shell?.refresh();
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && speech.on) stopReading();
+});
+
 async function cite() {
   if (!reader.doc) return;
   const paper = await paperInfo(reader, { fileName: shell.state.name, filePath: shell.state.path });
@@ -879,7 +925,7 @@ const tabs = [
           { type: 'small', icon: 'color', label: 'Highlight colour', run: (e, b) => pickColor('highlight', b) },
         ] },
       ] },
-      { label: 'Comments', items: [toolBtn('note', 'Sticky Note', 'comment'), toolBtn('text', 'Text Box', 'textbox'), { type: 'big', icon: 'notes', label: 'All Comments', active: () => sidePanel === 'comments' && !side.classList.contains('closed'), run: () => showPanel('comments', true) }] },
+      { label: 'Comments', items: [toolBtn('note', 'Sticky Note', 'comment'), toolBtn('text', 'Text Box', 'textbox'), { type: 'big', icon: 'notes', label: 'All Comments', active: () => sidePanel === 'comments' && !side.classList.contains('closed'), run: () => showPanel('comments', true) }, { type: 'big', icon: 'appDocs', label: 'Highlights to Notes', title: 'Open your highlights and comments as notes in Write, with the quoted text', enabled: has, run: () => marksToNotes(reader, annots, shell.state.name) }] },
       { label: 'Draw', items: [
         toolBtn('ink', 'Pen', 'pen'),
         toolBtn('eraser', 'Eraser', 'eraser'),
@@ -987,6 +1033,7 @@ const tabs = [
         { type: 'big', icon: 'theme', label: 'Night', title: 'Dark pages for reading at night', active: () => viewHost.classList.contains('night'), run: () => { viewHost.classList.toggle('night'); shell.refresh(); } },
         { type: 'big', icon: 'preview', label: 'Hide Comments', active: () => viewHost.classList.contains('no-annots'), run: () => { viewHost.classList.toggle('no-annots'); shell.refresh(); } },
         { type: 'big', icon: 'play', label: 'Read Mode', title: 'Full screen with the ribbon tucked away (Esc to leave)', enabled: has, run: () => readMode(true) },
+        { type: 'big', icon: 'mic', label: 'Read Aloud', title: 'Read the text out loud from this page on', enabled: has, active: () => speech.on, run: () => (speech.on ? stopReading() : readAloud()) },
       ] },
     ],
   },

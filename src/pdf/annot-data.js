@@ -314,3 +314,42 @@ export function findArxiv(text) {
   const m = /arXiv:\s*(\d{4}\.\d{4,5}(v\d+)?|[a-z-]+(\.[A-Z]{2})?\/\d{7}(v\d+)?)/i.exec(text || '');
   return m ? m[1] : null;
 }
+
+// ---------- highlights to notes ----------
+// The text under a highlight's rectangles. Text items often hold a whole line, so each
+// is cut to the part a rectangle covers, guessing even letter widths.
+export function textUnder(items, rects) {
+  const parts = [];
+  for (const it of items) {
+    if (it.flat === false || !it.str?.trim()) continue;
+    const cy = it.y + (it.h || 0) / 3;
+    const w = it.w || 0;
+    for (const [x0, y0, x1, y1] of rects || []) {
+      if (cy < Math.min(y0, y1) - 1 || cy > Math.max(y0, y1) + 1) continue;
+      const a = Math.max(it.x, Math.min(x0, x1));
+      const b = Math.min(it.x + w, Math.max(x0, x1));
+      if (b - a <= 0.5) continue;
+      const n = it.str.length;
+      const from = w ? Math.max(0, Math.round(((a - it.x) / w) * n)) : 0;
+      const to = w ? Math.min(n, Math.round(((b - it.x) / w) * n)) : n;
+      if (to > from) parts.push({ ...it, str: it.str.slice(from, to), x: a, w: b - a });
+    }
+  }
+  return textLines(parts).map((l) => l.text).join(' ').replace(/\s+/g, ' ').replace(/(\w)- (\w)/g, '$1$2').trim();
+}
+
+// Markdown notes from a PDF's highlights and comments, page by page: quotes with the
+// reader's own note under each. marks: [{ page, type, text, note }]
+export function marksToMarkdown(title, marks) {
+  const out = [`# Notes on ${title}`, ''];
+  let page = -1;
+  for (const m of [...marks].sort((a, b) => a.page - b.page)) {
+    if (m.page !== page) {
+      page = m.page;
+      out.push(`## Page ${page + 1}`, '');
+    }
+    if (m.text) out.push(`> ${m.text}${m.type === 'strike' ? ' (struck out)' : ''}`, '');
+    if (m.note) out.push(m.text ? `- ${m.note}` : `- **Note:** ${m.note}`, '');
+  }
+  return out.join('\n').trim();
+}
