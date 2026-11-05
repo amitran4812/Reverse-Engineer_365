@@ -107,6 +107,7 @@
 
   !insertmacro workType "docx" "Write" "Write" "write" "Write document"
   !insertmacro workType "odt" "Write" "Write" "write" "OpenDocument text"
+  !insertmacro workType "rtf" "Write" "Write" "write" "Rich Text document"
   !insertmacro workType "txt" "Write" "Write" "write" "Text document"
   !insertmacro workType "md" "Write" "Write" "write" "Markdown document"
   !insertmacro workType "xlsx" "Plot" "Plot" "plot" "Plot workbook"
@@ -114,10 +115,13 @@
   !insertmacro workType "xltx" "Plot" "Plot" "plot" "Workbook template"
   !insertmacro workType "xls" "Plot" "Plot" "plot" "Workbook (old format)"
   !insertmacro workType "ods" "Plot" "Plot" "plot" "OpenDocument spreadsheet"
+  !insertmacro workType "xlsb" "Plot" "Plot" "plot" "Binary workbook"
   !insertmacro workType "csv" "Plot" "Plot" "plot" "CSV file"
   !insertmacro workType "pptx" "Present" "Present" "present" "Presentation"
   !insertmacro workType "reaslides" "Present" "Present" "present" "Present presentation (old format)"
   !insertmacro workType "odp" "Present" "Present" "present" "OpenDocument presentation"
+  !insertmacro workType "ppsx" "Present" "Present" "present" "Slide show"
+  !insertmacro workType "potx" "Present" "Present" "present" "Presentation template"
   !insertmacro workType "pdf" "Read" "Read" "read" "PDF document"
   ; .reaslides is what older versions saved; those files still open in Present
   WriteRegStr SHCTX "Software\Classes\.reaslides" "" "ReaOffice.Present.reaslides"
@@ -147,6 +151,7 @@
 
   !insertmacro workUntype "docx" "Write"
   !insertmacro workUntype "odt" "Write"
+  !insertmacro workUntype "rtf" "Write"
   !insertmacro workUntype "txt" "Write"
   !insertmacro workUntype "md" "Write"
   !insertmacro workUntype "xlsx" "Plot"
@@ -154,10 +159,13 @@
   !insertmacro workUntype "xltx" "Plot"
   !insertmacro workUntype "xls" "Plot"
   !insertmacro workUntype "ods" "Plot"
+  !insertmacro workUntype "xlsb" "Plot"
   !insertmacro workUntype "csv" "Plot"
   !insertmacro workUntype "reaslides" "Present"
   !insertmacro workUntype "pptx" "Present"
   !insertmacro workUntype "odp" "Present"
+  !insertmacro workUntype "ppsx" "Present"
+  !insertmacro workUntype "potx" "Present"
   !insertmacro workUntype "pdf" "Read"
 
   DeleteRegKey SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}"

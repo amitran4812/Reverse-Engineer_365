@@ -12,6 +12,7 @@
 const JSZip = require('jszip');
 const { DOMParser } = require('@xmldom/xmldom');
 const { chartSvg } = require('./pptx-chart');
+const { sniff } = require('./odf');
 
 const W = 960;
 const parseXml = (text) => new DOMParser({ onError: () => {} }).parseFromString(text, 'application/xml');
@@ -56,11 +57,13 @@ class Pkg {
   }
   async media(file) {
     const ext = (file || '').split('.').pop().toLowerCase();
-    if (!MIME[ext]) return null;
     const key = `media:${file}`;
     if (!this.cache.has(key)) {
       const f = this.zip.file(file);
-      this.cache.set(key, f ? `data:${MIME[ext]};base64,${await f.async('base64')}` : null);
+      // Some apps save pictures without an extension or under the wrong one; go by the bytes.
+      const data = f ? await f.async('nodebuffer') : null;
+      const type = data && (sniff(data) || MIME[ext]);
+      this.cache.set(key, type ? `data:${type};base64,${data.toString('base64')}` : null);
     }
     return this.cache.get(key);
   }
@@ -350,6 +353,7 @@ function parseBodyPr(b) {
   if (!b) return {};
   const out = {};
   if (attr(b, 'anchor')) out.anchor = attr(b, 'anchor');
+  if (attr(b, 'anchorCtr')) out.anchorCtr = attr(b, 'anchorCtr') === '1';
   for (const k of ['lIns', 'tIns', 'rIns', 'bIns']) if (attr(b, k) != null) out[k] = num(attr(b, k));
   if (attr(b, 'wrap')) out.wrap = attr(b, 'wrap');
   if (attr(b, 'vert')) out.vert = attr(b, 'vert');
@@ -845,7 +849,7 @@ async function readShape(node, ctx, part, out, tf) {
   el.style.color = first.color || baseColor || schemeColor('tx1', ctx) || '#000000';
   el.style.fontFamily = fontName(first.font, ctx) || ctx.theme.minor;
   el.style.bold = !!first.b;
-  el.style.align = { ctr: 'center', r: 'right', just: 'justify' }[first.algn] || 'left';
+  el.style.align = { ctr: 'center', r: 'right', just: 'justify' }[first.algn] || (body.anchorCtr ? 'center' : 'left');
   el.style.valign = { ctr: 'middle', b: 'bottom' }[body.anchor] || 'top';
   const ins = (v, d) => round((v ?? d) * k);
   el.style.pad = [ins(body.tIns, 45720), ins(body.rIns, 91440), ins(body.bIns, 45720), ins(body.lIns, 91440)];
@@ -1178,4 +1182,4 @@ async function importPptx(buffer) {
   return { format: 'rea-slides', version: 1, theme: 'paper', size, layers, layouts, slides };
 }
 
-module.exports = { importPptx, presetPath };
+module.exports = { importPptx, presetPath, shapeSvg, paintCss };
