@@ -189,7 +189,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       }
       if (restore.filters) st.info = await client.call('restoreFilters', restore.filters).catch(() => st.info);
       restorePages(restore.pages || [{ title: 'Page 1', plots: restore.plots || [] }], restore.page || 0);
-      // Files saved before 0.2.38 always had the details table open; they now
+      // Files saved before 0.2.39 always had the details table open; they now
       // open with it closed so the plots fill the screen.
       if (restore.table) Object.assign(st.table, restore.table, restore.table.v ? {} : { open: false });
     } else {

@@ -2,7 +2,9 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
-## Next: Files from other apps open with their pictures and formatting
+## 0.2.39: Projects, more fonts, PowerPoint saving and files from other apps
+
+### Files from other apps open with their pictures and formatting
 
 - **Slides from LibreOffice Impress and Google Slides open the way they look.** OpenDocument presentations (.odp) used to bring in only the text. Now they open with their slide size, master artwork and backgrounds (colors, gradients, pictures), pictures (with crops), shapes and lines, rotated and grouped shapes, tables, charts, bullets and numbering, fonts, sizes and colors, and speaker notes. New slides you add use the deck's own master.
 - **.pptx files from Google Slides, LibreOffice and other apps** keep cropped pictures, shapes filled with a picture, and text centered the way LibreOffice saves it. Pictures saved without a file extension, or under the wrong one, now show.
@@ -11,7 +13,7 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **More file types open:** PowerPoint shows and templates (.ppsx, .potx, .pptm), Word templates and macro documents (.dotx, .docm), Excel binary and macro templates (.xlsb, .xltm), Apple Numbers (.numbers), and the flat and template OpenDocument types (.fodp, .fodt, .fods, .otp, .ott, .ots). They open as a copy you save as .pptx, .docx or .xlsx.
 - Keynote (.key) and Pages (.pages) files explain how to export them: in Keynote choose **File › Export To › PowerPoint**, in Pages **File › Export To › Word**, then open that file here.
 
-## Next: More fonts everywhere
+### More fonts everywhere
 
 - **60 fonts included with Work**, so they look the same on every computer and work offline: sans serif (Inter, Roboto, Open Sans, Lato, Montserrat, Poppins and more), serif (Merriweather, Lora, Playfair Display, EB Garamond and more), monospace (Fira Code, JetBrains Mono, Source Code Pro and more), display, handwriting, and Hindi, Bengali, Tamil, Arabic and Hebrew faces.
 - **Your computer's own fonts** are listed too, under **On this computer**. Type any font name in the search box and press Enter to use it.
@@ -20,7 +22,7 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Documents that ask for Calibri, Cambria, Arial, Helvetica, Times New Roman or Courier New keep their layout on computers without those fonts: a free font with the same letter widths stands in.
 - Fonts are kept when you save: Word files, PowerPoint files and Plot's Excel files (fonts and sizes of cells, also when you open one).
 
-## Next: Projects, so Claude knows the whole piece of work
+### Projects, so Claude knows the whole piece of work
 
 - **Projects** keep the files for one piece of work together, and Claude reads all of them. Open **Projects** on the start screen, choose **New project**, give it a name and, if you like, a line about what it is for (for example "Literature review for chapter 3; review/ is my LaTeX draft"). Claude reads that first.
 - **Put anything in it**: research papers (PDF), Word, Excel and PowerPoint files, OpenDocument files, Present decks, LaTeX sources and .bib files, Markdown and text, code, CSV and pictures. **Add files** (or drag them onto the list) copies them into the project. **Add folder** links a folder such as a LaTeX project, so Claude always reads its files as they are now.
@@ -29,14 +31,14 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Claude in every app can use a project too**: click the folder button at the top of the Claude pane and pick one. A file that belongs to a project opens with Claude already reading that project; click the × on the "Project" chip to stop.
 - PDFs are read once when you add them, so later questions are quick, and the project is cached between messages so follow-up questions cost less. Claude reads up to about 150k tokens of text from a project (a dozen or more full papers); long files share the room fairly so none is left out. With a 1M-token model you can raise it to about 600k tokens in the project's options.
 
-## Next: Download a LaTeX project as a .zip
+### Download a LaTeX project as a .zip
 
 - **Download .zip** in Write's LaTeX mode saves the whole project as one .zip file: every .tex file, the .bib files, pictures, styles and any other files in the project's folders, plus the compiled PDF. Find it on the **Home** tab, in the preview's toolbar, in the **Files** pop-up (and its **Upload** menu), and under **File › Export › Project as a .zip**.
 - Text you haven't saved yet goes into the .zip as it is in the editor, without saving the files on disk.
 - Build leftovers (.aux, .log, .synctex and the like) and hidden files stay out. The .zip opens again in Work with **Upload › New project from a .zip**, and in online LaTeX editors.
 - **Download PDF** works again: it saves the compiled PDF where you choose.
 
-## Next: Present saves PowerPoint files
+### Present saves PowerPoint files
 
 - **Present now saves .pptx.** Ctrl+S and **File › Save As** write a PowerPoint file, so anyone can open your deck in PowerPoint, Keynote, Google Slides or LibreOffice, on Windows, Mac or Linux. There is no Work-only file type any more: Write saves .docx, Plot saves .xlsx or .csv, and Present saves .pptx.
 - A deck Present saved reopens in Present exactly as you left it, themes and template artwork included. If someone edits the slides in PowerPoint, Present opens their version instead.
@@ -44,7 +46,7 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Older **.reaslides** files still open. Save them once and they become .pptx.
 - In Explorer, **New › Present presentation** now makes a .pptx.
 
-## Next: Independent copies and a cleaner Analyze page
+### Independent copies and a cleaner Analyze page
 
 - **Ctrl+D copies have their own marking.** Rows you mark in a copy no longer light up in the original (and the other way round), so a copy you change to a scatter plot, or any other type, works on its own.
 - **Pick a marking for any visualization.** In **Properties › Data › Marking**, choose **Marking** to link a visualization with the others again, pick another marking such as **Marking (2)**, or make a **New marking**. Visualizations with the same marking highlight the same rows, as in Spotfire. The status bar, details table, Clear Marking and Filter to Marked follow the selected visualization's marking.
@@ -53,7 +55,7 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - Each plot's zoom, pan and settings buttons now show only on the selected plot or when you point at it, so a page of plots looks calmer.
 - The ribbon's scrollbar on small screens is now thin and no longer covers the group names.
 
-## Next: Features from the apps you know
+### Features from the apps you know
 
 - **Plot: freeze panes, filters and conditional formatting.** **View › Freeze Panes** keeps the top row, first column or everything above and left of the selected cell in place while you scroll. **Data › Filter** (Ctrl+Shift+L) puts a drop-down on each header: tick the values to show, search them, or sort. **Home › Highlight** colors cells by rule: greater than, less than, between, equal to, text that contains, duplicates, top or bottom N, above or below average, data bars and a red-to-green color scale, with **Manage rules** to remove them. All three are saved in the .xlsx, so other spreadsheet apps show them too.
 - **Write: Navigation pane, table of contents and comments.** **View › Navigation Pane** lists your headings; click one to jump there. **Insert › Contents** adds a table of contents that keeps itself up to date. Select text and choose **Review › New Comment** (Ctrl+Alt+M) to leave a note; the Comments pane lets you edit, resolve, reopen and delete them, and Previous and Next step through them. Comments are saved as real Word comments, and the table of contents comes back when you reopen the file.
@@ -62,6 +64,15 @@ Each version of Work and what it adds or fixes. The newest version is at the top
 - **Notes: toggles, callouts and templates.** Type **/** and choose **Toggle** for a line that folds away what's under it, or a callout (Info, Tip, Warning, Idea; click its badge to switch). **Notes › Templates** starts a page for meeting notes, lecture notes, Cornell notes, a project plan or a daily journal.
 - **Read: read aloud, and highlights to Notes.** **View › Read Aloud** reads the PDF out loud from the current page with your computer's voices (Esc stops). **Comment › Highlights to Notes** opens your highlights, underlines and comments as notes in Write, page by page, with the highlighted text quoted and your comment under it.
 - **LaTeX: word count and symbols.** **Home › Word Count** counts the words in the text, headings and captions, plus equations, for this file and the whole project. **Insert › Symbols** has Greek letters, operators, relations, arrows and more; outside maths they go in wrapped in $ … $.
+
+### Recent files in every app
+
+- **File › Recent in every app**, with a filter for each app and for Notes and LaTeX, a search box, and pins to keep a file at the top. The clock button in each window's title bar shows the same list.
+- **Files from Google Drive or OneDrive reopen with one click**, from the copy Work keeps on your computer, without downloading them again. If the file changed on the drive, Work fetches the newer version in the background (and asks first if you have unsaved changes).
+
+### Zoom in Present
+
+- **Zoom in and out on the slide you're editing.** Use **View › Zoom** (Zoom In, Zoom Out, 100%, Fit to Window), the slider at the bottom right, Ctrl+= and Ctrl+-, or Ctrl+mouse wheel (or pinch) to zoom around the pointer. Ctrl+0 fits the slide to the window again. Moving and resizing boxes works at any zoom.
 
 ## 0.2.38: Excel files from other programs open
 

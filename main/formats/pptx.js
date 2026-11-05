@@ -9,7 +9,6 @@
 const crypto = require('crypto');
 const JSZip = require('jszip');
 const PptxGenJS = require('pptxgenjs');
-const JSZip = require('jszip');
 const { hex } = require('./docx');
 const { firstFamily } = require('../../common/fonts');
 
