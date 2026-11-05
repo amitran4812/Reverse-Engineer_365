@@ -35,6 +35,10 @@ export class Dataset {
     this.keys = new Map();
     this.mark = new Uint8Array(this.n);
     this.markCount = 0;
+    // Named markings, as in Spotfire. The one in use lives in mark,
+    // markCount and markedIndex; the others wait here.
+    this.markName = 'Marking';
+    this.markings = new Map();
     this.rowCache = new Map();
     this.applyFilters();
   }
@@ -75,6 +79,7 @@ export class Dataset {
       rows: this.n,
       filtered: this.index.length,
       marked: this.markCount,
+      marking: this.markName,
       columns: this.cols.map((c) => ({ name: c.name, type: c.type, expr: c.expr || null })),
     };
   }
@@ -168,14 +173,44 @@ export class Dataset {
     this.index = index;
     this.markedIndex = null;
     this.rowCache.clear();
-    // Rows hidden by a filter are no longer marked.
-    if (this.markCount) {
+    // Rows hidden by a filter are no longer marked, in every marking.
+    const prune = (mk) => {
+      if (!mk.count) return;
       let m = 0;
       for (let i = 0; i < this.n; i += 1) {
-        if (this.mark[i] && !pass[i]) this.mark[i] = 0;
-        m += this.mark[i];
+        if (mk.mark[i] && !pass[i]) mk.mark[i] = 0;
+        m += mk.mark[i];
       }
-      this.markCount = m;
+      mk.count = m;
+      mk.index = null;
+    };
+    const cur = { mark: this.mark, count: this.markCount };
+    prune(cur);
+    this.markCount = cur.count;
+    for (const mk of this.markings?.values() || []) prune(mk);
+  }
+
+  // Switches to a named marking, creating it empty the first time.
+  useMarking(name = 'Marking') {
+    name = name || 'Marking';
+    if (name === this.markName) return;
+    this.markings.set(this.markName, { mark: this.mark, count: this.markCount, index: this.markedIndex });
+    const next = this.markings.get(name) || { mark: new Uint8Array(this.n), count: 0, index: null };
+    this.markings.delete(name);
+    this.markName = name;
+    this.mark = next.mark;
+    this.markCount = next.count;
+    this.markedIndex = next.index;
+  }
+
+  // Runs fn with a plot's marking in use, then goes back.
+  withMarking(spec, fn) {
+    const prev = this.markName;
+    this.useMarking(spec?.marking);
+    try {
+      return fn();
+    } finally {
+      this.useMarking(prev);
     }
   }
 

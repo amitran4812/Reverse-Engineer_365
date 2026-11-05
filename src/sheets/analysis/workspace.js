@@ -34,7 +34,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     source: null,
     projectPath: null,
     calculated: [],
-    table: { open: true, source: 'auto', height: 210 },
+    table: { open: false, source: 'auto', height: 210 },
     panels: { left: true, right: true },
     undo: null,
   };
@@ -189,7 +189,9 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       }
       if (restore.filters) st.info = await client.call('restoreFilters', restore.filters).catch(() => st.info);
       restorePages(restore.pages || [{ title: 'Page 1', plots: restore.plots || [] }], restore.page || 0);
-      if (restore.table) Object.assign(st.table, restore.table);
+      // Files saved before 0.2.38 always had the details table open; they now
+      // open with it closed so the plots fill the screen.
+      if (restore.table) Object.assign(st.table, restore.table, restore.table.v ? {} : { open: false });
     } else {
       const cols = new Set(info.columns.map((c) => c.name));
       const fits = (v) => [v.spec.x, v.spec.color, ...(v.spec.y || []).map((s) => s.col)].filter(Boolean).every((n) => cols.has(n));
@@ -215,6 +217,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     root.classList.add('has-data');
     renderAll();
     refreshPlots();
+    useMarkingOf(st.active);
     resetHistory();
   }
 
@@ -414,6 +417,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
   function duplicateViz(v = st.active) {
     if (!v) return toast('Select a visualization first');
     const spec = JSON.parse(JSON.stringify({ ...v.spec, id: undefined, view: v.spec.view }));
+    // The copy is independent: marking in it does not light up the original.
+    spec.marking = newMarkingName();
     const title = (v.spec.title || autoTitle(v.spec)).slice(0, 40);
     for (const x of st.plots) x.el.remove();
     const at = st.page + 1;
@@ -422,7 +427,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     const copy = addPlot(spec);
     refreshPlots();
     renderPages();
-    toast(`Copied to the new page “${st.pages[at].title}”. Change its type or settings in Properties.`);
+    toast(`Copied to the new page “${st.pages[at].title}”. It has its own marking; change its type or settings in Properties.`);
     if (copy) openProps(copy);
     return copy;
   }
@@ -470,10 +475,49 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
     st.active?.el.classList.remove('active');
     st.active = view;
     view?.el.classList.add('active');
+    useMarkingOf(view);
     renderProps();
     renderFits();
     props.render();
     shell.refresh?.();
+  }
+
+  // ---------- markings ----------
+  // Each visualization uses a named marking (Spotfire-style). Plots that share
+  // a name highlight the same rows; the active plot's marking drives the
+  // status bar, the details table and the marking commands.
+  function markingNames() {
+    const names = new Set(['Marking']);
+    for (const pg of st.pages) for (const v of pg.plots) names.add(v.spec.marking || 'Marking');
+    return [...names];
+  }
+
+  function newMarkingName() {
+    const names = new Set(markingNames());
+    let k = 2;
+    while (names.has(`Marking (${k})`)) k += 1;
+    return `Marking (${k})`;
+  }
+
+  async function useMarkingOf(view) {
+    if (!st.info || !view) return;
+    const name = view.spec.marking || 'Marking';
+    if ((st.info.marking || 'Marking') === name) return;
+    st.info = await client.call('useMarking', name);
+    if (st.table.source !== 'filtered') tableReset();
+    renderStatus();
+    shell.refresh?.();
+  }
+
+  function setMarking(name) {
+    const v = st.active;
+    if (!v) return;
+    v.spec.marking = name || newMarkingName();
+    if (v.spec.marking === 'Marking') delete v.spec.marking;
+    useMarkingOf(v);
+    v.fetch();
+    renderProps();
+    props.render();
   }
 
   const viewCtx = {
@@ -1577,7 +1621,7 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       calculated: st.calculated,
       pages: st.pages.map((pg) => ({ title: pg.title, plots: pg.plots.map((v) => v.spec) })),
       page: st.page,
-      table: { open: st.table.open, source: st.table.source, height: st.table.height },
+      table: { v: 2, open: st.table.open, source: st.table.source, height: st.table.height },
     };
   }
 
@@ -1985,6 +2029,8 @@ export function createAnalysis({ getShell, onSheetData, onShow, sendToSheet }) {
       renderFits();
     },
     duplicate: () => duplicateViz(),
+    markings: () => markingNames(),
+    setMarking: (name) => setMarking(name),
     remove: () => st.active && removePlot(st.active),
     close: () => closeProps(),
   });

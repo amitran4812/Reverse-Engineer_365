@@ -182,6 +182,13 @@ export function createProps(api) {
   }
 
   function data(s) {
+    body.append(group('Marking'));
+    const names = api.markings();
+    body.append(field('Marking', select([
+      ...names.map((n) => ({ value: n, label: n })),
+      { value: '__new', label: 'New marking…' },
+    ], s.marking || 'Marking', (val) => api.setMarking(val === '__new' ? null : val))));
+    body.append(h('div', 'an-meta', 'Visualizations with the same marking highlight the same rows. Pick another marking to keep this one separate.'));
     body.append(group('Filtering'));
     body.append(field('Rows to use', select([
       { value: 'page', label: 'Filtered rows (filters panel)' },

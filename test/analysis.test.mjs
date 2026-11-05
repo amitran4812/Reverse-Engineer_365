@@ -489,3 +489,28 @@ test('waterfall, combination, treemap, KPI and parallel coordinates', () => {
   d.markPlot({ type: 'treemap', x: 'g', y: [] }, { cats: [tm.cats[0]] }, 'replace');
   assert.equal(d.markCount, tm.values[0]);
 });
+
+test('named markings stay separate between visualizations', () => {
+  const d = new Dataset({ name: 't', columns: [{ name: 'x', type: 'number', data: Float64Array.from({ length: 10 }, (_, i) => i) }] });
+  const a = { type: 'histogram', x: 'x' };
+  const b = { type: 'histogram', x: 'x', marking: 'Marking (2)' };
+  d.useMarking(a.marking);
+  d.markPlot(a, { x0: 0, x1: 2 }, 'replace');
+  assert.equal(d.info().marked, 3);
+  d.useMarking(b.marking);
+  assert.equal(d.info().marked, 0);
+  assert.equal(d.info().marking, 'Marking (2)');
+  d.markPlot(b, { x0: 5, x1: 9 }, 'replace');
+  assert.equal(d.info().marked, 5);
+  d.useMarking();
+  assert.equal(d.info().marked, 3);
+  assert.deepEqual([...d.marked()], [0, 1, 2]);
+  // A plot reads its own marking without changing the one in use.
+  const seen = d.withMarking(b, () => [...d.marked()]);
+  assert.deepEqual(seen, [5, 6, 7, 8, 9]);
+  assert.equal(d.info().marking, 'Marking');
+  // Filters unmark hidden rows in every marking.
+  d.setFilter('x', { kind: 'range', min: 0, max: 6, missing: true });
+  assert.equal(d.withMarking(b, () => d.markCount), 2);
+  assert.equal(d.info().marked, 3);
+});

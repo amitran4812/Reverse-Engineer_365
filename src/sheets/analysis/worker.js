@@ -147,8 +147,14 @@ const ops = {
     ds.clearMark();
     return ds.info();
   },
+  // Marking with a plot makes that plot's marking the one in use.
   markPlot: (spec, sel, mode) => {
+    ds.useMarking(spec?.marking);
     ds.markPlot(spec, sel, mode);
+    return ds.info();
+  },
+  useMarking: (name) => {
+    ds.useMarking(name);
     return ds.info();
   },
   markRows: (ids, mode) => {
@@ -156,13 +162,13 @@ const ops = {
     ds.applyMark((i) => set.has(i), mode);
     return ds.info();
   },
-  plotData: (spec, view, size) => ds.plotData(spec, view, size),
-  trellis: (spec) => ds.trellis(spec),
+  plotData: (spec, view, size) => ds.withMarking(spec, () => ds.plotData(spec, view, size)),
+  trellis: (spec) => ds.withMarking(spec, () => ds.trellis(spec)),
   markAll: (mode) => {
     ds.applyMark(() => true, mode);
     return ds.info();
   },
-  fit: (spec, fitSpec) => ds.fit(spec, fitSpec),
+  fit: (spec, fitSpec) => ds.withMarking(spec, () => ds.fit(spec, fitSpec)),
   rows: (start, count, source) => ds.rows(start, count, source),
   row: (i) => ds.row(i),
   tableRows: (opts) => ds.tableRows(opts),
