@@ -189,6 +189,7 @@ const homeTab = {
         { type: 'small', icon: 'folder', label: 'New folder', run: () => newFolder('') },
         { type: 'small', icon: 'upload', label: 'Upload', run: (e, b) => uploadMenu(b, '') },
       ] },
+      { type: 'big', icon: 'zip', label: 'Download .zip', title: 'Download the whole project (.tex, .bib, pictures and the PDF) as one .zip', run: () => downloadZip() },
       { type: 'big', icon: 'save', label: 'Save All', shortcut: 'Ctrl+S', run: () => shell.save() },
     ] },
     { label: 'Format', items: [
@@ -439,7 +440,7 @@ const shell = await createShell({
   customSaveAs: () => saveCurrentAs(),
   exportPdf: () => downloadPdf(),
   print: () => api.openPdf(mainFile).then((r) => r?.error && toast(r.error, 'error')),
-  exports: [],
+  exports: [{ label: 'Project as a .zip', detail: 'Every .tex, .bib and picture in the project, plus the compiled PDF, in one .zip file.', icon: 'zip', run: () => downloadZip() }],
   claude: claudeConfig(),
 });
 shell.state.name = project.root.split(/[\\/]/).pop();
@@ -485,6 +486,7 @@ sideTools.append(
   tool('newFile', 'New file', () => newFile('')),
   tool('folder', 'New folder', () => newFolder('')),
   tool('refresh', 'Refresh', () => refreshFiles()),
+  tool('zip', 'Download the project as a .zip', () => downloadZip()),
   pinBtn,
   tool('close', 'Close', () => (prefs.dock ? setDock(false) : closeFiles())),
 );
@@ -533,8 +535,9 @@ zoomFit.title = 'Fit to width';
 zoomFit.onclick = () => pdf.setZoom('fit');
 const zoomIn = tool('zoomIn', 'Zoom in', () => pdf.setZoom(pdf.scale * 1.15));
 const dlBtn = tool('export', 'Download PDF', () => downloadPdf());
+const zipBtn = tool('zip', 'Download the project as a .zip', () => downloadZip());
 const pvToggle = tool('preview', 'Hide the preview', () => setPreview(false));
-pvHead.append(h('div', 'tex-compile-group', ''), issuesBtn, h('span', 'tex-grow'), pageInfo, zoomOut, zoomFit, zoomIn, dlBtn, pvToggle);
+pvHead.append(h('div', 'tex-compile-group', ''), issuesBtn, h('span', 'tex-grow'), pageInfo, zoomOut, zoomFit, zoomIn, dlBtn, zipBtn, pvToggle);
 pvHead.firstChild.append(compileBtn, compileMenu);
 const pvBody = h('div', 'tex-pv-body');
 const pdfHost = h('div', 'tex-pdf');
@@ -757,6 +760,8 @@ function uploadMenu(anchor, dir) {
     { label: 'Files from a .zip…', icon: 'zip', run: () => uploadZip(dir) },
     '-',
     { label: 'New project from a .zip…', icon: 'texFile', run: () => api.openZip().then((r) => r?.error && toast(r.error, 'error')) },
+    '-',
+    { label: 'Download the project as a .zip…', icon: 'zip', run: () => downloadZip() },
   ]));
 }
 
@@ -1019,6 +1024,18 @@ async function saveCurrentAs() {
   await refreshFiles();
   await openFile(res.path);
   return true;
+}
+
+async function downloadPdf() {
+  const res = await api.savePdf(mainFile);
+  if (res?.error) return toast(res.error, 'error');
+  if (res?.name) toast(`Saved ${res.name}`);
+}
+
+async function downloadZip() {
+  const res = await api.saveZip({ main: mainFile, overrides: overrides() });
+  if (res?.error) return toast(res.error, 'error');
+  if (res?.name) toast(`Saved ${res.name} with ${res.files} file${res.files === 1 ? '' : 's'}`);
 }
 
 function overrides() {

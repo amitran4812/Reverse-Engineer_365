@@ -2,6 +2,13 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## Next: Download a LaTeX project as a .zip
+
+- **Download .zip** in Write's LaTeX mode saves the whole project as one .zip file: every .tex file, the .bib files, pictures, styles and any other files in the project's folders, plus the compiled PDF. Find it on the **Home** tab, in the preview's toolbar, in the **Files** pop-up (and its **Upload** menu), and under **File › Export › Project as a .zip**.
+- Text you haven't saved yet goes into the .zip as it is in the editor, without saving the files on disk.
+- Build leftovers (.aux, .log, .synctex and the like) and hidden files stay out. The .zip opens again in Work with **Upload › New project from a .zip**, and in online LaTeX editors.
+- **Download PDF** works again: it saves the compiled PDF where you choose.
+
 ## Next: Present saves PowerPoint files
 
 - **Present now saves .pptx.** Ctrl+S and **File › Save As** write a PowerPoint file, so anyone can open your deck in PowerPoint, Keynote, Google Slides or LibreOffice, on Windows, Mac or Linux. There is no Work-only file type any more: Write saves .docx, Plot saves .xlsx or .csv, and Present saves .pptx.

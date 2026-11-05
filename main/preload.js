@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('office', {
     stop: () => ipcRenderer.invoke('latex:stop'),
     reveal: (rel) => ipcRenderer.invoke('latex:reveal', rel),
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
+    saveZip: (opts) => ipcRenderer.invoke('latex:save-zip', opts),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
   },
   // Read (PDFs): the window's own file, saving, PDFs to insert, saved signatures.
