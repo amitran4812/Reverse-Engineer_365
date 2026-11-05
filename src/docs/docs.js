@@ -381,6 +381,7 @@ const shell = await createShell({
   undo: () => chain().undo().run(),
   redo: () => chain().redo().run(),
   getSaveData: () => ({ json: editor.getJSON(), html: editor.getHTML(), text: plainText(), page, notes: notesState.on }),
+  recentView: () => (notesState.on ? 'notes' : 'docs'),
   exports: [
     { label: 'Web page (.html)', detail: 'Open in any browser.', icon: 'link', ext: 'html' },
     { label: 'Plain text (.txt)', detail: 'Text only, no formatting.', icon: 'textbox', ext: 'txt' },

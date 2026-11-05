@@ -11,6 +11,7 @@ import { aiSettings } from '../shared/ai-settings.js';
 import { updateSettings, watchUpdates } from '../shared/updates.js';
 import { openCiteDialog } from '../shared/cite.js';
 import { themeButton, themeSettings } from '../shared/theme.js';
+import { recentSection } from '../shared/recent.js';
 import '../shared/dark.css';
 
 const info = await window.office.launchInfo();
@@ -41,19 +42,9 @@ function greeting() {
   return hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
 }
 
-async function recent() {
-  const list = h('div', 'bs-recent');
-  const items = await window.office.recent();
-  if (!items.length) list.append(h('div', 'bs-empty', 'Nothing here yet. Files you open or save will show up here.'));
-  for (const r of items) {
-    const m = APPS[r.app] || APPS.docs;
-    const name = r.path.split(/[\\/]/).pop();
-    const row = h('button', 'bs-recent-row', `${icon(m.mark, 22)}<div><b>${escapeHtml(name)}</b><span>${escapeHtml(r.path)}</span></div><time>${new Date(r.at).toLocaleDateString()}</time>`);
-    row.style.setProperty('--accent', m.accent);
-    row.onclick = () => window.office.openPath(r.path);
-    list.append(row);
-  }
-  return list;
+// The same Recent as every app's File screen. extra(row, entry) adds a button to a row.
+function recent(extra) {
+  return recentSection({ view: 'all', extra });
 }
 
 // One Claude conversation for the window, kept while switching views.

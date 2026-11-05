@@ -9,6 +9,7 @@ import { accountChip, accountsSection } from './accounts.js';
 import { aiSettings, pasteCopiedKey } from './ai-settings.js';
 import { updateSettings, watchUpdates } from './updates.js';
 import { themeButton, themeSettings } from './theme.js';
+import { recentButton, recentSection } from './recent.js';
 import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
 export const APPS = {
@@ -165,6 +166,9 @@ export async function createShell(opts) {
     btn.onclick = b.run;
     qa.append(btn);
   }
+  // Which Recent filter this window starts on: its app, or Write's Notes and LaTeX modes.
+  const recentView = () => opts.recentView?.() || (info.file?.latex ? 'latex' : info.file?.notes || info.file?.data?.notes ? 'notes' : opts.app);
+  qa.append(recentButton({ view: recentView, openAll: () => shell.openBackstage('recent') }));
   const titleText = h('div', 'titlebar-title');
   const search = h('div', 'titlebar-search', `${icon('sparkle', 14)}<input placeholder="Ask Claude or search commands" spellcheck="false">`);
   const shareBtn = h('button', 'titlebar-share', `${icon('share', 16)}<span>Share</span>`);
@@ -282,6 +286,7 @@ export async function createShell(opts) {
         opts.afterPrint?.();
       }, 500);
     },
+    recentView,
     openBackstage(section = 'home') {
       backstage.open(section);
     },
@@ -308,6 +313,20 @@ export async function createShell(opts) {
   } else {
     search.remove();
   }
+
+  // A cloud file reopened from Recent: a newer version from the drive replaced
+  // the cached copy (the window reloaded), or is waiting behind unsaved changes.
+  if (info.file?.refreshed) setTimeout(() => toast(`Updated to the latest version from ${info.file.refreshed}`), 400);
+  window.office.onCloudNewer((label) => {
+    if (root.querySelector('.cloud-newer')) return;
+    const bar = h('div', 'cloud-newer', `${icon('cloud', 16)}<span>A newer version of this file is on ${escapeHtml(label)}. Reloading replaces your unsaved changes; saving keeps yours.</span>`);
+    const reload = h('button', 'btn', 'Reload');
+    reload.onclick = () => window.office.useFresh();
+    const keep = h('button', 'btn', 'Keep mine');
+    keep.onclick = () => bar.remove();
+    bar.append(reload, keep);
+    ribbonHost.after(bar);
+  });
 
   window.office.onSaveAndClose(async () => {
     if (await shell.save()) window.office.close();
@@ -358,6 +377,7 @@ class Backstage {
       { id: 'home', label: 'Home', icon: 'home' },
       { id: 'new', label: 'New', icon: 'newFile' },
       { id: 'open', label: 'Open', icon: 'open' },
+      { id: 'recent', label: 'Recent', icon: 'clock' },
       '-',
       { id: 'save', label: 'Save', icon: 'save', run: () => this.close() || shell.save() },
       { id: 'saveas', label: 'Save As', icon: 'saveAs' },
@@ -410,7 +430,11 @@ class Backstage {
       c.append(h('h2', '', 'Start something new'));
       c.append(appTiles());
       c.append(h('h2', '', 'Recent'));
-      c.append(await recentList(() => this.close()));
+      c.append(await recentSection({ view: section === 'home' ? 'all' : this.shell.recentView(), limit: 10, onOpen: () => this.close() }));
+    } else if (section === 'recent') {
+      c.append(h('h1', '', 'Recent'));
+      c.append(h('p', 'muted recent-note', 'Files from Google Drive and OneDrive reopen from the copy on this computer, so they open right away. If the file changed on the drive, Work fetches the new version in the background.'));
+      c.append(await recentSection({ view: this.shell.recentView(), onOpen: () => this.close() }));
     } else if (section === 'open') {
       c.append(h('h1', '', 'Open'));
       const browse = h('button', 'bs-browse', `${icon('open', 28)}<span>Browse…</span>`);
@@ -433,7 +457,7 @@ class Backstage {
         openFromCloud(id, null);
       });
       places.append(texFolder, texZip);
-      c.append(browse, places, h('h2', '', 'Recent'), await recentList(() => this.close()));
+      c.append(browse, places, h('h2', '', 'Recent'), await recentSection({ view: this.shell.recentView(), limit: 10, onOpen: () => this.close() }));
     } else if (section === 'saveas') {
       c.append(h('h1', '', 'Save As'));
       const browse = h('button', 'bs-browse', `${icon('saveAs', 28)}<span>This PC: browse…</span>`);
@@ -484,24 +508,6 @@ function cloudPlaces(run) {
     row.append(b);
   }
   return row;
-}
-
-async function recentList(onOpen) {
-  const list = h('div', 'bs-recent');
-  const items = await window.office.recent();
-  if (!items.length) list.append(h('div', 'bs-empty', 'Files you open or save show up here.'));
-  for (const r of items) {
-    const m = APPS[r.app] || APPS.docs;
-    const name = r.path.split(/[\\/]/).pop();
-    const row = h('button', 'bs-recent-row', `${icon(m.mark, 22)}<div><b>${escapeHtml(name)}</b><span>${escapeHtml(r.path)}</span></div><time>${new Date(r.at).toLocaleDateString()}</time>`);
-    row.style.setProperty('--accent', m.accent);
-    row.onclick = () => {
-      onOpen?.();
-      window.office.openPath(r.path);
-    };
-    list.append(row);
-  }
-  return list;
 }
 
 export async function settingsForm(onSaved) {

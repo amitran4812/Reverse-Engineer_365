@@ -106,6 +106,7 @@ function openWindow(appName, file = null) {
     clearTimeout(shown);
     launches.delete(id);
     dirty.delete(id);
+    fresh.delete(id);
     data.closeOwner(id);
     pdfFiles.setFile(id, null);
   });
@@ -141,6 +142,11 @@ function openWindow(appName, file = null) {
   return win;
 }
 
+// Write's modes get their own place in Recent.
+const kindOf = (info) => (info?.latex ? 'latex' : info?.notes || info?.data?.notes ? 'notes' : null);
+const cloudInfo = (b) => ({ provider: b.provider, label: b.label, native: b.native, live: b.native === 'Google Sheets' });
+const recentCloud = (b) => (b ? { provider: b.provider, id: b.id, parent: b.parent, name: b.name, native: b.native, label: b.label, modified: b.modified } : null);
+
 async function openPath(file, fromWin) {
   const appName = formats.appForFile(file);
   if (!appName) {
@@ -148,18 +154,65 @@ async function openPath(file, fromWin) {
     return;
   }
   try {
-    const info = await formats.openFile(file);
-    settings.addRecent(appName, file);
-    // Reuse an empty home window; otherwise open a new one.
-    if (fromWin && launches.get(fromWin.webContents.id)?.app === 'home') {
-      openWindow(appName, info);
-      fromWin.close();
-    } else {
-      openWindow(appName, info);
+    // A file that came from a cloud drive reopens from its cached copy; the
+    // drive is only asked again if the copy is gone.
+    const entry = settings.recentEntry(file);
+    const fromCloud = entry?.cloud || null;
+    if (fromCloud && !require('fs').existsSync(file)) {
+      const got = await cloud.download(fromCloud.provider, { id: fromCloud.id, name: fromCloud.name });
+      if (got.path !== file) {
+        await require('fs/promises').mkdir(path.dirname(file), { recursive: true });
+        await require('fs/promises').copyFile(got.path, file);
+      }
+      cloud.restore(file, cloud.bindingFor(got.path));
+    } else if (fromCloud) {
+      cloud.restore(file, fromCloud);
     }
+    const info = await formats.openFile(file);
+    if (fromCloud) info.cloud = cloudInfo(cloud.bindingFor(file));
+    settings.addRecent(appName, file, { kind: kindOf(info) });
+    const win = openWindow(appName, info);
+    // Reuse an empty home window; otherwise open a new one.
+    if (fromWin && launches.get(fromWin.webContents.id)?.app === 'home') fromWin.close();
+    if (fromCloud) refreshFromCloud(win, file);
   } catch (err) {
     dialog.showErrorBox('Can’t open file', String(err.message || err));
   }
+}
+
+// After a cached cloud file opens, check the drive in the background. A newer
+// version replaces the cache and reloads the window, unless it has unsaved
+// changes: then the window offers the reload itself.
+const fresh = new Map(); // webContents id -> { file, copy }
+async function refreshFromCloud(win, file) {
+  let copy;
+  try {
+    copy = await cloud.fresher(file);
+  } catch {
+    return; // offline or signed out: the cached copy is what there is
+  }
+  if (!copy || win.isDestroyed()) return;
+  const id = win.webContents.id;
+  if (launches.get(id)?.file?.path !== file) return;
+  fresh.set(id, { file, copy });
+  if (dirty.has(id)) win.webContents.send('app:cloud-newer', copy.label);
+  else await useFresh(win);
+}
+
+async function useFresh(win) {
+  const id = win.webContents.id;
+  const pending = fresh.get(id);
+  if (!pending) return false;
+  fresh.delete(id);
+  await cloud.applyFresh(pending.file, pending.copy);
+  settings.editRecent(pending.file, { cloud: { modified: pending.copy.modified } });
+  const info = await formats.openFile(pending.file);
+  info.cloud = cloudInfo(cloud.bindingFor(pending.file));
+  info.refreshed = pending.copy.label;
+  launches.set(id, { app: launches.get(id)?.app || formats.appForFile(pending.file), file: info });
+  dirty.delete(id);
+  win.webContents.reload();
+  return true;
 }
 
 function senderWin(e) {
@@ -211,13 +264,15 @@ ipcMain.handle('app:save', async (e, { app: appName, payload, path: current, sav
     const exported = appName === 'slides' && saved.ext === 'pptx';
     if (cloud.bindingFor(file)) {
       try {
-        return { ...saved, exported, cloud: await cloud.uploadBack(file) };
+        const label = await cloud.uploadBack(file);
+        if (!exported) settings.addRecent(appName, file, { kind: appName === 'docs' ? (payload?.notes ? 'notes' : null) : null, cloud: recentCloud(cloud.bindingFor(file)) });
+        return { ...saved, exported, cloud: label };
       } catch (err) {
         dialog.showErrorBox('Couldn’t upload', `Your changes are saved on this computer, but uploading them failed: ${err.message || err}`);
         return null;
       }
     }
-    if (!exported) settings.addRecent(appName, file);
+    if (!exported) settings.addRecent(appName, file, { kind: appName === 'docs' ? (payload?.notes ? 'notes' : null) : null });
     return { ...saved, exported };
   } catch (err) {
     dialog.showErrorBox('Couldn’t save', String(err.message || err));
@@ -283,6 +338,8 @@ ipcMain.handle('app:fullscreen', (e, on) => {
 });
 
 ipcMain.handle('app:recent', () => settings.recent());
+ipcMain.handle('app:recent-edit', (e, file, patch) => settings.editRecent(String(file), patch === null ? null : { pinned: Boolean(patch?.pinned) }));
+ipcMain.handle('app:use-fresh', (e) => useFresh(senderWin(e)));
 
 ipcMain.handle('app:open-external', (e, url) => {
   if (/^https:\/\//.test(url)) shell.openExternal(url);
@@ -333,13 +390,18 @@ ipcMain.handle('cloud:open', safe(async (e, id, file) => {
   if (!appName) throw new Error(`Work can't open ${file.name}.`);
   const info = await formats.openFile(got.path);
   info.cloud = { provider: id, label: got.label, native: got.native, live: got.native === 'Google Sheets' };
+  // Remembered with its cached copy, so Recent reopens it without the drive.
+  settings.addRecent(appName, got.path, { kind: kindOf(info), cloud: recentCloud(cloud.bindingFor(got.path)) });
   const from = senderWin(e);
   openWindow(appName, info);
   if (from && launches.get(from.webContents.id)?.app === 'home') from.close();
   return { ok: true };
 }));
-ipcMain.handle('cloud:save-new', safe((e, { provider, folder, name, app: appName, payload }) =>
-  cloud.saveNew(provider, { folder, name }, (local) => formats.saveFile(appName, local, payload))));
+ipcMain.handle('cloud:save-new', safe(async (e, { provider, folder, name, app: appName, payload }) => {
+  const res = await cloud.saveNew(provider, { folder, name }, (local) => formats.saveFile(appName, local, payload));
+  settings.addRecent(appName, res.path, { kind: appName === 'docs' && payload?.notes ? 'notes' : null, cloud: recentCloud(cloud.bindingFor(res.path)) });
+  return res;
+}));
 ipcMain.handle('cloud:share', safe((e, local, op, args) => cloud.share(local, op, args)));
 ipcMain.handle('accounts:list', () => profiles.list());
 ipcMain.handle('accounts:add', safe((e, name) => profiles.add(name)));

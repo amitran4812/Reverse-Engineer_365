@@ -12,6 +12,7 @@ const { app } = require('electron');
 const settings = require('../settings');
 const oauth = require('./oauth');
 const { providers, sheetsLive } = require('./providers');
+const { isStale } = require('../../common/recent');
 
 const bindings = new Map(); // cache path -> { provider, id, parent, name }
 
@@ -129,12 +130,36 @@ async function download(id, file) {
   const local = cachePath(id, meta.id, meta.name);
   await fsp.mkdir(path.dirname(local), { recursive: true });
   await fsp.writeFile(local, bytes);
-  bindings.set(local, { provider: id, id: meta.id, parent: meta.parent, name: meta.name, native: meta.native });
+  bindings.set(local, { provider: id, id: meta.id, parent: meta.parent, name: meta.name, native: meta.native, modified: meta.modified, label: p.label });
   return { path: local, label: p.label, native: meta.native };
 }
 
 function bindingFor(local) {
   return local ? bindings.get(local) || null : null;
+}
+
+// A Recent entry's cached copy, reopened without downloading: saving uploads it again.
+function restore(local, b) {
+  if (b?.provider && b.id && providers[b.provider]) bindings.set(local, { ...b, label: providers[b.provider].label });
+}
+
+// Downloads the cloud copy again when it changed since `local` was cached.
+// Returns null when the cache is current; otherwise { bytes, modified, label }
+// for the caller to write once the window has no unsaved changes.
+async function fresher(local) {
+  const b = bindings.get(local);
+  if (!b) return null;
+  const p = provider(b.provider);
+  const meta = await withToken(b.provider, (t) => p.meta(t, b.id));
+  if (!isStale(b.modified, meta.modified)) return null;
+  const { bytes, file } = await withToken(b.provider, (t) => p.download(t, { id: b.id, name: b.name }));
+  return { bytes, modified: file.modified || meta.modified, label: p.label };
+}
+
+async function applyFresh(local, fresh) {
+  await fsp.writeFile(local, fresh.bytes);
+  const b = bindings.get(local);
+  if (b) bindings.set(local, { ...b, modified: fresh.modified });
 }
 
 // Uploads a saved local file back to its cloud copy.
@@ -143,7 +168,7 @@ async function uploadBack(local) {
   const p = provider(b.provider);
   const bytes = await fsp.readFile(local);
   const f = await withToken(b.provider, (t) => p.upload(t, { id: b.id, name: b.name, bytes }));
-  bindings.set(local, { ...b, id: f.id || b.id });
+  bindings.set(local, { ...b, id: f.id || b.id, modified: f.modified || b.modified });
   return p.label;
 }
 
@@ -155,8 +180,8 @@ async function saveNew(id, { folder, name }, write) {
   const saved = await write(local);
   const bytes = await fsp.readFile(local);
   const f = await withToken(id, (t) => p.upload(t, { parent: folder, name, bytes }));
-  bindings.set(local, { provider: id, id: f.id, parent: folder, name: f.name || name });
-  return { ...saved, cloud: p.label };
+  bindings.set(local, { provider: id, id: f.id, parent: folder, name: f.name || name, modified: f.modified, label: p.label });
+  return { ...saved, path: local, cloud: p.label };
 }
 
 // Live Google Sheets calls for the window editing `local`.
@@ -201,4 +226,4 @@ async function share(local, op, args = {}) {
   throw new Error(`Unknown share operation: ${op}`);
 }
 
-module.exports = { status, connect, disconnect, list, download, bindingFor, uploadBack, saveNew, sheet, share, importRange };
+module.exports = { status, connect, disconnect, list, download, bindingFor, restore, fresher, applyFresh, uploadBack, saveNew, sheet, share, importRange };

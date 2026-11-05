@@ -100,12 +100,17 @@ const google = {
   },
 
   async download(token, file) {
-    const meta = await call(token, `${this.api}/files/${encodeURIComponent(file.id)}?fields=id,name,mimeType,parents&supportsAllDrives=true`);
+    const meta = await call(token, `${this.api}/files/${encodeURIComponent(file.id)}?fields=id,name,mimeType,parents,modifiedTime&supportsAllDrives=true`);
     const native = GOOGLE_NATIVE[meta.mimeType];
     const bytes = native
       ? await call(token, `${this.api}/files/${encodeURIComponent(file.id)}/export?mimeType=${encodeURIComponent(native.mime)}`, { raw: true })
       : await call(token, `${this.api}/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`, { raw: true });
     return { bytes, file: this.toFile(meta) };
+  },
+
+  // Name and modified time only, to tell whether a cached copy is still current.
+  async meta(token, id) {
+    return this.toFile(await call(token, `${this.api}/files/${encodeURIComponent(id)}?fields=id,name,mimeType,parents,modifiedTime&supportsAllDrives=true`));
   },
 
   // Sharing: people with access, invites by email (Google sends the email), removal.
@@ -144,7 +149,7 @@ const google = {
     const ext = path.extname(name).slice(1).toLowerCase();
     const mime = MIME[ext] || 'application/octet-stream';
     if (id) {
-      const r = await call(token, `${this.uploadApi}/files/${encodeURIComponent(id)}?uploadType=media&supportsAllDrives=true&fields=id,name,mimeType,parents`, {
+      const r = await call(token, `${this.uploadApi}/files/${encodeURIComponent(id)}?uploadType=media&supportsAllDrives=true&fields=id,name,mimeType,parents,modifiedTime`, {
         method: 'PATCH',
         headers: { 'content-type': mime },
         body: bytes,
@@ -158,7 +163,7 @@ const google = {
       bytes,
       Buffer.from(`\r\n--${boundary}--`),
     ]);
-    const r = await call(token, `${this.uploadApi}/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,parents`, {
+    const r = await call(token, `${this.uploadApi}/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,parents,modifiedTime`, {
       method: 'POST',
       headers: { 'content-type': `multipart/related; boundary=${boundary}` },
       body,
@@ -306,6 +311,12 @@ const onedrive = {
     const f = this.toFile(meta);
     if (String(file.id).includes('|')) f.id = file.id;
     return { bytes, file: f };
+  },
+
+  async meta(token, id) {
+    const f = this.toFile(await call(token, `${this.api}${itemPath(id)}?$select=id,name,folder,file,size,lastModifiedDateTime,parentReference`));
+    if (String(id).includes('|')) f.id = id;
+    return f;
   },
 
   async people(token, id) {
