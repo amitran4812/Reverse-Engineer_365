@@ -13,16 +13,20 @@ const active = new Map();
 // Server-side refusal fallback is supported on these models (Claude API only).
 const FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5']);
 
-function buildRequest({ system, messages, maxTokens, format }) {
+function buildRequest({ system, messages, maxTokens, format, cacheFirst }) {
   const { model, effort } = settings.readRaw();
   const req = {
     model,
     max_tokens: maxTokens || 32000,
     system,
     // Attached files ride along with the message they were sent with.
-    messages: messages.map((m) => (m.attachments?.length
-      ? { role: m.role, content: [...attachments.blocks(m.attachments), { type: 'text', text: m.content }] }
-      : { role: m.role, content: m.content })),
+    messages: messages.map((m, i) => {
+      if (!m.attachments?.length) return { role: m.role, content: m.content };
+      const blocks = attachments.blocks(m.attachments).map((b) => ({ ...b }));
+      // A project's files open the conversation; caching them makes follow-ups quick and cheap.
+      if (cacheFirst && i === 0 && blocks.length) blocks[blocks.length - 1].cache_control = { type: 'ephemeral' };
+      return { role: m.role, content: [...blocks, { type: 'text', text: m.content }] };
+    }),
     output_config: format ? { effort, format: { type: 'json_schema', schema: format } } : { effort },
   };
   if (FALLBACK_MODELS.has(model)) {

@@ -6,12 +6,14 @@
 //   quick            [{ label, icon, prompt, input?, format?, render?, actions? }] one-click actions
 //   actions(text)    buttons shown under a normal answer, e.g. Insert / Replace
 //   defaultQuick     quick action used for typed messages (the Claude app makes files)
+//   project          { id, name } a project whose files Claude reads; fixedProject keeps it
 // A quick action with `format` asks for structured JSON; its `actions(json)` apply it.
 // Files can be attached with the paperclip or dropped on the pane; they go with the next message.
 
 import { marked } from 'marked';
 import { icon } from './icons.js';
-import { escapeHtml, h, settingsForm, toast } from './shell.js';
+import { dialog, escapeHtml, h, settingsForm, toast } from './shell.js';
+import { preparePdfs, projectChip } from './projects.js';
 import { AI_PROVIDERS, activeModelLabel, aiSettings } from './ai-settings.js';
 
 marked.setOptions({ gfm: true, breaks: false });
@@ -82,6 +84,13 @@ export class ClaudePane {
       this.loadSettings();
     };
     head.append(this.providerPick);
+    this.project = cfg.project || null;
+    if (!cfg.fixedProject) {
+      const pick = h('button', 'cp-icon cp-project-btn', icon('project', 16));
+      pick.title = 'Use a project: Claude reads all of its files';
+      pick.onclick = () => this.pickProject();
+      head.append(pick);
+    }
     const newChat = h('button', 'cp-icon', icon('newFile', 16));
     newChat.title = 'New conversation';
     newChat.onclick = () => this.reset();
@@ -153,8 +162,31 @@ export class ClaudePane {
     this.input.focus();
   }
 
+  setProject(project) {
+    this.project = project ? { id: project.id, name: project.name } : null;
+    this.drawFiles();
+  }
+
+  async pickProject() {
+    const list = await window.office.projects.list();
+    if (!list.length) {
+      toast('Make a project first: on the Work start screen, open Projects.');
+      return;
+    }
+    const got = await dialog({
+      title: 'Use a project',
+      body: '<p class="muted">Claude reads every file in the project with each message, so it knows what you are working on.</p>',
+      fields: [{ name: 'id', label: 'Project', type: 'select', value: this.project?.id || '', options: [{ value: '', label: 'No project' }, ...list.map((p) => ({ value: p.id, label: p.name }))] }],
+      ok: 'Use',
+    });
+    if (!got) return;
+    this.setProject(list.find((p) => p.id === got.id) || null);
+    this.input.focus();
+  }
+
   drawFiles() {
     this.chipsEl.innerHTML = '';
+    if (this.project) this.chipsEl.append(projectChip(this.project, this.cfg.fixedProject ? null : () => this.setProject(null)));
     for (const f of this.attached) {
       const chip = h('span', 'cp-file', `${icon('attach', 12)}<span>${escapeHtml(f.name)}</span>`);
       const x = h('button', '', '×');
@@ -283,6 +315,26 @@ export class ClaudePane {
     this.scroll();
 
     const id = `c${Date.now()}-${seq++}`;
+    const project = this.project?.id || null;
+    this.busy = id;
+    this.send.innerHTML = icon('stop', 18);
+    this.send.title = 'Stop';
+    if (project) {
+      // PDFs added since the last message are read to text first.
+      this.preparing = id;
+      try {
+        await preparePdfs(project, (done, total) => {
+          if (total) textEl.innerHTML = `<span class="cp-status">${icon('project', 14)} Reading the project’s PDFs… <small>${done} of ${total}</small></span>`;
+        });
+      } catch (err) {
+        console.warn(err);
+      }
+      this.preparing = null;
+      if (this.busy !== id) {
+        textEl.innerHTML = '<span class="muted">Stopped.</span>';
+        return;
+      }
+    }
     let text = '';
     let pending = false;
     let raf = 0;
@@ -293,11 +345,9 @@ export class ClaudePane {
       else textEl.innerHTML = markdownToHtml(text);
       this.scroll();
     };
-    this.busy = id;
-    this.send.innerHTML = icon('stop', 18);
-    this.send.title = 'Stop';
     window.office.claude.stream(id, {
       system: this.cfg.system,
+      project,
       messages,
       format: quick?.format,
       maxTokens: quick?.maxTokens,
@@ -361,6 +411,12 @@ export class ClaudePane {
   }
 
   stop() {
+    if (this.busy && this.preparing === this.busy) {
+      this.busy = null;
+      this.send.innerHTML = icon('send', 18);
+      this.send.title = 'Send (Enter)';
+      return;
+    }
     if (this.busy) window.office.claude.cancel(this.busy);
   }
 

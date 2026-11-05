@@ -8,6 +8,7 @@ An installable desktop office suite with AI built in (Claude by default, or Open
 - **Read**: a PDF reader and editor. Thumbnails, bookmarks, find, links, night mode and read mode; highlight, underline and strike out text, sticky notes, comments, text boxes, pen drawings and shapes; **Fill & Sign** with a typed, drawn or uploaded signature, initials, dates and check marks; rotate, delete, move, extract and insert pages, and combine PDFs; and **Convert** to a Write document (headings, lists and tables), notes, a Plot workbook or a Present deck. Comments are saved as standard PDF annotations, so other PDF readers show them too, and signatures become part of the page.
 
 - **Claude app**: on the start screen, type what you need ("a 10-slide pitch deck for…", "a monthly budget…") and attach PDFs, images, Word, Excel, CSV or text files. Claude makes the presentation, spreadsheet or document and opens it in the right app.
+- **Projects**: keep the files for one piece of work together (papers, drafts, a LaTeX project, data, slides) and chat with Claude about all of them at once. Add files any time, including ones you made earlier, from **File › Add to project** in any app.
 - **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Plot.
 - **Share**: the Share button in every app invites people by email with edit or view access, through Google Drive or OneDrive.
 - **Other AIs**: connect OpenAI (ChatGPT models) or Gemini with your own API key and every AI feature works the same way. Claude stays the default.
@@ -25,6 +26,7 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 | Write (LaTeX) | **LaTeX helper**: write LaTeX from a description ("a 3-column table of results"), turn data into a table, convert plain text or math to LaTeX, explain a command, answer "which command do I need?", improve the wording without touching commands, and fix compile errors |
 | Plot | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
 | Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
+| Projects | Group any files; Claude reads them all, in the project's own chat or in any app's Claude pane |
 | Present | Write a whole deck from a topic, improve the current slide, suggest the next slide, write speaker notes for every slide, and **What to say** during a slide show: a short script for the slide on screen, shown at the bottom and different for each slide, that follows along as you change slides. Turn it on or off with the **What to say** button on the slide show bar, the S key, **Slide Show > What to say On/Off**, or **File > Options > AI assistant**; your choice is remembered |
 
 Claude runs through your own Anthropic account: see [Connect Claude](#connect-claude) below.
@@ -181,6 +183,7 @@ main/            Electron main process
   preload.js     the window.office bridge exposed to the renderer
   claude.js      streams Claude responses (the API key stays in this process)
   attachments.js files attached to Claude messages (PDF, images, Office files, text)
+  projects.js    Projects: files grouped for Claude (copied in or linked), read to text for each conversation
   generated.js   opens what the Claude app made in Write, Plot or Present, and slides Plot and Write send to Present
   links.js       reads a public web page, or a YouTube video's captions, for Write's "Notes from a link"
   media.js       voice notes, transcription and attachments for Write's notes

@@ -16,6 +16,7 @@ const latex = require('./latex');
 const data = require('./data');
 const pdfFiles = require('./pdf');
 const templates = require('./templates');
+const projects = require('./projects');
 
 const ACCENT = { home: '#3b4a6b', docs: '#2f5aa8', sheets: '#1b7a4b', slides: '#c2532d', pdf: '#0f7b87' };
 const TITLES = { home: 'Work', docs: 'Write', sheets: 'Plot', slides: 'Present', pdf: 'Read' };
@@ -451,9 +452,33 @@ ipcMain.handle('updates:status', () => updates.status());
 ipcMain.handle('updates:check', () => updates.check());
 ipcMain.handle('updates:install', () => updates.install());
 
-ipcMain.on('claude:start', (e, { id, payload }) => {
+ipcMain.on('claude:start', async (e, { id, payload }) => {
+  if (payload?.project && payload.messages?.length) {
+    try {
+      payload = await withProject(payload);
+    } catch (err) {
+      e.sender.send('claude:event', { id, type: 'error', message: `Couldn’t read the project: ${err.message || err}` });
+      return;
+    }
+  }
   claude.start(e.sender, id, payload);
 });
+
+// A project's files go at the start of the conversation, read fresh for every message.
+async function withProject(payload) {
+  const ctx = await projects.context(payload.project);
+  const att = attachments.put(`project_${payload.project}`, ctx.name, ctx.blocks);
+  const note = [
+    `This conversation is in the user's project "${ctx.name.replace(/"/g, "'")}". The project's instructions, its list of files and the files' contents come at the start of the first message, in <project> and <project_file> tags (PDFs and pictures may come as documents and images).`,
+    'Use them to understand what the user is working on and answer from them, naming the files you draw on. If a file you need is missing, not read yet or only included in part, say so.',
+  ].join(' ');
+  return {
+    ...payload,
+    system: payload.system ? `${payload.system}\n\n${note}` : note,
+    messages: payload.messages.map((m, i) => (i === 0 ? { ...m, attachments: [att, ...(m.attachments || [])] } : m)),
+    cacheFirst: true,
+  };
+}
 ipcMain.on('claude:cancel', (e, id) => claude.cancel(id));
 ipcMain.handle('claude:attach-dialog', async (e) => {
   const res = await dialog.showOpenDialog(senderWin(e), {
@@ -488,6 +513,40 @@ ipcMain.handle('pdf:signatures', () => pdfFiles.signatures());
 ipcMain.handle('pdf:set-signatures', safe((e, list) => pdfFiles.setSignatures(list)));
 ipcMain.handle('pdf:user', () => pdfFiles.userName());
 // Present templates the user uploaded.
+// Projects: files grouped for Claude.
+const projectPaths = (list) => (Array.isArray(list) ? list : []).filter((p) => typeof p === 'string' && p).slice(0, 200);
+ipcMain.handle('projects:list', () => projects.list());
+ipcMain.handle('projects:get', safe((e, id) => projects.get(id)));
+ipcMain.handle('projects:create', safe(async (e, spec) => {
+  const p = await projects.create(spec || {});
+  if (spec?.paths?.length) await projects.addFiles(p.id, projectPaths(spec.paths), { copy: !!spec.copy });
+  return p;
+}));
+ipcMain.handle('projects:update', safe((e, id, patch) => projects.update(id, patch || {})));
+ipcMain.handle('projects:remove', safe((e, id) => projects.remove(id)));
+ipcMain.handle('projects:add-dialog', safe(async (e, id, folder) => {
+  const res = await dialog.showOpenDialog(senderWin(e), {
+    title: folder ? 'Add a folder to the project' : 'Add files to the project',
+    properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'],
+  });
+  return res.canceled ? { added: [], skipped: [] } : projects.addFiles(id, res.filePaths, { copy: !folder });
+}));
+ipcMain.handle('projects:add-paths', safe((e, id, paths, opts) => projects.addFiles(id, projectPaths(paths), { copy: !!opts?.copy })));
+ipcMain.handle('projects:remove-item', safe((e, id, itemId) => projects.removeItem(id, itemId)));
+ipcMain.handle('projects:pdf-bytes', safe((e, id, file) => projects.pdfBytes(id, file)));
+ipcMain.handle('projects:save-text', safe((e, id, key, body) => projects.saveText(id, key, body)));
+ipcMain.handle('projects:for-path', (e, file) => projects.forPath(file).catch(() => []));
+ipcMain.handle('projects:reveal', safe(async (e, id, file) => {
+  if (file) shell.showItemInFolder(file);
+  else await shell.openPath(path.join(app.getPath('userData'), 'Projects', (await projects.readMeta(id)).id, 'files'));
+  return { ok: true };
+}));
+// Opens a project file in Work when it can, otherwise in the system's app. Home stays open.
+ipcMain.handle('projects:open-file', safe(async (e, file) => {
+  if (formats.appForFile(file)) await openPath(file, null);
+  else await shell.openPath(file);
+  return { ok: true };
+}));
 ipcMain.handle('templates:list', () => templates.list());
 ipcMain.handle('templates:upload', safe((e) => templates.upload(senderWin(e))));
 ipcMain.handle('templates:remove', safe((e, id) => templates.remove(id)));

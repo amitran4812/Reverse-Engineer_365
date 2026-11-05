@@ -10,6 +10,7 @@ import { aiSettings, pasteCopiedKey } from './ai-settings.js';
 import { updateSettings, watchUpdates } from './updates.js';
 import { themeButton, themeSettings } from './theme.js';
 import { recentButton, recentSection } from './recent.js';
+import { addToProject } from './projects.js';
 import { CLOUDS, cloudBrowser, cloudSettings, ensureConnected, openFromCloud, shareDialog } from './cloud.js';
 
 export const APPS = {
@@ -283,6 +284,15 @@ export async function createShell(opts) {
       }, 500);
     },
     recentView,
+    // The file (or a LaTeX project's folder) this window would add to a project.
+    projectPath() {
+      return info.file?.latex?.root || state.path;
+    },
+    async addToProject() {
+      if (!shell.projectPath() && !(await shell.save())) return;
+      const p = await addToProject(dialog, shell.projectPath(), { name: info.file?.latex ? `${state.name} (LaTeX project folder)` : state.name });
+      if (p && shell.claude && !shell.claude.project) shell.claude.setProject(p);
+    },
     openBackstage(section = 'home') {
       backstage.open(section);
     },
@@ -297,6 +307,12 @@ export async function createShell(opts) {
 
   if (opts.claude) {
     shell.claude = new ClaudePane(paneHost, { ...opts.claude, shell });
+    // A file that belongs to a project opens with Claude reading that project.
+    if (shell.projectPath()) {
+      window.office.projects.forPath(shell.projectPath()).then((list) => {
+        if (list.length && !shell.claude.project) shell.claude.setProject(list[0]);
+      });
+    }
     const input = search.querySelector('input');
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && input.value.trim()) {
@@ -380,6 +396,7 @@ class Backstage {
       { id: 'export', label: 'Export', icon: 'export' },
       { id: 'print', label: 'Print', icon: 'print', run: () => this.close() || shell.print() },
       '-',
+      { id: 'project', label: 'Add to project', icon: 'project', run: () => this.close() || shell.addToProject() },
       { id: 'options', label: 'Options', icon: 'settings' },
       { id: 'close', label: 'Close', icon: 'close', run: () => window.office.close() },
     ];
