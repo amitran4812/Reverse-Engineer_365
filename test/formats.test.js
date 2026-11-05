@@ -121,6 +121,24 @@ test('xlsx round trip keeps values, formulas, styles and sheets', async () => {
   assert.equal(back.sheets[1].cells.A1.v, 'hello');
 });
 
+test('xlsx keeps cell fonts and sizes, leaving the default font off', async () => {
+  const back = await importXlsx(await exportXlsx({ sheets: [{ name: 'F', cells: { A1: { v: 'a', s: { font: 'Source Sans 3', size: 14 } }, A2: { v: 'b', s: { b: true } } } }] }));
+  const c = back.sheets[0].cells;
+  assert.equal(c.A1.s.font, 'Source Sans 3');
+  assert.equal(c.A1.s.size, 14);
+  assert.deepEqual(c.A2.s, { b: true });
+});
+
+test('font names become quoted CSS stacks and back', () => {
+  const { fontStack, firstFamily, bundled } = require('../common/fonts');
+  assert.equal(fontStack('Source Sans 3'), '"Source Sans 3", sans-serif');
+  assert.equal(fontStack('JetBrains Mono'), '"JetBrains Mono", monospace');
+  assert.equal(fontStack('Garamond'), '"Garamond", serif');
+  assert.equal(fontStack('Great Vibes'), '"Great Vibes", cursive');
+  assert.equal(firstFamily('"Inter", sans-serif'), 'Inter');
+  assert.equal(bundled('inter').family, 'Inter');
+});
+
 test('csv export uses computed values and quotes where needed; import parses it back', () => {
   const csv = exportCsv(book, 0);
   assert.equal(csv.split('\r\n')[3], ',1650.5,');

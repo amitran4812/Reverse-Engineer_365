@@ -3,8 +3,12 @@
 
 import { icon } from '../shared/icons.js';
 import { escapeHtml, h, toast } from '../shared/shell.js';
+import { BUNDLED, installedFonts, loadFont } from '../shared/fonts.js';
 
-const FONTS = ['Segoe Script', 'Ink Free', 'Lucida Handwriting', 'Brush Script MT', 'Bradley Hand', 'Snell Roundhand', 'Segoe Print'];
+// Handwriting faces Work ships come first; the computer's own are added when it has them.
+const SHIPPED = BUNDLED.filter((f) => f.group === 'hand').map((f) => f.family);
+const SYSTEM = ['Segoe Script', 'Ink Free', 'Lucida Handwriting', 'Brush Script MT', 'Bradley Hand', 'Snell Roundhand', 'Segoe Print'];
+let FONTS = SHIPPED;
 const INKS = { Black: '#111111', Blue: '#1d3f9a', Red: '#9b1c1c' };
 
 // Crops a canvas to what was drawn on it, with a little margin.
@@ -158,6 +162,13 @@ export function createSignature(kind = 'signature', name = '') {
       }
     };
     nameIn.oninput = drawFonts;
+    installedFonts().then((names) => {
+      const have = new Set(names);
+      const extra = SYSTEM.filter((f) => have.has(f));
+      if (!extra.length) return;
+      FONTS = [...SHIPPED, ...extra];
+      drawFonts();
+    });
     let picked = null;
     const fileIn = h('input');
     fileIn.type = 'file';
@@ -210,6 +221,7 @@ export function createSignature(kind = 'signature', name = '') {
     back.addEventListener('keydown', (e) => e.key === 'Escape' && done(null));
     box.querySelector('[data-ok]').onclick = async () => {
       let out = null;
+      if (tab === 'type' && nameIn.value.trim()) await loadFont(font, 150);
       if (tab === 'type') out = nameIn.value.trim() ? typed(nameIn.value.trim(), font, ink) : null;
       else if (tab === 'draw') out = trimmed(pad.canvas);
       else out = picked;

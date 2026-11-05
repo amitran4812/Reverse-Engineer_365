@@ -4,6 +4,7 @@ import { createShell, escapeHtml, h, toast } from '../shared/shell.js';
 import { markdownToHtml, sanitize } from '../shared/claude-pane.js';
 import { icon } from '../shared/icons.js';
 import { THEMES, UPLOADED, allThemes, loadTemplates, removeTemplate, slideBackground, uploadTemplates } from '../shared/themes.js';
+import { firstFamily, fontStack } from '../shared/fonts.js';
 import '../shared/dark.css';
 
 let W = 960;
@@ -88,6 +89,8 @@ function elementColor(el) {
 }
 
 const VALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+// Fonts are kept by name; older decks and themes may hold a whole stack.
+const cssFont = (v) => (!v ? '' : /[,"']/.test(v) ? v : fontStack(v));
 const CSS_KEYS = { fontSize: 'font-size', color: 'color', fontFamily: 'font-family', bold: 'font-weight', italic: 'font-style', align: 'text-align' };
 
 function elementNode(el, s, t, layer = false) {
@@ -110,7 +113,7 @@ function elementNode(el, s, t, layer = false) {
       textAlign: el.style?.align || (el.type === 'shape' ? 'center' : 'left'),
       fontWeight: free ? (el.style.bold ? '700' : '') : el.style?.bold || el.role === 'title' ? (el.role === 'title' && !el.style?.bold ? '600' : '700') : '',
       fontStyle: el.style?.italic ? 'italic' : '',
-      fontFamily: el.style?.fontFamily || (el.role === 'title' && t.titleFont) || '',
+      fontFamily: cssFont(el.style?.fontFamily) || (el.role === 'title' && t.titleFont) || '',
       justifyContent: VALIGN[el.style?.valign] && (free || el.style.valign === 'middle') ? VALIGN[el.style.valign] : el.type === 'shape' ? 'center' : el.role === 'title' && s.layout !== 'title' ? 'flex-end' : 'flex-start',
     });
     if (el.style?.pad) inner.style.padding = el.style.pad.map((v) => `${v}px`).join(' ');
@@ -195,7 +198,7 @@ function tableNode(el, t) {
   table.style.setProperty('--tb-accent', el.style?.fill || t.accent);
   table.style.setProperty('--tb-text', el.style?.color || t.text);
   table.style.fontSize = `${el.style?.fontSize || 14}px`;
-  table.style.fontFamily = el.style?.fontFamily || t.font;
+  table.style.fontFamily = cssFont(el.style?.fontFamily) || t.font;
   (el.rows || []).forEach((row, r) => {
     const tr = h('tr', r === 0 && el.header !== false ? 'head' : '');
     for (const v of row) tr.append(h(r === 0 && el.header !== false ? 'th' : 'td', '', escapeHtml(v ?? '')));
@@ -1319,6 +1322,7 @@ const homeTab = {
     ] },
     { label: 'Font', items: [
       { type: 'row', items: [
+        { type: 'font', title: 'Font', width: 120, value: () => firstFamily(selectedEl()?.style?.fontFamily || (selectedEl()?.role === 'title' && theme().titleFont) || theme().font), change: (f) => setStyle({ fontFamily: f }) },
         { type: 'select', title: 'Font size', width: 60, options: [12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 54, 66, 80, 96].map((n) => ({ value: String(n), label: String(n) })), value: () => String(selectedEl()?.style?.fontSize || ''), change: (v) => setStyle({ fontSize: Number(v) }) },
       ] },
       { type: 'row', items: [

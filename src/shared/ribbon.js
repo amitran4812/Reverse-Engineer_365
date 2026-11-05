@@ -8,12 +8,14 @@
 //   stack   column of small controls          { type:'stack', items:[...] }
 //   row     row of icon/text controls         { type:'row', items:[...] }
 //   select  dropdown                          { type:'select', options:[{value,label}], value(), change(v), width }
+//   font    searchable font picker             { type:'font', value(), change(name), width, filter(name, group), sample }
 //   color   colour picker                     { type:'color', icon, title, pick(color) }
 //   menu    button with a dropdown list       { type:'menu', icon, label, big, items:[{label, run, icon}] }
 //   gallery tiles (styles, themes, layouts)   { type:'gallery', items:[{label, html, run, active()}] or () => [...] }
 // Any control may define active() and enabled() for refresh().
 
 import { icon } from './icons.js';
+import { fontMenu, fontStack } from './fonts.js';
 
 export const PALETTE = [
   '#000000', '#434343', '#666666', '#999999', '#cccccc', '#ffffff',
@@ -197,6 +199,40 @@ export class Ribbon {
         s.onchange = () => item.change(s.value);
         return this.register(s, item);
       }
+      case 'font': {
+        const b = el('button', 'rb-select rb-font rb-dropdown-trigger');
+        b.title = item.title || 'Font';
+        if (item.width) b.style.width = `${item.width}px`;
+        const name = el('span', 'rb-font-name');
+        b.append(name, el('span', 'rb-font-caret', icon('chevronDown', 10)));
+        b.setValue = (v) => {
+          name.textContent = v;
+          name.style.fontFamily = fontStack(v);
+          b.dataset.value = v;
+        };
+        b.setValue(item.value?.() || '');
+        b.onmousedown = (e) => e.preventDefault();
+        b.onclick = () => {
+          if (openPopup && b.dataset.open === '1') {
+            closePopup();
+            return;
+          }
+          const p = popup(b, fontMenu((n) => {
+            closePopup();
+            item.change(n);
+            b.setValue(item.value?.() ?? n);
+          }, { current: b.dataset.value || '', filter: item.filter, sample: item.sample }));
+          p.classList.add('font-popup');
+          b.dataset.open = '1';
+          new MutationObserver((_, o) => {
+            if (!p.isConnected) {
+              b.dataset.open = '';
+              o.disconnect();
+            }
+          }).observe(document.body, { childList: true });
+        };
+        return this.register(b, item);
+      }
       case 'color': {
         const wrap = el('div', 'rb-split');
         const main = el('button', 'rb-btn rb-icon', icon(item.icon, 16));
@@ -279,7 +315,8 @@ export class Ribbon {
       if (item.enabled) node.disabled = !item.enabled();
       if (item.value && document.activeElement !== node) {
         const v = item.value();
-        if (v != null) node.value = v;
+        if (v != null && node.setValue) node.setValue(v);
+        else if (v != null) node.value = v;
       }
     }
   }

@@ -11,6 +11,7 @@ const JSZip = require('jszip');
 const PptxGenJS = require('pptxgenjs');
 const JSZip = require('jszip');
 const { hex } = require('./docx');
+const { firstFamily } = require('../../common/fonts');
 
 // Present also keeps its own copy of the deck inside the .pptx (themes,
 // template layers and shapes PowerPoint has no match for). It is used on
@@ -35,7 +36,7 @@ function textRuns(el) {
         underline: r.underline ? { style: 'sng' } : undefined,
         color: hex(r.color) || hex(el.style?.color),
         fontSize: r.size || el.style?.fontSize ? Math.round((r.size || el.style.fontSize) * 0.75) : undefined,
-        fontFace: r.font || undefined,
+        fontFace: firstFamily(r.font) || undefined,
       };
       if (ri === 0) {
         options.align = p.align || el.style?.align || 'left';
@@ -101,7 +102,7 @@ async function exportPptx(model, native) {
       if (el.type === 'text') {
         slide.addText(textRuns(el), {
           ...box,
-          fontFace: el.style?.fontFamily || theme.font || 'Calibri',
+          fontFace: firstFamily(el.style?.fontFamily || theme.font) || 'Calibri',
           fontSize: Math.round((el.style?.fontSize || 24) * 0.75),
           color: hex(el.style?.color) || hex(theme.text) || '222222',
           valign: el.style?.valign || 'top',
@@ -129,7 +130,7 @@ async function exportPptx(model, native) {
         slide.addTable(tableRows(el), {
           ...box,
           rowH: Number((box.h / el.rows.length).toFixed(3)),
-          fontFace: el.style?.fontFamily || theme.font || 'Calibri',
+          fontFace: firstFamily(el.style?.fontFamily || theme.font) || 'Calibri',
           fontSize: Math.round((el.style?.fontSize || 14) * 0.75),
           color: hex(el.style?.color) || hex(theme.text) || '222222',
           border: { type: 'solid', pt: 0.5, color: 'C8CCD2' },
