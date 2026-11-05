@@ -6,6 +6,7 @@
 // two adds write-anywhere areas, voice notes and dictation, equations, file
 // attachments and notes from video transcripts.
 
+import { CALLOUTS, TEMPLATES } from './notes-blocks.js';
 import { Extension } from '@tiptap/core';
 import { Plugin } from '@tiptap/pm/state';
 import { marked } from 'marked';
@@ -424,6 +425,32 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
     toast(`Transcribed with ${r.by}. Use Summarize for the key points and action items.`);
   }
 
+  // ---------- toggles, callouts and templates ----------
+  const toggleBlock = () => {
+    if (editor.isActive('toggle')) return chain().lift('toggle').run();
+    return chain().wrapIn('toggle').run() || insertBlocks([{ type: 'toggle', attrs: { open: true }, content: [{ type: 'paragraph' }, { type: 'paragraph' }] }]);
+  };
+  const calloutBlock = (kind = 'info') => {
+    if (editor.isActive('callout')) return chain().updateAttributes('callout', { kind }).run();
+    return chain().wrapIn('callout', { kind }).run() || insertBlocks([{ type: 'callout', attrs: { kind }, content: [{ type: 'paragraph' }] }]);
+  };
+  const useTemplate = (t) => {
+    const blank = editor.state.doc.textContent.trim() === '' && editor.state.doc.childCount <= 1;
+    if (blank) editor.chain().focus().setContent({ type: 'doc', content: t.build() }).setTextSelection(1).run();
+    else {
+      const blocks = t.build();
+      insertBlocks(blocks);
+      // Put the cursor at the end of the template's title, ready to type.
+      const title = blocks[0].content?.[0]?.text;
+      let at = null;
+      editor.state.doc.descendants((n, pos) => {
+        if (n.type.name === 'heading' && n.textContent === title) at = pos + n.nodeSize - 1;
+        return n.type.name !== 'heading';
+      });
+      if (at != null) chain().setTextSelection(at).scrollIntoView().run();
+    }
+  };
+
   const stamp = () => chain().insertContent([{ type: 'text', text: now(), marks: [{ type: 'bold' }] }, { type: 'text', text: ' ' }]).run();
 
   // ---------- "/" menu ----------
@@ -447,6 +474,9 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
     { label: 'Time stamp', icon: 'clock', keys: ['now', 'date'], run: stamp },
     { label: 'Divider', icon: 'hr', keys: ['line', 'rule'], run: () => chain().setHorizontalRule().run() },
     { label: 'Quote', icon: 'quote', run: () => chain().toggleBlockquote().run() },
+    { label: 'Toggle', icon: 'chevronDown', keys: ['collapse', 'fold', 'details', 'expand'], run: toggleBlock },
+    ...CALLOUTS.map((c) => ({ label: `${c.label} callout`, icon: 'comment', keys: ['callout', 'box', 'note', c.kind], run: () => calloutBlock(c.kind) })),
+    ...TEMPLATES.map((t) => ({ label: `Template: ${t.label}`, icon: 'layout', keys: ['template', 'page', t.id], run: () => useTemplate(t) })),
     { label: 'Code', icon: 'textbox', keys: ['snippet'], run: () => chain().toggleCodeBlock().run() },
     { label: 'Summarize notes', icon: 'summarize', keys: ['ai', 'summary'], run: () => ai().runQuick(QUICK.summarize) },
     { label: 'Action items', icon: 'checklist', keys: ['ai', 'todo'], run: () => ai().runQuick(QUICK.actions) },
@@ -559,6 +589,13 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
         { type: 'stack', items: [
           { type: 'small', icon: 'clock', label: 'Time stamp', run: stamp },
           { type: 'small', icon: 'hr', label: 'Divider', run: () => chain().setHorizontalRule().run() },
+        ] },
+      ] },
+      { label: 'Blocks', items: [
+        { type: 'menu', big: true, icon: 'layout', label: 'Templates', title: 'Start from a page layout for meetings, lectures, projects and more', items: TEMPLATES.map((t) => ({ label: t.label, run: () => useTemplate(t) })) },
+        { type: 'stack', items: [
+          { type: 'small', icon: 'chevronDown', label: 'Toggle', title: 'A line that opens and closes to show what’s under it', run: toggleBlock, active: () => editor.isActive('toggle') },
+          { type: 'menu', icon: 'comment', label: 'Callout', items: CALLOUTS.map((c) => ({ label: c.label, run: () => calloutBlock(c.kind) })) },
         ] },
       ] },
       { label: 'Voice', items: [

@@ -20,6 +20,7 @@ import cite from '../../common/cite.js';
 import { codeBlock } from '../shared/claude-pane.js';
 import { bibEntries, labels, outline, userCommands, userEnvironments, fileKind, findMain, parseSynctex, synctexForward, synctexBackward } from '../../common/latex.js';
 import { latexCompletions, COMMANDS } from './completions.js';
+import { texCount } from '../../common/tex-count.js';
 import { PdfView, pdfPicture } from './pdf-view.js';
 import { presentDialog, preparePictures } from '../docs/to-present.js';
 import { keepLoadedImages } from '../docs/deck.js';
@@ -211,6 +212,7 @@ const homeTab = {
         { type: 'small', icon: 'toPdf', label: 'Show in PDF', shortcut: 'Ctrl+Shift+L', run: () => syncToPdf() },
         { type: 'small', icon: 'chat', label: 'Comment line', shortcut: 'Ctrl+/', run: () => view && toggleComment(view) },
       ] },
+      { type: 'big', icon: 'wordCount', label: 'Word Count', title: 'Words in the text, headings and captions, and how many equations', run: () => wordCount() },
     ] },
     { label: 'AI', items: [
       { type: 'big', icon: 'sparkle', label: 'LaTeX Helper', title: 'Ask the AI to write, explain or fix LaTeX (Ctrl+J)', run: () => shell.claude.toggle() },
@@ -251,6 +253,7 @@ const insertTab = {
         { label: 'Fraction', run: () => insert('\\frac{${num}}{${den}}') },
         { label: 'Matrix', run: () => insert('\\begin{pmatrix}\n\t${a} & ${b} \\\\\n\t${c} & ${d}\n\\end{pmatrix}') },
       ] },
+      { type: 'big', icon: 'equation', label: 'Symbols', title: 'Greek letters, operators, relations and arrows', run: () => symbolPalette(document.querySelector('.rb-big[title^="Greek letters"]')) },
     ] },
     { label: 'References', items: [
       { type: 'stack', items: [
@@ -1279,6 +1282,82 @@ function insert(text, { select = false } = {}) {
   snippet(text.replace('${$SEL}', chosen || '${}').replace('$SEL', chosen || '${}'))(view, null, sel.from, sel.to);
   view.focus();
   if (select) startCompletion(view);
+}
+
+// ---- Word count and symbols ----
+function wordCount() {
+  const all = projectTexts().filter((f) => fileKind(f.path) === 'tex');
+  if (!all.length) return toast('Open a .tex file first.');
+  const here = current && fileKind(current) === 'tex' && view ? texCount(view.state.doc.toString()) : null;
+  const sum = all.map((f) => texCount(f.text)).reduce((a, b) => Object.fromEntries(Object.keys(a).map((k) => [k, a[k] + b[k]])));
+  const row = (label, k, cls = '') => `<tr class="${cls}"><td>${label}</td>${here ? `<td>${here[k].toLocaleString()}</td>` : ''}<td>${sum[k].toLocaleString()}</td></tr>`;
+  const body = `<table class="tex-count"><thead><tr><th></th>${here ? `<th>${escapeHtml(current.split('/').pop())}</th>` : ''}<th>Whole project</th></tr></thead><tbody>
+    ${row('Words in text', 'words')}${row('Words in headings', 'headers')}${row('Words in captions', 'captions')}${row('Total words', 'total', 'total')}
+    ${row('Headings', 'headings')}${row('Captioned figures and tables', 'floats')}${row('Inline equations', 'inline')}${row('Display equations', 'display')}
+  </tbody></table><p class="muted">Commands, comments, maths and the preamble aren’t counted as words.</p>`;
+  dialog({ title: 'Word count', body, cancel: null });
+}
+
+const SYMBOLS = [
+  ['Greek', 'alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi rho sigma tau upsilon phi varphi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Phi Psi Omega'],
+  ['Operators', 'pm mp times div cdot ast circ bullet oplus otimes cap cup wedge vee setminus nabla partial sum prod int oint iint lim infty sqrt frac'],
+  ['Relations', 'leq geq neq approx equiv sim simeq cong propto ll gg subset supset subseteq supseteq in notin ni perp parallel mid models vdash'],
+  ['Arrows', 'leftarrow rightarrow leftrightarrow Leftarrow Rightarrow Leftrightarrow uparrow downarrow mapsto to longrightarrow Longrightarrow hookrightarrow rightleftharpoons'],
+  ['Other', 'forall exists nexists emptyset varnothing neg top bot angle triangle ell hbar Re Im aleph R N Z dots cdots vdots ddots prime circ'],
+];
+const GLYPH = {
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ϵ', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', vartheta: 'ϑ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'ϕ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
+  pm: '±', mp: '∓', times: '×', div: '÷', cdot: '⋅', ast: '∗', circ: '∘', bullet: '•', oplus: '⊕', otimes: '⊗', cap: '∩', cup: '∪', wedge: '∧', vee: '∨', setminus: '∖', nabla: '∇', partial: '∂', sum: '∑', prod: '∏', int: '∫', oint: '∮', iint: '∬', lim: 'lim', infty: '∞', sqrt: '√', frac: 'a⁄b',
+  leq: '≤', geq: '≥', neq: '≠', approx: '≈', equiv: '≡', sim: '∼', simeq: '≃', cong: '≅', propto: '∝', ll: '≪', gg: '≫', subset: '⊂', supset: '⊃', subseteq: '⊆', supseteq: '⊇', in: '∈', notin: '∉', ni: '∋', perp: '⊥', parallel: '∥', mid: '∣', models: '⊨', vdash: '⊢',
+  leftarrow: '←', rightarrow: '→', leftrightarrow: '↔', Leftarrow: '⇐', Rightarrow: '⇒', Leftrightarrow: '⇔', uparrow: '↑', downarrow: '↓', mapsto: '↦', to: '→', longrightarrow: '⟶', Longrightarrow: '⟹', hookrightarrow: '↪', rightleftharpoons: '⇌',
+  forall: '∀', exists: '∃', nexists: '∄', emptyset: '∅', varnothing: '⌀', neg: '¬', top: '⊤', bot: '⊥', angle: '∠', triangle: '△', ell: 'ℓ', hbar: 'ℏ', Re: 'ℜ', Im: 'ℑ', aleph: 'ℵ', R: 'ℝ', N: 'ℕ', Z: 'ℤ', dots: '…', cdots: '⋯', vdots: '⋮', ddots: '⋱', prime: '′',
+};
+// What each button types: most are the bare command; a few take arguments.
+const SYMBOL_CODE = { sqrt: '\\sqrt{${x}}', frac: '\\frac{${a}}{${b}}', R: '\\mathbb{R}', N: '\\mathbb{N}', Z: '\\mathbb{Z}' };
+const MATH_ENVS = /\\(begin|end)\{(equation|align|gather|multline|displaymath|math|eqnarray)\*?\}/g;
+
+// Inside maths a symbol goes in as it is; in running text it is wrapped in $ … $.
+function inMath(before) {
+  const text = before.replace(/(^|[^\\])%.*$/gm, '$1').replace(/\\\$/g, '');
+  const dollars = (text.match(/\$/g) || []).length;
+  let depth = 0;
+  for (const m of text.matchAll(/\\\[|\\\(|\\\]|\\\)/g)) depth += m[0] === '\\[' || m[0] === '\\(' ? 1 : -1;
+  for (const m of text.matchAll(MATH_ENVS)) depth += m[1] === 'begin' ? 1 : -1;
+  return dollars % 2 === 1 || depth > 0;
+}
+
+function symbolPalette(anchor) {
+  if (!view || !current || fileKind(current) !== 'tex') return toast('Open a .tex file first.');
+  const box = h('div', 'tex-symbols');
+  const tabs = h('div', 'tex-sym-tabs');
+  const grid = h('div', 'tex-sym-grid');
+  const show = (i) => {
+    tabs.querySelectorAll('button').forEach((b, j) => b.classList.toggle('on', i === j));
+    grid.innerHTML = '';
+    for (const name of SYMBOLS[i][1].split(' ')) {
+      const code = SYMBOL_CODE[name] || `\\${name}`;
+      const b = h('button', 'tex-sym', escapeHtml(GLYPH[name] || name));
+      b.title = code.replace(/\$\{(\w+)\}/g, '{$1}');
+      b.onmousedown = (e) => e.preventDefault();
+      b.onclick = () => {
+        const { from, to } = view.state.selection.main;
+        const math = inMath(view.state.sliceDoc(Math.max(0, from - 6000), from));
+        // A trailing empty field leaves the cursor after the symbol.
+        snippet(`${math ? code : `$${code}$`}$` + '{}')(view, null, from, to);
+        view.focus();
+      };
+      grid.append(b);
+    }
+  };
+  SYMBOLS.forEach(([label], i) => {
+    const b = h('button', '', escapeHtml(label));
+    b.onmousedown = (e) => e.preventDefault();
+    b.onclick = () => show(i);
+    tabs.append(b);
+  });
+  box.append(tabs, grid);
+  show(0);
+  popup(anchor, box);
 }
 
 // A paper found by the Cite dialog goes into the project's .bib file and is cited at the cursor.

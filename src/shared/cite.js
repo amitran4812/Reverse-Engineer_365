@@ -2,6 +2,7 @@
 // or ISBN, else a title search) and writes it in the common styles, ready to
 // copy. Hosts add their own actions, such as inserting it into the document.
 import cite from '../../common/cite.js';
+import lib from '../../common/library.js';
 import { escapeHtml, h, toast } from './shell.js';
 import { icon } from './icons.js';
 import './cite.css';
@@ -103,7 +104,8 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
     const back = h('div', 'modal-back');
     const box = h('div', 'modal wide cite-box');
     box.innerHTML = `
-      <div class="modal-title">${icon('cite', 18)}<span>${escapeHtml(title)}</span><small class="cite-file"></small></div>
+      <div class="modal-title">${icon('cite', 18)}<span>${escapeHtml(title)}</span><small class="cite-file"></small><button class="btn cite-lib-btn" type="button" title="Every paper you cite is kept here">${icon('database', 14)}<span>My Library</span></button></div>
+      <div class="cite-lib" hidden></div>
       <form class="cite-find">
         <input placeholder="DOI, arXiv id, ISBN, link or title" spellcheck="false">
         <button class="btn primary" type="submit">Find</button>
@@ -119,6 +121,7 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
       <form class="cite-edit" hidden></form>
       <div class="modal-actions">
         <button class="btn cite-edit-btn" type="button">${icon('pen', 14)}<span>Edit details</span></button>
+        <button class="btn cite-save" type="button" title="Keep it in My Library">${icon('plus', 14)}<span>Save</span></button>
         <span class="cite-grow"></span>
         <button class="btn primary cite-copy" type="button">Copy reference</button>
         <button class="btn cite-close" type="button">Close</button>
@@ -142,6 +145,7 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
         if (!item) return;
         const f = cite.format(item, style);
         a.run(item, { style, html: f.html, text: f.text, inText: cite.inText(item, style) });
+        keep(item);
         if (a.close !== false) done(item);
       };
       $('.cite-copy').before(b);
@@ -185,6 +189,7 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
       out.hidden = !item;
       styles.hidden = !item;
       $('.cite-copy').disabled = !item;
+      $('.cite-save').hidden = !item;
       $('.cite-edit-btn').hidden = !item;
       box.querySelectorAll('.modal-actions .btn:not(.cite-close):not(.cite-copy):not(.cite-edit-btn)').forEach((b) => {
         b.disabled = !item;
@@ -312,6 +317,7 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
       if (!item) return;
       const f = cite.format(item, style);
       await (f.code ? navigator.clipboard.writeText(f.text) : copyRich(f.html, f.text));
+      keep(item);
       toast(`${cite.STYLES.find((s) => s.id === style)?.label || ''} reference copied`);
     };
     $('.cite-copy-in').onclick = async () => {
@@ -319,6 +325,27 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
       if (!item) return;
       await navigator.clipboard.writeText(cite.inText(item, style));
       toast('In-text citation copied');
+    };
+    $('.cite-save').onclick = async () => {
+      const item = items[picked];
+      if (item && (await keep(item))) toast('Saved to My Library');
+    };
+    const libBox = $('.cite-lib');
+    const main = [...box.children].filter((n) => !n.classList.contains('modal-title') && !n.classList.contains('cite-lib') && !n.classList.contains('modal-actions'));
+    $('.cite-lib-btn').onclick = () => {
+      const on = libBox.hidden;
+      libBox.hidden = !on;
+      main.forEach((n) => n.classList.toggle('cite-off', on));
+      box.querySelector('.modal-actions').classList.toggle('cite-off', on);
+      $('.cite-lib-btn').classList.toggle('active', on);
+      if (on) libraryView(libBox, { style: () => style, use: (item) => {
+        items = [{ ...item }];
+        picked = 0;
+        editing = false;
+        setStatus('From My Library.', 'ok');
+        $('.cite-lib-btn').click();
+        draw();
+      } });
     };
     $('.cite-edit-btn').onclick = () => {
       editing = !editing;
@@ -331,6 +358,12 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
     back.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') done(null);
     });
+
+    async function keep(item) {
+      const res = await window.office.library?.add(item);
+      if (res?.error) toast(res.error);
+      return res && !res.error;
+    }
 
     function done(v) {
       busy += 1;
@@ -351,5 +384,157 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
       input.value = paper?.title || '';
     }
     input.focus();
+  });
+}
+
+// ---------- My Library ----------
+// Lists every saved reference with search and tags; picks one to use, or copies and
+// exports a whole bibliography in any style.
+async function libraryView(root, { style, use }) {
+  let all = (await window.office.library.list()).items || [];
+  let q = '';
+  let tag = '';
+  let libStyle = style();
+  const chosen = new Set();
+  root.innerHTML = `
+    <div class="cite-lib-bar">
+      <input class="cite-lib-q" placeholder="Search title, author, journal, year or tag" spellcheck="false">
+      <button class="btn cite-lib-import" type="button" title="Add references from a .bib (BibTeX) or .ris file">${icon('upload', 14)}<span>Add from .bib or .ris…</span></button>
+    </div>
+    <div class="cite-lib-tags"></div>
+    <div class="cite-lib-rows"></div>
+    <div class="cite-lib-foot">
+      <label class="cite-lib-all"><input type="checkbox"> <span></span></label>
+      <span class="cite-grow"></span>
+      <select class="cite-lib-style"></select>
+      <button class="btn cite-lib-copy" type="button">${icon('copy', 14)}<span>Copy bibliography</span></button>
+      <button class="btn primary cite-lib-export" type="button">${icon('export', 14)}<span>Export…</span></button>
+    </div>`;
+  const $ = (sel) => root.querySelector(sel);
+  for (const st of cite.STYLES) $('.cite-lib-style').append(Object.assign(h('option', '', escapeHtml(st.label)), { value: st.id }));
+  $('.cite-lib-style').value = libStyle;
+  $('.cite-lib-style').onchange = (e) => {
+    libStyle = e.target.value;
+  };
+  const shown = () => all.filter((it) => (!tag || (it.tags || []).includes(tag)) && lib.matches(it, q));
+  const picked = () => {
+    const list = shown();
+    const some = list.filter((it) => chosen.has(it.id));
+    return some.length ? some : list;
+  };
+  function draw() {
+    const tags = $('.cite-lib-tags');
+    tags.innerHTML = '';
+    const counts = lib.allTags(all);
+    if (counts.length) {
+      const chip = (label, value) => {
+        const b = h('button', `cite-style${tag === value ? ' active' : ''}`, escapeHtml(label));
+        b.type = 'button';
+        b.onclick = () => {
+          tag = tag === value ? '' : value;
+          draw();
+        };
+        tags.append(b);
+      };
+      chip(`All (${all.length})`, '');
+      for (const t of counts) chip(`${t.tag} (${t.count})`, t.tag);
+    }
+    const rows = $('.cite-lib-rows');
+    rows.innerHTML = '';
+    const list = shown();
+    if (!all.length) rows.append(h('div', 'cite-lib-empty muted', 'Nothing here yet. Every reference you copy or insert is saved here, and you can add a whole .bib or .ris file from another reference manager.'));
+    else if (!list.length) rows.append(h('div', 'cite-lib-empty muted', 'No references match.'));
+    for (const it of list) {
+      const row = h('div', `cite-lib-row${chosen.has(it.id) ? ' on' : ''}`);
+      const box = h('input');
+      box.type = 'checkbox';
+      box.checked = chosen.has(it.id);
+      box.onchange = () => {
+        if (box.checked) chosen.add(it.id);
+        else chosen.delete(it.id);
+        draw();
+      };
+      const info = h('div', 'cite-lib-info', `<b>${escapeHtml(it.title)}</b><span>${summary(it)}</span>${(it.tags || []).length ? `<em>${it.tags.map(escapeHtml).join(' · ')}</em>` : ''}`);
+      const acts = h('div', 'cite-lib-acts');
+      const btn = (label, ic, run, cls = '') => {
+        const b = h('button', `btn ${cls}`, `${ic ? icon(ic, 13) : ''}<span>${label}</span>`);
+        b.type = 'button';
+        b.onclick = run;
+        acts.append(b);
+      };
+      btn('Use', '', () => use(it), 'primary');
+      btn('Tags', 'label', async () => {
+        const v = await dialogTags(it.tags || []);
+        if (v == null) return;
+        all = (await window.office.library.update(it.id, { tags: v })).items || all;
+        draw();
+      });
+      btn('Remove', 'trash', async () => {
+        all = (await window.office.library.remove([it.id])).items || all;
+        chosen.delete(it.id);
+        draw();
+      });
+      row.append(box, info, acts);
+      rows.append(row);
+    }
+    const n = picked().length;
+    $('.cite-lib-all span').textContent = chosen.size ? `${chosen.size} selected` : `Select all (${list.length})`;
+    $('.cite-lib-all input').checked = list.length > 0 && list.every((it) => chosen.has(it.id));
+    $('.cite-lib-copy span').textContent = `Copy ${n === 1 ? 'reference' : `${n} references`}`;
+    $('.cite-lib-copy').disabled = !n;
+    $('.cite-lib-export').disabled = !n;
+  }
+  $('.cite-lib-all input').onchange = (e) => {
+    for (const it of shown()) {
+      if (e.target.checked) chosen.add(it.id);
+      else chosen.delete(it.id);
+    }
+    draw();
+  };
+  $('.cite-lib-q').oninput = (e) => {
+    q = e.target.value;
+    draw();
+  };
+  $('.cite-lib-import').onclick = async () => {
+    const res = await window.office.library.importFile();
+    if (!res) return;
+    if (res.error) return toast(res.error);
+    all = res.items;
+    toast(res.added ? `Added ${res.added} reference${res.added === 1 ? '' : 's'}` : 'Those references were already in your library');
+    draw();
+  };
+  $('.cite-lib-copy').onclick = async () => {
+    const out = lib.bibliography(picked(), libStyle);
+    await (out.code ? navigator.clipboard.writeText(out.text) : copyRich(out.html, out.text));
+    toast(`Copied ${picked().length} reference${picked().length === 1 ? '' : 's'}`);
+  };
+  $('.cite-lib-export').onclick = async () => {
+    const res = await window.office.library.exportFile(picked().map((it) => it.id), libStyle);
+    if (res?.error) toast(res.error);
+    else if (res) toast(`Exported ${res.count} reference${res.count === 1 ? '' : 's'}`);
+  };
+  draw();
+  $('.cite-lib-q').focus();
+}
+
+function dialogTags(tags) {
+  return new Promise((resolve) => {
+    const back = h('div', 'modal-back');
+    const form = h('form', 'modal');
+    form.innerHTML = `<div class="modal-title">Tags</div><label class="modal-field"><span>Tags, separated by commas</span><input value="${escapeHtml(tags.join(', '))}"></label><div class="modal-actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button">Cancel</button></div>`;
+    back.append(form);
+    document.body.append(back);
+    const input = form.querySelector('input');
+    input.focus();
+    input.onkeydown = (e) => e.stopPropagation();
+    const done = (v) => {
+      back.remove();
+      resolve(v);
+    };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      done(lib.cleanTags(input.value));
+    };
+    form.querySelector('button[type=button]').onclick = () => done(null);
   });
 }

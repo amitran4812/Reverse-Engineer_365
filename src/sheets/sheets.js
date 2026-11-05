@@ -10,6 +10,7 @@ import { icon } from '../shared/icons.js';
 import { closePopup, popup } from '../shared/ribbon.js';
 import { createAnalysis } from './analysis/workspace.js';
 import { appendTable, joinTable, JOINS, matchHeaders, tableOf } from './combine.js';
+import { RULE_COLORS, RULE_KINDS, columnValues, describeRule, hiddenRows, parseRange, ruleStyles, shiftRange } from './grid-rules.js';
 import '../shared/dark.css';
 
 const { colName, mapRefs, parseRef, rangeName, rect, refName, shiftFormula } = cellref;
@@ -110,6 +111,219 @@ function buildGrid() {
   tbody.innerHTML = parts.join('');
   table.style.width = `${46 + Array.from({ length: cols }, (_, c) => colWidth(c)).reduce((a, b) => a + b, 0)}px`;
   renderAll();
+  applyFilter();
+  applyFreeze();
+}
+
+// ---------- freeze panes ----------
+// Frozen rows and columns stay in place while the rest scrolls, using sticky cells.
+function applyFreeze() {
+  const fz = sheet().freeze || {};
+  const fr = Math.min(fz.rows || 0, rows);
+  const fc = Math.min(fz.cols || 0, cols);
+  layer.querySelectorAll('.frz').forEach((n) => {
+    n.classList.remove('frz', 'frz-b', 'frz-r');
+    n.style.position = '';
+    n.style.top = '';
+    n.style.left = '';
+  });
+  const lefts = [];
+  let x = 46;
+  for (let c = 0; c < fc; c += 1) {
+    lefts.push(x);
+    x += colWidth(c);
+  }
+  const stick = (n, top, left, b, rr) => {
+    n.classList.add('frz');
+    n.classList.toggle('frz-b', b);
+    n.classList.toggle('frz-r', rr);
+    n.style.position = 'sticky';
+    if (top != null) n.style.top = `${top}px`;
+    if (left != null) n.style.left = `${left}px`;
+  };
+  for (let c = 0; c < fc; c += 1) stick(thead.rows[0].cells[c + 1], null, lefts[c], false, c === fc - 1);
+  let y = ROW_H;
+  for (let r = 0; r < rows; r += 1) {
+    const tr = tbody.rows[r];
+    if (r < fr) {
+      stick(tr.cells[0], y, null, r === fr - 1, false);
+      for (let c = 0; c < cols; c += 1) stick(tr.cells[c + 1], y, c < fc ? lefts[c] : null, r === fr - 1, c === fc - 1);
+      y += tr.offsetHeight;
+    } else if (fc) {
+      for (let c = 0; c < fc; c += 1) stick(tr.cells[c + 1], null, lefts[c], false, c === fc - 1);
+    } else break;
+  }
+}
+
+function setFreeze(r, c) {
+  snapshot();
+  if (r || c) sheet().freeze = { rows: r, cols: c };
+  else delete sheet().freeze;
+  applyFreeze();
+  shell.refresh();
+}
+
+// ---------- filters ----------
+function textIn(sh, r, c) {
+  const ref = refName(r, c);
+  const cell = sh.cells[ref];
+  const v = values[sh.name]?.get(ref);
+  return cell || v != null ? String(format(v, cell?.s || {})) : '';
+}
+const cellText = (r, c) => textIn(sheet(), r, c);
+
+function applyFilter() {
+  const hide = hiddenRows(sheet().filter, cellText);
+  for (let r = 0; r < rows; r += 1) {
+    const tr = tbody.rows[r];
+    if (tr) tr.style.display = hide.has(r) ? 'none' : '';
+  }
+}
+
+function toggleFilter() {
+  snapshot();
+  if (sheet().filter) {
+    const prev = parseRange(sheet().filter.ref);
+    delete sheet().filter;
+    for (let c = prev.c0; c <= prev.c1; c += 1) renderCell(prev.r0, c);
+    applyFilter();
+    toast('Filter removed');
+  } else {
+    const g = currentRegion();
+    if (!g) return toast('Select a cell in a table first');
+    sheet().filter = { ref: `${refName(g.r0, g.c0)}:${refName(g.r1, g.c1)}`, hide: {} };
+    for (let c = g.c0; c <= g.c1; c += 1) renderCell(g.r0, c);
+    toast('Click the arrow in a header to filter or sort');
+  }
+  drawSelection();
+}
+
+function filterMenu(c, anchor) {
+  const f = sheet().filter;
+  const shown = f.hide?.[c];
+  const list = columnValues(f, c, cellText).sort((a, b) => String(a.text).localeCompare(String(b.text), undefined, { numeric: true }));
+  const m = h('div', 'rb-menu flt-menu');
+  const g = parseRange(f.ref);
+  const sortBtn = (label, ic, dir) => {
+    const b = h('button', 'rb-menu-item', `${icon(ic, 16)}<span>${label}</span>`);
+    b.onclick = () => {
+      closePopup();
+      select({ row: g.r0 + 1, col: c }, { row: g.r1, col: c }, { scroll: false });
+      sortRegion(g, c, dir);
+    };
+    m.append(b);
+  };
+  sortBtn('Sort A to Z', 'sortAsc', 1);
+  sortBtn('Sort Z to A', 'sortDesc', -1);
+  m.append(h('div', 'rb-menu-sep'));
+  const search = h('input', 'flt-search');
+  search.placeholder = 'Search';
+  const box = h('div', 'flt-list');
+  const all = h('label', 'flt-item', '<input type="checkbox"><b>(Select all)</b>');
+  const checks = list.map((v) => {
+    const row = h('label', 'flt-item', `<input type="checkbox"><span>${escapeHtml(v.text === '' ? '(Blanks)' : v.text)}</span><em>${v.count}</em>`);
+    row.querySelector('input').checked = !shown || shown.includes(v.text);
+    box.append(row);
+    return { v, row, box: row.querySelector('input') };
+  });
+  const allBox = all.querySelector('input');
+  const sync = () => {
+    allBox.checked = checks.every((x) => x.box.checked);
+  };
+  sync();
+  allBox.onchange = () => checks.forEach((x) => { if (x.row.style.display !== 'none') x.box.checked = allBox.checked; });
+  checks.forEach((x) => { x.box.onchange = sync; });
+  search.oninput = () => {
+    const q = search.value.toLowerCase();
+    checks.forEach((x) => { x.row.style.display = String(x.v.text).toLowerCase().includes(q) ? '' : 'none'; });
+  };
+  search.onkeydown = (e) => e.stopPropagation();
+  const actions = h('div', 'flt-actions');
+  const ok = h('button', 'btn primary', 'OK');
+  const clear = h('button', 'btn', 'Clear');
+  ok.onclick = () => {
+    closePopup();
+    snapshot();
+    const keep = checks.filter((x) => x.box.checked && x.row.style.display !== 'none').map((x) => x.v.text);
+    f.hide = { ...f.hide };
+    if (keep.length === checks.length) delete f.hide[c];
+    else f.hide[c] = keep;
+    renderCell(g.r0, c);
+    applyFilter();
+    drawSelection();
+  };
+  clear.onclick = () => {
+    closePopup();
+    snapshot();
+    f.hide = {};
+    for (let k = g.c0; k <= g.c1; k += 1) renderCell(g.r0, k);
+    applyFilter();
+    drawSelection();
+  };
+  actions.append(ok, clear);
+  m.append(search, all, box, actions);
+  popup(anchor, m);
+  search.focus();
+}
+
+// ---------- conditional formatting ----------
+async function newRule(kind) {
+  const s = trimmedSelection();
+  const fields = [{ name: 'ref', label: 'Apply to', value: rangeName(s) }];
+  if (!kind) fields.push({ name: 'kind', label: 'Format cells that are', type: 'select', options: RULE_KINDS });
+  const needs = kind ? RULE_KINDS.find((k) => k.value === kind).args : 2;
+  if (needs >= 1) fields.push({ name: 'a', label: kind === 'top' || kind === 'bottom' ? 'How many' : 'Value', value: kind === 'top' || kind === 'bottom' ? '10' : '', placeholder: kind ? '' : 'Leave empty if the rule needs none' });
+  if (needs >= 2) fields.push({ name: 'b', label: kind ? 'And' : 'Second value (Between only)', value: '' });
+  if (kind !== 'scale') fields.push({ name: 'color', label: kind === 'bars' ? 'Bar color' : 'Format with', type: 'select', options: kind === 'bars' ? [{ value: '#638ec6|', label: 'Blue' }, { value: '#63be7b|', label: 'Green' }, { value: '#f8696b|', label: 'Red' }, { value: '#ffb628|', label: 'Orange' }] : RULE_COLORS });
+  const label = kind ? RULE_KINDS.find((k) => k.value === kind).label : 'New formatting rule';
+  const v = await dialog({ title: label, fields, ok: 'Apply' });
+  if (!v) return;
+  if (!parseRange(v.ref)) return toast('That range isn’t valid');
+  const rule = { ref: v.ref.toUpperCase(), kind: kind || v.kind };
+  if (v.a != null && v.a !== '') rule.a = v.a;
+  if (v.b != null && v.b !== '') rule.b = v.b;
+  if (v.color) rule.color = v.color;
+  snapshot();
+  sheet().cf = [...(sheet().cf || []), rule];
+  renderAll();
+}
+
+function manageRules() {
+  const list = sheet().cf || [];
+  if (!list.length) return toast('This sheet has no formatting rules yet');
+  const body = h('div', 'cf-list');
+  const draw = () => {
+    body.innerHTML = '';
+    (sheet().cf || []).forEach((rule, i) => {
+      const row = h('div', 'cf-row', `<span>${escapeHtml(describeRule(rule))}</span>`);
+      const del = h('button', 'btn', 'Delete');
+      del.type = 'button';
+      del.onclick = () => {
+        snapshot();
+        sheet().cf = sheet().cf.filter((_, j) => j !== i);
+        renderAll();
+        draw();
+      };
+      row.append(del);
+      body.append(row);
+    });
+    if (!sheet().cf?.length) body.append(h('p', '', 'No rules left.'));
+  };
+  draw();
+  dialog({ title: 'Formatting rules on this sheet', body, ok: 'Done', cancel: null });
+}
+
+function clearRules(all) {
+  const s = selRect();
+  const keep = (sheet().cf || []).filter((rule) => {
+    if (all) return false;
+    const g = parseRange(rule.ref);
+    return g.r1 < s.r0 || g.r0 > s.r1 || g.c1 < s.c0 || g.c0 > s.c1;
+  });
+  if (keep.length === (sheet().cf || []).length) return toast('No rules to clear');
+  snapshot();
+  sheet().cf = keep;
+  renderAll();
 }
 
 function td(r, c) {
@@ -151,9 +365,32 @@ function renderCell(r, c) {
   cell.classList.toggle('filled', !!s.bg);
   cell.classList.toggle('ink-dark', !s.bg && nearBlack(s.color));
   cell.classList.toggle('err', err && !loading);
+  const cf = cfMap.get(refName(r, c));
+  if (cf) {
+    if (cf.bg) st.background = cf.bg;
+    if (cf.color) st.color = cf.color;
+    if (cf.bar != null) st.background = `linear-gradient(90deg, ${cf.barColor}aa ${Math.round(cf.bar * 100)}%, ${s.bg || 'transparent'} ${Math.round(cf.bar * 100)}%)`;
+    if (cf.bg || cf.bar != null) cell.classList.add('filled');
+  }
+  const f = sheet().filter;
+  const head = filterHead(r, c);
+  cell.classList.toggle('flt-head', head);
+  cell.classList.toggle('flt-on', head && Array.isArray(f.hide?.[c]));
+}
+
+let cfMap = new Map();
+function computeRules() {
+  const vals = values[sheet().name];
+  cfMap = sheet().cf?.length ? ruleStyles(sheet().cf, (ref) => vals?.get(ref) ?? sheet().cells[ref]?.v) : new Map();
+}
+
+function filterHead(r, c) {
+  const g = parseRange(sheet().filter?.ref);
+  return !!g && r === g.r0 && c >= g.c0 && c <= g.c1;
 }
 
 function renderAll() {
+  computeRules();
   for (let r = 0; r < rows; r += 1) for (let c = 0; c < cols; c += 1) renderCell(r, c);
   drawSelection();
 }
@@ -163,11 +400,14 @@ function refreshCells(prevRefs = []) {
   const before = values[sheet().name];
   values = compute(book);
   // Array results spill into cells that have no content of their own, so repaint those too.
-  const refs = new Set([...Object.keys(sheet().cells), ...prevRefs, ...(before?.keys() || []), ...(values[sheet().name]?.keys() || [])]);
+  const refs = new Set([...Object.keys(sheet().cells), ...prevRefs, ...(before?.keys() || []), ...(values[sheet().name]?.keys() || []), ...cfMap.keys()]);
+  computeRules();
+  for (const k of cfMap.keys()) refs.add(k);
   for (const ref of refs) {
     const p = parseRef(ref);
     if (p) renderCell(p.row, p.col);
   }
+  applyFilter();
   drawSelection();
   updateStatus();
   if (live && !live.applying) liveSoon(700);
@@ -461,6 +701,13 @@ layer.addEventListener('mousedown', (e) => {
   }
   const p = cellFromEvent(e);
   if (!p) return;
+  const t = e.target.closest('td');
+  if (t.classList.contains('flt-head') && e.clientX > t.getBoundingClientRect().right - 18 * (zoom / 100)) {
+    e.preventDefault();
+    if (editing) commitEdit();
+    setTimeout(() => filterMenu(p.col, t), 0);
+    return;
+  }
   if (wantsRef()) {
     e.preventDefault();
     editor.value += refName(p.row, p.col);
@@ -645,6 +892,10 @@ scroller.addEventListener('keydown', (e) => {
       select({ row: sel.a.row + dr, col: sel.a.col + dc });
     }
   };
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
+    e.preventDefault();
+    return toggleFilter();
+  }
   switch (e.key) {
     case 'ArrowUp': return move(-1, 0);
     case 'ArrowDown': return move(1, 0);
@@ -806,6 +1057,24 @@ function shiftCells(axis, at, delta) {
     }
     sheet().cols = widths;
   }
+  const sh = sheet();
+  if (sh.cf) sh.cf = sh.cf.map((r) => ({ ...r, ref: shiftRange(r.ref, axis, at, delta) })).filter((r) => r.ref);
+  if (sh.filter) {
+    const ref = shiftRange(sh.filter.ref, axis, at, delta);
+    if (!ref) delete sh.filter;
+    else {
+      if (axis === 'col') {
+        const hide = {};
+        for (const [c, v] of Object.entries(sh.filter.hide || {})) {
+          const k = Number(c);
+          if (delta < 0 && k === at) continue;
+          hide[k >= at + (delta < 0 ? 1 : 0) ? k + delta : k] = v;
+        }
+        sh.filter.hide = hide;
+      }
+      sh.filter.ref = ref;
+    }
+  }
 }
 
 function insertRow() {
@@ -869,8 +1138,11 @@ function sortSelection(dir) {
     toast('Select the rows to sort first');
     return;
   }
+  sortRegion(s, sel.a.col, dir);
+}
+
+function sortRegion(s, key, dir) {
   snapshot();
-  const key = sel.a.col;
   const rowsData = [];
   for (let r = s.r0; r <= s.r1; r += 1) {
     const row = [];
@@ -1533,6 +1805,35 @@ async function allFunctions() {
   if (v?.fn) startEdit(`=${v.fn}(`);
 }
 
+const CF_MENU = { type: 'menu', big: true, icon: 'condFormat', label: 'Highlight', title: 'Conditional formatting: color cells by rules', items: [
+  { label: 'Greater than…', run: () => newRule('gt') },
+  { label: 'Less than…', run: () => newRule('lt') },
+  { label: 'Between…', run: () => newRule('between') },
+  { label: 'Equal to…', run: () => newRule('eq') },
+  { label: 'Text that contains…', run: () => newRule('text') },
+  { label: 'Duplicate values…', run: () => newRule('dup') },
+  '-',
+  { label: 'Top 10 items…', run: () => newRule('top') },
+  { label: 'Bottom 10 items…', run: () => newRule('bottom') },
+  { label: 'Above average…', run: () => newRule('above') },
+  { label: 'Below average…', run: () => newRule('below') },
+  '-',
+  { label: 'Data bars…', run: () => newRule('bars') },
+  { label: 'Color scale…', run: () => newRule('scale') },
+  '-',
+  { label: 'New rule…', run: () => newRule() },
+  { label: 'Manage rules…', run: manageRules },
+  { label: 'Clear rules from selected cells', run: () => clearRules(false) },
+  { label: 'Clear rules from this sheet', run: () => clearRules(true) },
+] };
+
+const FREEZE_MENU = { type: 'menu', big: true, icon: 'freeze', label: 'Freeze Panes', items: () => [
+  { label: 'Freeze panes at the selected cell', run: () => setFreeze(sel.a.row, sel.a.col) },
+  { label: 'Freeze top row', run: () => setFreeze(1, 0) },
+  { label: 'Freeze first column', run: () => setFreeze(0, 1) },
+  ...(sheet().freeze ? [{ label: 'Unfreeze panes', run: () => setFreeze(0, 0) }] : []),
+] };
+
 const homeTab = {
   id: 'home',
   label: 'Home',
@@ -1586,6 +1887,7 @@ const homeTab = {
         { type: 'small', icon: 'trash', label: 'Delete sheet', run: () => deleteSheet() },
       ] },
     ] },
+    { label: 'Styles', items: [CF_MENU] },
     { label: 'Editing', items: [
       { type: 'stack', items: [
         { type: 'small', icon: 'sum', label: 'AutoSum', run: () => autoSum('SUM') },
@@ -1642,6 +1944,10 @@ const dataTab = {
       { type: 'big', icon: 'sortAsc', label: 'Sort A to Z', run: () => sortSelection(1) },
       { type: 'big', icon: 'sortDesc', label: 'Sort Z to A', run: () => sortSelection(-1) },
     ] },
+    { label: 'Filter', items: [
+      { type: 'big', icon: 'filter', label: 'Filter', title: 'Add filter buttons to the header row of this table (Ctrl+Shift+L)', run: toggleFilter, active: () => !!sheet().filter },
+      { type: 'big', icon: 'filterOff', label: 'Clear Filter', title: 'Show every row again', run: () => { if (!sheet().filter) return; snapshot(); sheet().filter.hide = {}; renderAll(); applyFilter(); } },
+    ] },
     { label: 'Combine', items: [
       { type: 'big', icon: 'addRows', label: 'Add Rows', title: 'Stack another sheet or file under this table', run: () => combineTables('rows') },
       { type: 'big', icon: 'addColumns', label: 'Add Columns', title: 'Join another sheet or file on matching key columns', run: () => combineTables('columns') },
@@ -1655,6 +1961,7 @@ const viewTab = {
   label: 'View',
   groups: [
     { label: 'Show', items: [{ type: 'big', icon: 'grid', label: 'Gridlines', run: () => wrap.classList.toggle('no-grid'), active: () => !wrap.classList.contains('no-grid') }] },
+    { label: 'Window', items: [FREEZE_MENU] },
     { label: 'Zoom', items: [
       { type: 'big', icon: 'zoomIn', label: 'Zoom In', run: () => setZoom(zoom + 10) },
       { type: 'big', icon: 'zoomOut', label: 'Zoom Out', run: () => setZoom(zoom - 10) },
@@ -1707,6 +2014,7 @@ const shell = await createShell({
       for (const [ref, v] of vals || []) if (!s.cells[ref]?.v && v != null) spilled[ref] = saved(v);
       s.spilled = spilled;
       s.spillAnchors = (values.spills?.[s.name] || []).map(([anchor]) => anchor);
+      if (s.filter) s.hiddenRows = [...hiddenRows(s.filter, (r, c) => textIn(s, r, c))];
       delete s.spillCache;
     }
     return out;

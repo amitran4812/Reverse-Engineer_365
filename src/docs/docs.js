@@ -17,6 +17,8 @@ import { openCiteDialog } from '../shared/cite.js';
 import { NotesKeys, createNotes, notesHtml, notesPlaceholder, notesState } from './notes.js';
 import { NoteFile } from './notes-media.js';
 import { NoteBoard } from './notes-board.js';
+import { Comment, TableOfContents, createReview } from './review.js';
+import { Callout, Toggle } from './notes-blocks.js';
 import '../shared/dark.css';
 
 const FONTS = ['Calibri', 'Arial', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New', 'Consolas'];
@@ -61,6 +63,10 @@ const editor = new Editor({
     NoteFile,
     NoteBoard,
     PageBreak,
+    Comment,
+    TableOfContents,
+    Callout,
+    Toggle,
   ],
   content: '<p></p>',
   autofocus: true,
@@ -188,6 +194,7 @@ function citePaper() {
   });
 }
 
+const review = createReview({ editor, canvas, getShell: () => shell });
 const notes = createNotes({ editor, paper, canvas, getShell: () => shell, insertTable, insertImage, toPresent: () => toPresent() });
 
 const homeTab = {
@@ -262,7 +269,10 @@ const insertTab = {
   id: 'insert',
   label: 'Insert',
   groups: [
-    { label: 'Pages', items: [{ type: 'big', icon: 'pageBreak', label: 'Page Break', shortcut: 'Ctrl+Enter', run: () => chain().setPageBreak().run() }] },
+    { label: 'Pages', items: [
+      { type: 'big', icon: 'pageBreak', label: 'Page Break', shortcut: 'Ctrl+Enter', run: () => chain().setPageBreak().run() },
+      { type: 'big', icon: 'outline', label: 'Contents', title: 'Table of contents: lists your headings and keeps itself up to date', run: () => review.insertToc() },
+    ] },
     { label: 'Tables', items: [{ type: 'big', icon: 'table', label: 'Table', run: insertTable }] },
     { label: 'Illustrations', items: [{ type: 'big', icon: 'image', label: 'Pictures', run: insertImage }] },
     { label: 'Symbols', items: [{ type: 'big', icon: 'equation', label: 'Equation', title: 'Type an equation, or describe it for the AI to write. Double-click an equation to edit it.', run: () => notes.equation() }] },
@@ -315,6 +325,14 @@ const reviewTab = {
         dialog({ title: 'Word count', body: `<p>Words: <b>${words}</b><br>Characters: <b>${text.replace(/\n/g, '').length}</b><br>Paragraphs: <b>${editor.state.doc.childCount}</b></p>`, cancel: null });
       } },
     ] },
+    { label: 'Comments', items: [
+      { type: 'big', icon: 'comment', label: 'New Comment', shortcut: 'Ctrl+Alt+M', run: () => review.newComment() },
+      { type: 'stack', items: [
+        { type: 'small', icon: 'up', label: 'Previous', run: () => review.step(-1) },
+        { type: 'small', icon: 'down', label: 'Next', run: () => review.step(1) },
+        { type: 'small', icon: 'panel', label: 'Show Comments', run: () => review.toggleComments(), active: () => review.commentsOn() },
+      ] },
+    ] },
     { label: 'Language', items: [{ type: 'big', icon: 'translate', label: 'Translate', run: () => shell.claude.runQuick(QUICK.translate) }] },
   ],
 };
@@ -329,6 +347,8 @@ const viewTab = {
       { type: 'big', icon: 'find', label: '100%', run: () => setZoom(100) },
     ] },
     { label: 'Show', items: [
+      { type: 'big', icon: 'sidebar', label: 'Navigation Pane', title: 'List the headings so you can jump around the document', run: () => review.toggleNav(), active: () => review.navOn() },
+      { type: 'big', icon: 'comment', label: 'Comments', run: () => review.toggleComments(), active: () => review.commentsOn() },
       { type: 'big', icon: 'sparkle', label: 'Claude Pane', run: () => shell.claude.toggle() },
     ] },
   ],
@@ -409,7 +429,7 @@ const shell = await createShell({
   },
 });
 
-shell.workspace.append(canvas);
+shell.workspace.append(review.row);
 notes.mountSwitch();
 
 // Status bar: page estimate, word count, zoom.
@@ -504,5 +524,6 @@ if (shell.info.file?.notes || shell.info.file?.data?.notes) {
 }
 setZoom(100);
 updateStatus();
+review.showIfComments();
 if (shell.info.file?.generated) shell.markDirty();
 shell.refresh();

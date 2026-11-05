@@ -83,9 +83,83 @@ async function exportXlsx(model) {
       if (s.align) c.alignment = { horizontal: s.align };
       if (NUMFMT[s.fmt]) c.numFmt = NUMFMT[s.fmt];
     }
+    if (sheet.freeze && (sheet.freeze.rows || sheet.freeze.cols)) {
+      ws.views = [{ state: 'frozen', xSplit: sheet.freeze.cols || 0, ySplit: sheet.freeze.rows || 0 }];
+    }
+    if (sheet.filter?.ref) ws.autoFilter = sheet.filter.ref;
+    for (const r of sheet.hiddenRows || []) ws.getRow(r + 1).hidden = true;
+    for (const rule of sheet.cf || []) {
+      const x = ruleToXlsx(rule);
+      if (x) ws.addConditionalFormatting({ ref: rule.ref, rules: [x] });
+    }
   }
   if (!model.sheets.length) wb.addWorksheet('Sheet1');
   return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+// Conditional formatting rules (see src/sheets/grid-rules.js) as the rules .xlsx files carry.
+const OPS = { gt: 'greaterThan', lt: 'lessThan', between: 'between', eq: 'equal' };
+const KIND_BY_OP = Object.fromEntries(Object.entries(OPS).map(([k, v]) => [v, k]));
+const argb = (c) => (hex(c) ? { argb: `FF${hex(c)}` } : undefined);
+const quoteArg = (v) => (/^-?\d+(\.\d+)?$/.test(String(v).trim()) ? String(v).trim() : `"${String(v).replace(/"/g, '""')}"`);
+
+function ruleToXlsx(rule) {
+  const [bg, color] = String(rule.color || '#ffc7ce|#9c0006').split('|');
+  const style = {};
+  if (argb(bg)) style.fill = { type: 'pattern', pattern: 'solid', bgColor: argb(bg) };
+  if (argb(color)) style.font = { color: argb(color) };
+  const first = String(rule.ref).split(':')[0];
+  const abs = String(rule.ref).replace(/([A-Z]+)(\d+)/g, '$$$1$$$2');
+  switch (rule.kind) {
+    case 'gt': case 'lt': case 'eq':
+      return { type: 'cellIs', operator: OPS[rule.kind], formulae: [quoteArg(rule.a ?? 0)], style };
+    case 'between':
+      return { type: 'cellIs', operator: 'between', formulae: [quoteArg(rule.a ?? 0), quoteArg(rule.b ?? 0)], style };
+    case 'text':
+      return { type: 'containsText', operator: 'containsText', text: String(rule.a ?? ''), formulae: [`NOT(ISERROR(SEARCH(${quoteArg(rule.a ?? '')},${first})))`], style };
+    case 'dup': case 'unique':
+      return { type: 'expression', formulae: [`COUNTIF(${abs},${first})${rule.kind === 'dup' ? '>1' : '=1'}`], style };
+    case 'top': case 'bottom':
+      return { type: 'top10', rank: Math.max(1, Math.round(Number(rule.a) || 10)), bottom: rule.kind === 'bottom', style };
+    case 'above': case 'below':
+      return { type: 'aboveAverage', aboveAverage: rule.kind === 'above', style };
+    case 'scale':
+      return { type: 'colorScale', cfvo: [{ type: 'min' }, { type: 'percentile', value: 50 }, { type: 'max' }], color: [{ argb: 'FFF8696B' }, { argb: 'FFFFEB84' }, { argb: 'FF63BE7B' }] };
+    case 'bars':
+      return { type: 'dataBar', minLength: 0, maxLength: 100, cfvo: [{ type: 'min' }, { type: 'max' }], color: argb(bg) || { argb: 'FF638EC6' } };
+    default:
+      return null;
+  }
+}
+
+function ruleFromXlsx(ref, x) {
+  const dxf = x.style || {};
+  const bg = (argbToCss(dxf.fill?.bgColor) || argbToCss(dxf.fill?.fgColor) || '').toLowerCase();
+  const fg = (argbToCss(dxf.font?.color) || '').toLowerCase();
+  const color = bg || fg ? `${bg}|${fg}` : undefined;
+  const unq = (f) => String(f ?? '').replace(/^"(.*)"$/, '$1').replace(/""/g, '"');
+  const out = (kind, more = {}) => ({ ref, kind, ...more, ...(color && !['scale', 'bars'].includes(kind) ? { color } : {}) });
+  switch (x.type) {
+    case 'cellIs':
+      if (!KIND_BY_OP[x.operator]) return null;
+      return out(KIND_BY_OP[x.operator], { a: unq(x.formulae?.[0]), ...(x.operator === 'between' ? { b: unq(x.formulae?.[1]) } : {}) });
+    case 'containsText':
+      return out('text', { a: x.text || unq(/SEARCH\(("(?:[^"]|"")*"|[^,]+),/i.exec(x.formulae?.[0] || '')?.[1]) });
+    case 'expression': {
+      const m = /^COUNTIF\([^,]+,[^)]+\)(>1|=1)$/i.exec(String(x.formulae?.[0] || '').replace(/\s/g, ''));
+      return m ? out(m[1] === '>1' ? 'dup' : 'unique') : null;
+    }
+    case 'top10':
+      return out(x.bottom ? 'bottom' : 'top', { a: String(x.rank || 10) });
+    case 'aboveAverage':
+      return out(x.aboveAverage === false ? 'below' : 'above');
+    case 'colorScale':
+      return { ref, kind: 'scale' };
+    case 'dataBar':
+      return { ref, kind: 'bars', color: `${(argbToCss(x.color) || '#638ec6').toLowerCase()}|` };
+    default:
+      return null;
+  }
 }
 
 function argbToCss(color) {
@@ -241,7 +315,20 @@ async function importXlsx(buffer) {
         cells[cell.address] = out;
       });
     });
-    sheets.push(Object.keys(spillCache).length ? { name: ws.name, cells, cols, spillCache } : { name: ws.name, cells, cols });
+    const sheet = Object.keys(spillCache).length ? { name: ws.name, cells, cols, spillCache } : { name: ws.name, cells, cols };
+    const view = ws.views?.find((v) => v.state === 'frozen');
+    if (view && (view.xSplit || view.ySplit)) sheet.freeze = { rows: view.ySplit || 0, cols: view.xSplit || 0 };
+    const af = typeof ws.autoFilter === 'string' ? ws.autoFilter : ws.autoFilter?.from && ws.autoFilter?.to ? `${ws.autoFilter.from}:${ws.autoFilter.to}` : null;
+    if (af && /^[A-Z]+\d+:[A-Z]+\d+$/i.test(af)) sheet.filter = { ref: af.toUpperCase(), hide: {} };
+    const cf = [];
+    for (const block of ws.conditionalFormattings || []) {
+      for (const x of block.rules || []) {
+        const rule = ruleFromXlsx(String(block.ref).split(' ')[0].toUpperCase(), x);
+        if (rule) cf.push(rule);
+      }
+    }
+    if (cf.length) sheet.cf = cf;
+    sheets.push(sheet);
   });
   return { sheets: sheets.length ? sheets : [{ name: 'Sheet1', cells: {}, cols: {} }] };
 }

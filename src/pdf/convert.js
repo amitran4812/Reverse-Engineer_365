@@ -3,7 +3,7 @@
 // guessed from where text lines up; slides show each page as a picture.
 
 import { toast } from '../shared/shell.js';
-import { linesToTable, pagesToMarkdown, textLines } from './annot-data.js';
+import { MARKUPS, linesToTable, marksToMarkdown, pagesToMarkdown, textLines, textUnder } from './annot-data.js';
 
 const MAX_TEXT_PAGES = 400;
 const MAX_SLIDES = 80;
@@ -33,6 +33,25 @@ export async function toWrite(reader, name, { notes = false, onProgress } = {}) 
   }
   const markdown = pagesToMarkdown(pages);
   await open({ kind: 'document', title: baseName(name), markdown, style: notes ? 'notes' : undefined });
+}
+
+// Highlights, underlines and comments as notes in Write: each quote with your note under it.
+export async function marksToNotes(reader, annots, name) {
+  const marks = [];
+  for (const a of annots) {
+    if (MARKUPS.includes(a.type)) {
+      const text = a.page < reader.pageCount ? textUnder((await reader.text(a.page)).items, a.rects) : '';
+      if (text || a.note) marks.push({ page: a.page, type: a.type, text, note: a.note || '', y: -(a.rects?.[0]?.[1] || 0) });
+    } else if (a.note || (a.type === 'text' && a.text)) {
+      marks.push({ page: a.page, type: a.type, text: '', note: a.note || a.text, y: -((a.at || a.rect || [])[1] || 0) });
+    }
+  }
+  if (!marks.length) {
+    toast('Highlight or comment on the PDF first, then send them to Notes.', 'error');
+    return;
+  }
+  marks.sort((x, y) => x.page - y.page || x.y - y.y);
+  await open({ kind: 'document', title: `Notes on ${baseName(name)}`, markdown: marksToMarkdown(baseName(name), marks), style: 'notes' });
 }
 
 export async function toPlot(reader, name, { onProgress } = {}) {
