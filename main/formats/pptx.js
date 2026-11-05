@@ -6,9 +6,16 @@
 //   { paragraphs: [{ align, bullet, runs: [{ text, bold, italic, underline, color, size }] }] }
 // Coordinates are in a 960x540 canvas, which maps to the 10in x 5.625in 16:9 layout.
 
+const crypto = require('crypto');
+const JSZip = require('jszip');
 const PptxGenJS = require('pptxgenjs');
 const JSZip = require('jszip');
 const { hex } = require('./docx');
+
+// Present also keeps its own copy of the deck inside the .pptx (themes,
+// template layers and shapes PowerPoint has no match for). It is used on
+// open only while the slides are unchanged since Work saved them.
+const DECK_PART = 'work/deck.json';
 
 const PX_PER_IN = 96;
 const inch = (px) => Number((px / PX_PER_IN).toFixed(3));
@@ -55,7 +62,7 @@ function tableRows(el) {
   }));
 }
 
-async function exportPptx(model) {
+async function exportPptx(model, native) {
   const pptx = new PptxGenJS();
   const size = model.size || { w: 960, h: 540 };
   if (size.w === 960 && size.h === 540) pptx.layout = 'LAYOUT_16x9';
@@ -132,7 +139,8 @@ async function exportPptx(model) {
       }
     }
   }
-  return withTransitions(await pptx.write({ outputType: 'nodebuffer' }), model.slides || []);
+  const buffer = await withTransitions(await pptx.write({ outputType: 'nodebuffer' }), model.slides || []);
+  return native ? withDeckPart(buffer, native) : buffer;
 }
 
 // Slide transitions go in each slide's XML, where PowerPoint and others read them.
@@ -153,4 +161,32 @@ async function withTransitions(buffer, slides) {
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
-module.exports = { exportPptx };
+async function slidesHash(zip) {
+  const names = Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).sort();
+  const hash = crypto.createHash('sha256');
+  for (const f of names) hash.update(`${f}\n${await zip.file(f).async('string')}\n`);
+  return hash.digest('hex');
+}
+
+async function withDeckPart(buffer, native) {
+  const zip = await JSZip.loadAsync(buffer);
+  zip.file(DECK_PART, JSON.stringify({ version: 1, slidesHash: await slidesHash(zip), deck: native }));
+  const types = await zip.file('[Content_Types].xml').async('string');
+  if (!/Extension="json"/.test(types)) zip.file('[Content_Types].xml', types.replace(/<Types[^>]*>/, '$&<Default Extension="json" ContentType="application/json"/>'));
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+// Present's own copy of a deck Work saved, when the slides still match it.
+async function workDeck(buffer) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const part = await zip.file(DECK_PART)?.async('string');
+    if (!part) return null;
+    const saved = JSON.parse(part);
+    return Array.isArray(saved?.deck?.slides) && saved.slidesHash === (await slidesHash(zip)) ? saved.deck : null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { exportPptx, workDeck };

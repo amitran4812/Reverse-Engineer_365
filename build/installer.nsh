@@ -115,16 +115,17 @@
   !insertmacro workType "xls" "Plot" "Plot" "plot" "Workbook (old format)"
   !insertmacro workType "ods" "Plot" "Plot" "plot" "OpenDocument spreadsheet"
   !insertmacro workType "csv" "Plot" "Plot" "plot" "CSV file"
-  !insertmacro workType "reaslides" "Present" "Present" "present" "Present presentation"
   !insertmacro workType "pptx" "Present" "Present" "present" "Presentation"
+  !insertmacro workType "reaslides" "Present" "Present" "present" "Present presentation (old format)"
   !insertmacro workType "odp" "Present" "Present" "present" "OpenDocument presentation"
   !insertmacro workType "pdf" "Read" "Read" "read" "PDF document"
-  ; .reaslides is Work's own format
+  ; .reaslides is what older versions saved; those files still open in Present
   WriteRegStr SHCTX "Software\Classes\.reaslides" "" "ReaOffice.Present.reaslides"
 
   !insertmacro workNew "docx" "Write"
   !insertmacro workNew "xlsx" "Plot"
-  !insertmacro workNew "reaslides" "Present"
+  !insertmacro workNew "pptx" "Present"
+  DeleteRegKey SHCTX "Software\Classes\.reaslides\ReaOffice.Present.reaslides\ShellNew"
 
   WriteRegStr SHCTX "Software\Classes\Applications\${APP_EXECUTABLE_FILENAME}" "FriendlyAppName" "Work"
   WriteRegStr SHCTX "Software\ReaOffice\Capabilities" "ApplicationName" "Work"

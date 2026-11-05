@@ -1481,7 +1481,7 @@ const claudeTab = {
 await loadTemplates();
 const shell = await createShell({
   app: 'slides',
-  defaultExt: 'reaslides',
+  defaultExt: 'pptx',
   tabs: [homeTab, insertTab, designTab, transitionsTab, showTab, viewTab],
   claudeTab,
   undo,
@@ -1492,7 +1492,6 @@ const shell = await createShell({
     const own = W !== 960 || H !== 540 || Object.keys(layers).length ? { size: { w: W, h: H }, layers, layouts: pptLayouts } : {};
     return { format: 'rea-slides', version: 1, theme: deck.theme, ...(custom ? { themeData: custom } : {}), slides: deck.slides, ...own, export: exportModel() };
   },
-  exports: [{ label: 'PowerPoint presentation (.pptx)', detail: 'Opens in PowerPoint, Keynote and Google Slides.', icon: 'play', ext: 'pptx' }],
   pdfOptions: () => ({ pageSize: { width: 10, height: (10 * H) / W } }),
   beforePrint: () => {
     finishEditing();

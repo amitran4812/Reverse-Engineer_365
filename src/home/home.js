@@ -119,7 +119,7 @@ async function show(view) {
     const texZip = h('button', 'bs-browse', `${icon('zip', 28)}<span>LaTeX project from a .zip…</span>`);
     texZip.onclick = () => window.office.latex.openZip();
     places.append(texFolder, texZip);
-    main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md, .txt and .tex in Write, .xlsx and .csv in Plot, .reaslides in Present, and PDFs in Read. From Google Drive, Google Sheets and Docs open too.'));
+    main.append(browse, places, h('p', 'muted', 'Opens .docx, .html, .md, .txt and .tex in Write, .xlsx and .csv in Plot, .pptx in Present, and PDFs in Read. From Google Drive, Google Sheets and Docs open too.'));
     main.append(h('h2', '', 'Recent'), await recent());
   } else if (view === 'options') {
     main.append(h('h1', '', 'Options'), await themeSettings(), await settingsForm(() => show('options')), await aiSettings(() => pane?.loadSettings()), await cloudSettings(), await accountsSection(), await updateSettings());
