@@ -8,6 +8,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.js';
 
 const CSS_PER_PT = 96 / 72;
 
+// pdf.js 6 dropped destroy() on documents; the loading task frees them.
+const release = (doc) => (typeof doc?.destroy === 'function' ? doc.destroy() : doc?.loadingTask?.destroy());
+
 export class PdfView {
   constructor(host, { onDoubleClick, onPage } = {}) {
     this.host = host;
@@ -57,7 +60,7 @@ export class PdfView {
     const task = pdfjs.getDocument({ data: bytes, isEvalSupported: false, enableXfa: false });
     const doc = await task.promise;
     if (gen !== this.generation) {
-      doc.destroy();
+      release(doc);
       return;
     }
     const keep = { top: this.scroller.scrollTop, left: this.scroller.scrollLeft };
@@ -91,7 +94,7 @@ export class PdfView {
     this.scroller.scrollTop = keep.top;
     this.scroller.scrollLeft = keep.left;
     await Promise.all(this.pages.filter((p) => p.visible).map((p) => this.draw(p)));
-    old?.destroy();
+    release(old);
   }
 
   clear() {
@@ -101,7 +104,7 @@ export class PdfView {
       p.el.remove();
     }
     this.pages = [];
-    this.doc?.destroy();
+    release(this.doc);
     this.doc = null;
   }
 

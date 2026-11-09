@@ -105,6 +105,27 @@ contextBridge.exposeInMainWorld('office', {
     savePdf: (main) => ipcRenderer.invoke('latex:save-pdf', main),
     saveZip: (opts) => ipcRenderer.invoke('latex:save-zip', opts),
     openPdf: (main) => ipcRenderer.invoke('latex:open-pdf-external', main),
+    review: () => ipcRenderer.invoke('latex:review-get'),
+    setReview: (data) => ipcRenderer.invoke('latex:review-set', data),
+    history: {
+      snapshot: (opts) => ipcRenderer.invoke('latex:history-snapshot', opts),
+      list: () => ipcRenderer.invoke('latex:history-list'),
+      compare: (id, against) => ipcRenderer.invoke('latex:history-compare', id, against),
+      file: (id, rel) => ipcRenderer.invoke('latex:history-file', id, rel),
+      restore: (id, paths) => ipcRenderer.invoke('latex:history-restore', id, paths),
+      rename: (id, label) => ipcRenderer.invoke('latex:history-rename', id, label),
+      exportZip: (id, name) => ipcRenderer.invoke('latex:history-export', id, name),
+    },
+    git: {
+      status: () => ipcRenderer.invoke('latex:git-status'),
+      init: () => ipcRenderer.invoke('latex:git-init'),
+      commit: (msg) => ipcRenderer.invoke('latex:git-commit', msg),
+      setRemote: (url) => ipcRenderer.invoke('latex:git-remote', url),
+      sync: (msg) => ipcRenderer.invoke('latex:git-sync', msg),
+      setToken: (url, auth) => ipcRenderer.invoke('latex:git-token', url, auth),
+      setIdentity: (who) => ipcRenderer.invoke('latex:git-identity', who),
+      clone: (url, auth) => ipcRenderer.invoke('latex:git-clone', url, auth),
+    },
   },
   // Read (PDFs): the window's own file, saving, PDFs to insert, saved signatures.
   pdf: {

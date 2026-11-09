@@ -662,6 +662,46 @@ ipcMain.handle('latex:open-pdf-external', safe(async (e, main) => {
   return { ok: true };
 }));
 
+// Review notes, version history and Git for LaTeX projects.
+const latexHistory = require('./latex-history');
+const latexGit = require('./latex-git');
+ipcMain.handle('latex:review-get', safe((e) => latex.readReview(latexRoot(e))));
+ipcMain.handle('latex:review-set', safe((e, data) => latex.writeReview(latexRoot(e), data || {})));
+ipcMain.handle('latex:history-snapshot', safe((e, opts) => latexHistory.snapshot(latexRoot(e), opts || {})));
+ipcMain.handle('latex:history-list', safe((e) => latexHistory.versions(latexRoot(e))));
+ipcMain.handle('latex:history-compare', safe((e, id, against) => latexHistory.compare(latexRoot(e), String(id), against === 'current' ? 'current' : 'previous')));
+ipcMain.handle('latex:history-file', safe((e, id, rel) => latexHistory.fileAt(latexRoot(e), String(id), String(rel))));
+ipcMain.handle('latex:history-restore', safe((e, id, paths) => latexHistory.restore(latexRoot(e), String(id), Array.isArray(paths) ? paths.map(String) : null)));
+ipcMain.handle('latex:history-rename', safe((e, id, label) => latexHistory.rename(latexRoot(e), String(id), label)));
+ipcMain.handle('latex:history-export', safe(async (e, id, name) => {
+  const root = latexRoot(e);
+  const res = await dialog.showSaveDialog(senderWin(e), {
+    defaultPath: path.join(path.dirname(root), `${path.basename(root)} (${String(name || 'version').replace(/[\\/:*?"<>|]+/g, '-')}).zip`),
+    filters: [{ name: 'Zip archive', extensions: ['zip'] }],
+  });
+  if (res.canceled || !res.filePath) return null;
+  const out = await latexHistory.exportVersion(root, String(id), res.filePath);
+  return { ...out, name: path.basename(res.filePath) };
+}));
+ipcMain.handle('latex:git-status', safe((e) => latexGit.status(latexRoot(e))));
+ipcMain.handle('latex:git-init', safe((e) => latexGit.init(latexRoot(e))));
+ipcMain.handle('latex:git-commit', safe((e, msg) => latexGit.commit(latexRoot(e), msg)));
+ipcMain.handle('latex:git-remote', safe((e, url) => latexGit.setRemote(latexRoot(e), url)));
+ipcMain.handle('latex:git-sync', safe((e, msg) => latexGit.sync(latexRoot(e), msg)));
+ipcMain.handle('latex:git-token', safe((e, url, auth) => latexGit.setToken(url, auth || {})));
+ipcMain.handle('latex:git-identity', safe((e, who) => latexGit.setIdentity(who || {})));
+ipcMain.handle('latex:git-clone', safe(async (e, url, auth) => {
+  if (auth?.token) latexGit.setToken(url, auth);
+  const res = await dialog.showOpenDialog(senderWin(e), { title: 'Choose an empty folder for the project', buttonLabel: 'Download here', properties: ['openDirectory', 'createDirectory', 'promptToCreate'] });
+  if (res.canceled || !res.filePaths[0]) return null;
+  const name = (String(url).split('/').pop() || 'project').replace(/\.git$/i, '') || 'project';
+  let dir = res.filePaths[0];
+  if ((await require('fs/promises').readdir(dir).catch(() => [])).length) dir = path.join(dir, name);
+  await latexGit.clone(url, dir);
+  await latex.scaffold(dir);
+  return openLatexProject(senderWin(e), dir);
+}));
+
 ipcMain.handle('notes:image', (e, prompt) => require('./ai').image(prompt));
 ipcMain.handle('notes:fetch-link', (e, url) => require('./links').fetchLink(url));
 ipcMain.handle('notes:transcribe', (e, audio) => require('./media').transcribe(audio || {}));

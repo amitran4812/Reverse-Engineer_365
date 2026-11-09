@@ -194,6 +194,16 @@ const P = {
   stamp: '<path d="M7.5 9.5c0-1.5-1.5-2-1.5-4a4 4 0 018 0c0 2-1.5 2.5-1.5 4V11h-5z"/><rect class="a" x="3" y="11" width="14" height="4" rx="1"/><path d="M4 18h12"/>',
   convert: '<rect x="2" y="2.5" width="7.5" height="10" rx="1"/><path d="M4.5 6h3M4.5 8.5h3"/><rect class="a-s" x="10.5" y="7.5" width="7.5" height="10" rx="1"/><path class="a-s" d="M12 4.5h3a2 2 0 012 2v0M15.5 3l1.5 1.5L15.5 6"/>',
   appRead: '<rect class="a" x="2" y="2" width="16" height="16" rx="2.5"/><path stroke="#fff" d="M6.5 5h5l2.5 2.5V15h-7.5z"/><path stroke="#ffd84d" stroke-width="1.8" d="M7.8 9.3h4.6"/><path stroke="#fff" d="M7.8 12h4.4"/>',
+  // LaTeX review, history and Git: original glyphs.
+  trackChanges: '<path d="M3 15.5l1-3.5 8-8 2.5 2.5-8 8z"/><path class="a-s" d="M11 5.5L13.5 8"/><path class="a-s" d="M10 16.5h7"/>',
+  acceptChange: '<rect x="2.5" y="3" width="15" height="14" rx="2"/><path class="a-s" d="M6 10.2l2.6 2.6L14 7.4"/>',
+  rejectChange: '<rect x="2.5" y="3" width="15" height="14" rx="2"/><path class="a-s" d="M7 7l6 6M13 7l-6 6"/>',
+  history: '<path d="M3.5 10a6.5 6.5 0 1 0 2-4.7"/><path d="M3 3.5v3.3h3.3"/><path class="a-s" d="M10 6.5V10l2.5 1.8"/>',
+  gitSync: '<circle cx="5.5" cy="4.5" r="1.8"/><circle cx="5.5" cy="15.5" r="1.8"/><circle cx="14.5" cy="8" r="1.8"/><path d="M5.5 6.3v7.4"/><path class="a-s" d="M14.5 9.8c0 3-4 2.5-8 4.3"/>',
+  visual: '<rect x="2.5" y="3" width="15" height="14" rx="1.5"/><path class="a-s" d="M5.5 7h9"/><path d="M5.5 10.5h6M5.5 13.5h7.5"/>',
+  code: '<path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/><path class="a-s" d="M11 4.5l-2 11"/>',
+  spellCheck: '<path d="M3 13l3-9 3 9M4 10h4"/><path d="M11 4v9h2.5a2.2 2.2 0 0 0 0-4.5H11"/><path class="a-s" d="M10 16.2l1.8 1.8 4.7-4.7"/>',
+  figure: '<rect x="3" y="2.5" width="14" height="11" rx="1.5"/><path d="M5 11l3.2-3.5 2.3 2.4 1.7-1.6L15 11"/><path class="a-s" d="M5 16.5h10"/>',
   // App marks: original glyphs, not based on any vendor logo.
   appDocs: '<rect class="a" x="3" y="1.5" width="14" height="17" rx="2.5"/><path stroke="#fff" d="M6.5 6h7M6.5 9h7M6.5 12h7M6.5 15h4"/>',
   appSheets: '<rect class="a" x="2" y="2" width="16" height="16" rx="2.5"/><path stroke="#fff" d="M2.5 7.5h15M2.5 12.5h15M8 7.5v10"/>',
