@@ -3,7 +3,7 @@ import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyleKit } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
-import { TableKit } from '@tiptap/extension-table';
+import { TableCell, TableHeader, TableKit } from '@tiptap/extension-table';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
@@ -40,6 +40,22 @@ const PageBreak = Node.create({
   },
 });
 
+// Table cells keep the fill colour documents give them.
+const cellBackground = {
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      background: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-background') || el.style.backgroundColor || null,
+        renderHTML: (attrs) => (attrs.background ? { 'data-background': attrs.background, style: `background-color:${attrs.background}` } : {}),
+      },
+    };
+  },
+};
+const ShadedCell = TableCell.extend(cellBackground);
+const ShadedHeader = TableHeader.extend(cellBackground);
+
 const page = { margins: 'normal', orientation: 'portrait' };
 let zoom = 100;
 
@@ -54,7 +70,9 @@ const editor = new Editor({
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     TextStyleKit,
     Highlight.configure({ multicolor: true }),
-    TableKit.configure({ table: { resizable: true } }),
+    TableKit.configure({ table: { resizable: true }, tableCell: false, tableHeader: false }),
+    ShadedCell,
+    ShadedHeader,
     Image.configure({ allowBase64: true }),
     Placeholder.configure({ placeholder: notesPlaceholder, includeChildren: true }),
     TaskList,

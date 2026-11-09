@@ -72,6 +72,22 @@ function appForFile(file) {
 const ANALYSIS_ALWAYS = ['tsv', 'tab', 'parquet'];
 const ANALYSIS_OVER = { csv: 8 * 1024 * 1024, xlsx: 12 * 1024 * 1024, xlsm: 12 * 1024 * 1024 };
 
+// Pictures and charts make a workbook big without making its data big; only
+// the cells decide whether it needs the analysis workspace.
+async function dataSize(file, ext, size) {
+  if (!['xlsx', 'xlsm'].includes(ext) || size > 300 * 1024 * 1024) return size;
+  try {
+    const zip = await require('jszip').loadAsync(await fs.readFile(file));
+    let pictures = 0;
+    for (const f of Object.values(zip.files)) {
+      if (/^xl\/(media|embeddings|richData)\//i.test(f.name)) pictures += f._data?.compressedSize || 0;
+    }
+    return size - pictures;
+  } catch {
+    return size;
+  }
+}
+
 // A saved analysis points at its data file; look next to the project too.
 function resolveSource(projectPath, source) {
   if (!source?.path) return null;
@@ -87,7 +103,7 @@ async function analysisLaunch(file, ext, name, size) {
     const steps = (project.steps || []).map((st) => resolveSource(file, st.source));
     return { app: 'sheets', path: null, name, ext, data: BLANK.sheets(), analysis: { project, projectPath: file, path: source, steps } };
   }
-  if (ANALYSIS_ALWAYS.includes(ext) || size > (ANALYSIS_OVER[ext] ?? Infinity)) {
+  if (ANALYSIS_ALWAYS.includes(ext) || (size > (ANALYSIS_OVER[ext] ?? Infinity) && (await dataSize(file, ext, size)) > ANALYSIS_OVER[ext])) {
     return { app: 'sheets', path: null, name: name.replace(/\.[^.]+$/, ''), ext, data: BLANK.sheets(), analysis: { path: file } };
   }
   return null;
