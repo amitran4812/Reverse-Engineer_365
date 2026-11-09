@@ -18,8 +18,9 @@ import { popup, closePopup } from '../shared/ribbon.js';
 import { openCiteDialog } from '../shared/cite.js';
 import cite from '../../common/cite.js';
 import { codeBlock } from '../shared/claude-pane.js';
-import { bibEntries, labels, outline, userCommands, userEnvironments, fileKind, findMain, parseSynctex, synctexForward, synctexBackward } from '../../common/latex.js';
+import { citeAt, citeKeyFor, bibEntries, labels, outline, userCommands, userEnvironments, fileKind, findMain, parseSynctex, synctexForward, synctexBackward } from '../../common/latex.js';
 import { latexCompletions, COMMANDS } from './completions.js';
+import { projectPapers } from './papers.js';
 import { texCount } from '../../common/tex-count.js';
 import { PdfView, pdfPicture } from './pdf-view.js';
 import { presentDialog, preparePictures } from '../docs/to-present.js';
@@ -114,6 +115,40 @@ const commandHover = hoverTooltip((view, pos) => {
   };
 });
 
+// A citation key shows the paper it stands for, with its PDF when it's in the Project.
+const citeHover = hoverTooltip((view, pos) => {
+  const at = citeAt(view.state.doc.toString(), pos);
+  if (!at) return null;
+  const text = view.state.sliceDoc(at.from, at.to);
+  let start = pos - at.from;
+  let end = start;
+  while (start > 0 && text[start - 1] !== ',') start -= 1;
+  while (end < text.length && text[end] !== ',') end += 1;
+  const key = text.slice(start, end).trim();
+  if (!key) return null;
+  const row = papers.forKey(key);
+  const entry = index.bib.find((b) => b.key === key);
+  if (!row && !entry) {
+    return { pos: at.from + start, end: at.from + end, above: true, create: () => ({ dom: h('div', 'tex-hover', `<b>${escapeHtml(key)}</b> isn’t in the .bib yet. Press Ctrl+Shift+C to cite a paper.`) }) };
+  }
+  return {
+    pos: at.from + start,
+    end: at.from + end,
+    above: true,
+    create: () => {
+      const dom = h('div', 'tex-hover tex-hover-cite', `<b>${escapeHtml(row?.title || entry?.title || key)}</b><span>${escapeHtml([row?.who || entry?.author, row?.year || entry?.year].filter(Boolean).join(' · '))}</span>${row && !row.inBib ? '<em>Not in the .bib yet</em>' : ''}`);
+      if (row?.paper) {
+        const b = h('button', 'btn', `${icon('pdf', 13)}<span>Open ${escapeHtml(row.paper.name)}</span>`);
+        b.type = 'button';
+        b.onmousedown = (e) => e.preventDefault();
+        b.onclick = () => window.office.projects.openFile(row.paper.path);
+        dom.append(b);
+      }
+      return { dom };
+    },
+  };
+});
+
 function wrapWith(before, after = '}') {
   return (view) => {
     view.dispatch(view.state.changeByRange((range) => ({
@@ -132,6 +167,7 @@ const texKeys = [
   { key: 'Mod-Shift-l', run: () => (syncToPdf(), true) },
   { key: 'Mod-Alt-m', run: () => (reviewPane.startComment(), true) },
   { key: 'Mod-Shift-e', run: () => (setVisual(!prefs.visual), true) },
+  { key: 'Mod-Shift-c', run: () => (papers.openPicker(), true) },
 ];
 
 function extensionsFor(kind) {
@@ -156,7 +192,7 @@ function extensionsFor(kind) {
     syntaxHighlighting(highlight),
     fontTheme.of(fontCss(prefs.fontSize)),
     keymap.of([...texKeys, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, indentWithTab]),
-    ...(kind === 'tex' ? [texLanguage, autocompletion({ override: [latexCompletions(() => index)], activateOnTyping: true, icons: true }), commandHover] : []),
+    ...(kind === 'tex' ? [texLanguage, autocompletion({ override: [latexCompletions(() => ({ ...index, more: papers.suggestions() }))], activateOnTyping: true, icons: true }), commandHover, citeHover] : []),
     ...(kind === 'bib' ? [autocompletion({ override: [bibCompletions] })] : []),
     ...(kind === 'tex' || kind === 'bib' ? [reviewExtension({ onAction: () => view?.focus(), onCommentClick: (id) => reviewPane.focusComment(id) })] : []),
     visualMode.of(kind === 'tex' && prefs.visual ? visualExt : []),
@@ -311,8 +347,9 @@ const insertTab = {
       { type: 'big', icon: 'equation', label: 'Symbols', title: 'Greek letters, operators, relations and arrows', run: () => symbolPalette(document.querySelector('.rb-big[title^="Greek letters"]')) },
     ] },
     { label: 'References', items: [
+      { type: 'big', icon: 'cite', label: 'Cite', shortcut: 'Ctrl+Shift+C', title: 'Cite a paper from your Project, your .bib or My Library. It goes into the .bib for you.', run: () => papers.openPicker() },
       { type: 'stack', items: [
-        { type: 'small', icon: 'cite', label: 'Citation', run: () => insert('\\cite{${}}', { select: true }) },
+        { type: 'small', icon: 'cite', label: 'Citation', title: 'Type \\cite{ and pick a key: papers in your Project are suggested too', run: () => insert('\\cite{${}}', { select: true }) },
         { type: 'small', icon: 'bibFile', label: 'Cite a paper…', title: 'Find a paper by DOI, arXiv id, title or PDF and add it to the .bib file', run: () => citePaper() },
         { type: 'small', icon: 'link', label: 'Cross-reference', run: () => insert('\\ref{${}}', { select: true }) },
         { type: 'small', icon: 'label', label: 'Label', run: () => insert('\\label{${key}}') },
@@ -1228,6 +1265,7 @@ function overrides() {
 }
 
 window.addEventListener('focus', async () => {
+  papers.load().catch(() => {});
   // Pick up changes made outside Work to the open file, when it has no unsaved edits.
   const buf = buffers.get(current);
   if (!buf || buf.dirty) return;
@@ -1576,24 +1614,28 @@ function symbolPalette(anchor) {
 function citePaper() {
   openCiteDialog({}, {
     style: 'bibtex',
-    actions: [{ label: 'Add to .bib and cite', icon: 'bibFile', run: (item, f) => addToBib(item) }],
+    actions: [{ label: 'Add to .bib and cite', icon: 'bibFile', run: (item) => addToBib(item).catch((err) => toast(err.message || String(err), 'error')) }],
   });
 }
 
-async function addToBib(item) {
-  const entry = cite.format(item, 'bibtex').text;
-  const key = cite.bibKey(item);
-  const bib = files.find((f) => f.kind === 'bib')?.path || 'references.bib';
-  const buf = buffers.get(bib);
-  const state = buf ? (bib === current && view ? view.state : buf.state) : null;
-  let text = state ? state.doc.toString() : '';
-  if (!buf && files.some((f) => f.path === bib)) {
-    const res = await api.read(bib);
-    if (res?.error) return toast(res.error, 'error');
-    text = res.text || '';
-  }
-  const known = new RegExp(`@\\w+\\s*\\{\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,`).test(text);
+// Adds a reference to the .bib (unless the same paper is there already) and
+// returns its key; insert: true also cites it at the cursor.
+async function addToBib(item, { insert = true, quiet = false } = {}) {
+  const base = cite.bibKey(item);
+  const { key, known } = citeKeyFor(base, { doi: item.DOI, title: item.title, year: item.issued?.[0] }, index.bib);
+  const at = known ? index.bib.find((b) => b.key === key)?.file : null;
+  const bib = at || bibTarget();
   if (!known) {
+    let entry = cite.format(item, 'bibtex').text;
+    entry = entry.replace(new RegExp(`^(@\\w+\\{)${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},`), `$1${key},`);
+    const buf = buffers.get(bib);
+    const state = buf ? (bib === current && view ? view.state : buf.state) : null;
+    let text = state ? state.doc.toString() : '';
+    if (!buf && files.some((f) => f.path === bib)) {
+      const res = await api.read(bib);
+      if (res?.error) throw new Error(res.error);
+      text = res.text || '';
+    }
     const add = `${text && !text.endsWith('\n') ? '\n' : ''}${text ? '\n' : ''}${entry}\n`;
     if (buf) {
       const tr = state.update({ changes: { from: state.doc.length, insert: add } });
@@ -1602,20 +1644,112 @@ async function addToBib(item) {
       buf.dirty = true;
       updateDirty();
       drawTree();
+      buildIndex();
     } else {
       const res = await api.write(bib, text + add);
-      if (res?.error) return toast(res.error, 'error');
+      if (res?.error) throw new Error(res.error);
       if (!files.some((f) => f.path === bib)) await refreshFiles();
       else await reindex();
     }
-    buildIndex();
+    ensureBibliography(bib);
   }
-  if (current && fileKind(current) === 'tex' && view) {
-    const sel = view.state.selection.main;
-    view.dispatch({ changes: { from: sel.from, to: sel.to, insert: `\\cite{${key}}` } });
-  }
-  toast(known ? `Already in ${bib}: cited as ${key}` : `Added to ${bib} as ${key}`);
+  if (insert) insertCite([key]);
+  if (!quiet) toast(known ? `Already in ${bib}: cited as ${key}` : `Added to ${bib} as ${key}`);
+  library(item);
+  return key;
 }
+
+// Keeps a cited reference in My Library too, as the Cite dialog does.
+function library(item) {
+  window.office.library?.add(item).catch(() => {});
+}
+
+// The .bib the main file uses, else the first one, else a new references.bib.
+function bibTarget() {
+  const main = mainFile && projectTexts().find((f) => f.path === mainFile)?.text;
+  const named = main ? [...main.matchAll(/\\(?:bibliography|addbibresource)(?:\s*\[[^\]]*\])?\s*\{([^{}]+)\}/g)].flatMap((m) => m[1].split(',').map((x) => x.trim())) : [];
+  for (const n of named) {
+    const p = /\.bib$/i.test(n) ? n : `${n}.bib`;
+    if (files.some((f) => f.path === p)) return p;
+  }
+  return files.find((f) => f.kind === 'bib')?.path || (named[0] ? (/\.bib$/i.test(named[0]) ? named[0] : `${named[0]}.bib`) : 'references.bib');
+}
+
+// A first citation in a document with no bibliography: add one before \end{document}.
+function ensureBibliography(bib) {
+  if (!mainFile) return;
+  const buf = buffers.get(mainFile);
+  const state = buf ? (mainFile === current && view ? view.state : buf.state) : null;
+  const text = state ? state.doc.toString() : projectTexts().find((f) => f.path === mainFile)?.text;
+  if (!text || /\\(bibliography|addbibresource|printbibliography)\b|\\begin\{thebibliography\}/.test(text)) return;
+  const end = text.search(/\\end\{document\}/);
+  if (end < 0) return;
+  const insert = `\\bibliographystyle{plain}\n\\bibliography{${bib.replace(/\.bib$/i, '')}}\n\n`;
+  if (state) {
+    const tr = state.update({ changes: { from: end, insert } });
+    if (mainFile === current && view) view.dispatch(tr);
+    else buf.state = tr.state;
+    buf.dirty = true;
+    updateDirty();
+  } else {
+    api.write(mainFile, text.slice(0, end) + insert + text.slice(end)).then(() => reindex());
+  }
+  toast(`Added a bibliography to ${mainFile}`);
+}
+
+const CITE_CMDS = ['cite', 'citep', 'citet', 'parencite', 'textcite', 'autocite'];
+function citeCommand() {
+  if (CITE_CMDS.includes(prefs.citeCmd)) return prefs.citeCmd;
+  const all = projectTexts().map((f) => f.text).join('\n');
+  if (/\\usepackage(\[[^\]]*\])?\{biblatex\}/.test(all)) return 'parencite';
+  if (/\\usepackage(\[[^\]]*\])?\{natbib\}/.test(all)) return 'citep';
+  return 'cite';
+}
+
+// Cites keys at the cursor, or adds them to the \cite{...} the cursor is in.
+async function insertCite(keys) {
+  if (!keys.length) return;
+  if (!view || !current || fileKind(current) !== 'tex') {
+    const main = mainFile || files.find((f) => f.kind === 'tex')?.path;
+    if (!main) return toast('Open a .tex file first.');
+    await openFile(main);
+  }
+  const doc = view.state.doc.toString();
+  const sel = view.state.selection.main;
+  const inside = sel.empty ? citeAt(doc, sel.head) : null;
+  if (inside) {
+    const fresh = keys.filter((k) => !inside.keys.includes(k));
+    const before = view.state.sliceDoc(inside.from, sel.head);
+    const ins = fresh.join(', ');
+    const lead = before.trim() && !/,\s*$/.test(before) ? ', ' : '';
+    const tail = view.state.sliceDoc(sel.head, inside.to).trim() && !/^\s*,/.test(view.state.sliceDoc(sel.head, inside.to)) ? ', ' : '';
+    if (ins) view.dispatch({ changes: { from: sel.head, insert: lead + ins + tail }, selection: { anchor: sel.head + lead.length + ins.length } });
+  } else {
+    const text = `\\${citeCommand()}{${keys.join(', ')}}`;
+    const space = sel.from > 0 && /[\p{L}\p{N}]/u.test(doc[sel.from - 1]) ? '~' : '';
+    view.dispatch({ changes: { from: sel.from, to: sel.to, insert: space + text }, selection: { anchor: sel.from + space.length + text.length } });
+  }
+  view.focus();
+}
+
+const papers = projectPapers({
+  root: project.root,
+  get mainPath() {
+    return mainFile ? `${project.root}/${mainFile}` : null;
+  },
+  index: () => index,
+  files: () => files,
+  texts: () => projectTexts(),
+  addToBib,
+  insertCite,
+  citeCommand,
+  setCiteCommand: (c) => {
+    prefs.citeCmd = c;
+    savePrefs();
+  },
+  citeOnline: () => citePaper(),
+  focus: () => view?.focus(),
+});
 
 function insertBlock(text) {
   if (!view) return insert(text);
@@ -1926,3 +2060,4 @@ if (first) await openFile(first);
 else showEmptyEditor();
 drawIssues();
 compile();
+papers.load().catch((err) => console.warn('project papers', err));

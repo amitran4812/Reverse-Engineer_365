@@ -262,6 +262,44 @@ async function saveText(id, key, body) {
   return { ok: true };
 }
 
+// References found for the project's PDFs, kept so citing a paper is one step:
+// refs.json maps a PDF's path to { key, item, match, edited }. A reference the
+// user edited stays even when the PDF changes; a looked-up one is redone.
+const refsFile = (id) => path.join(projectDir(id), 'refs.json');
+
+async function readRefs(id) {
+  try {
+    return JSON.parse(await fs.readFile(refsFile(id), 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+// The project's PDFs with the reference found for each (ref: null until looked up).
+async function papers(id) {
+  const p = await readMeta(id);
+  const refs = await readRefs(id);
+  return (await files(id, p))
+    .filter((f) => f.kind === 'pdf' && !f.missing)
+    .map((f) => {
+      const r = refs[f.path];
+      const ok = r && r.item && (r.edited || r.key === f.key);
+      return { path: f.path, rel: f.rel, name: f.name, key: f.key, size: f.size, modified: f.modified, ref: ok ? r.item : null, match: ok ? r.match || '' : '', edited: !!(ok && r.edited) };
+    });
+}
+
+async function saveRef(id, file, item, { match = '', edited = false } = {}) {
+  if (!item || typeof item !== 'object' || typeof item.title !== 'string') throw new Error('No reference to keep.');
+  const f = (await files(id)).find((x) => x.path === file && x.kind === 'pdf');
+  if (!f) throw new Error('Not a PDF in this project.');
+  const refs = await readRefs(id);
+  const clean = JSON.parse(JSON.stringify(item));
+  refs[file] = { key: f.key, item: clean, match: String(match || '').slice(0, 20), edited: !!edited };
+  await fs.writeFile(`${refsFile(id)}.tmp`, JSON.stringify(refs));
+  await fs.rename(`${refsFile(id)}.tmp`, refsFile(id));
+  return { ok: true };
+}
+
 // Projects a file belongs to (a copy inside the project, a link, or a file in a linked folder).
 async function forPath(file) {
   if (typeof file !== 'string' || !file) return [];
@@ -332,4 +370,4 @@ async function context(id) {
   return { name: p.name, blocks };
 }
 
-module.exports = { extract, list, create, update, remove, addFiles, removeItem, get, files, pdfBytes, saveText, forPath, context, itemPath, readMeta };
+module.exports = { extract, list, create, update, remove, addFiles, removeItem, get, files, pdfBytes, saveText, forPath, context, itemPath, readMeta, papers, saveRef };

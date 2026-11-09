@@ -221,7 +221,8 @@ function envOptions(project, closing) {
 }
 
 // project: { bib: [{key,title,author,year,file}], labels: [{label,context,file,line}],
-//            files: [{path, kind}], commands, environments }
+//            files: [{path, kind}], commands, environments,
+//            more: [{key, detail, info, add()}] (references not in the .bib yet) }
 export function latexCompletions(getProject) {
   return (context) => {
     const line = context.state.doc.lineAt(context.pos);
@@ -239,7 +240,17 @@ export function latexCompletions(getProject) {
           detail: [tidy(b.author).split(/ and /)[0].split(',')[0], b.year].filter(Boolean).join(' '),
           info: [tidy(b.title), b.file].filter(Boolean).join('\n'),
           type: 'text',
-        })),
+        })).concat((project.more || []).map((m) => ({
+          label: m.key,
+          detail: m.detail,
+          info: m.info,
+          type: 'variable',
+          // Picking a paper that isn't in the .bib yet adds it there.
+          apply: (view, completion, from, to) => {
+            view.dispatch({ changes: { from, to, insert: m.key }, selection: { anchor: from + m.key.length } });
+            m.add();
+          },
+        }))),
       };
     }
     if (ctx.kind === 'ref') {

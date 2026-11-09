@@ -96,3 +96,25 @@ test('reads Office files as text', async () => {
   assert.strictEqual(deck, 'Hello');
   assert.strictEqual(await projects.extract(Buffer.from('x'), 'zip'), null);
 });
+
+test('a project keeps the reference found for each paper', async () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), 'work-refs-'));
+  const pdf = path.join(src, 'smith.pdf');
+  fs.writeFileSync(pdf, '%PDF-1.4 one');
+  const p = await projects.create({ name: 'Refs' });
+  await projects.addFiles(p.id, [pdf, path.join(src, 'x.txt')].filter(fs.existsSync));
+  let list = await projects.papers(p.id);
+  assert.strictEqual(list.length, 1);
+  assert.strictEqual(list[0].ref, null);
+  await projects.saveRef(p.id, pdf, { title: 'A Study', author: [{ family: 'Smith' }] }, { match: 'id' });
+  list = await projects.papers(p.id);
+  assert.strictEqual(list[0].ref.title, 'A Study');
+  assert.strictEqual(list[0].match, 'id');
+  // A changed PDF is looked up again, unless the user fixed its details by hand.
+  fs.writeFileSync(pdf, '%PDF-1.4 changed and longer');
+  assert.strictEqual((await projects.papers(p.id))[0].ref, null);
+  await projects.saveRef(p.id, pdf, { title: 'Fixed' }, { edited: true });
+  fs.writeFileSync(pdf, '%PDF-1.4 changed again, even longer');
+  assert.strictEqual((await projects.papers(p.id))[0].ref.title, 'Fixed');
+  await assert.rejects(projects.saveRef(p.id, path.join(src, 'other.pdf'), { title: 'x' }));
+});
