@@ -8,7 +8,7 @@ import { StreamLanguage, syntaxHighlighting, HighlightStyle, bracketMatching, in
 import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, startCompletion, snippet } from '@codemirror/autocomplete';
 import { search, searchKeymap, openSearchPanel, highlightSelectionMatches } from '@codemirror/search';
-import { lintGutter, setDiagnostics } from '@codemirror/lint';
+import { lintGutter, setDiagnostics, openLintPanel } from '@codemirror/lint';
 import { tags as t } from '@lezer/highlight';
 import '../shared/ui.css';
 import './latex.css';
@@ -26,6 +26,14 @@ import { presentDialog, preparePictures } from '../docs/to-present.js';
 import { keepLoadedImages } from '../docs/deck.js';
 import { findGraphic, readLatex } from '../docs/tex-deck.js';
 import { fontStack } from '../shared/fonts.js';
+import { reviewExtension, reviewData, restoreEffects, trackField, commentField, acceptAll, rejectAll } from './review.js';
+import { createReviewPanel } from './review-panel.js';
+import { openHistory } from './history.js';
+import { openGit, cloneDialog } from './git.js';
+import { visualMode, visualExtension, refreshVisual } from './visual.js';
+import { tableBuilder, figureBuilder } from './builders.js';
+import { proofread } from './writing.js';
+import tables from '../../common/latex-table.js';
 import '../shared/dark.css';
 
 const info = await window.office.launchInfo();
@@ -34,9 +42,9 @@ const api = window.office.latex;
 const prefsKey = `latex:${project.root}`;
 const prefs = (() => {
   try {
-    return { dock: false, auto: true, engine: 'auto', sideW: 300, editorFrac: 0.5, closed: [], fontSize: 14, ...JSON.parse(localStorage.getItem(prefsKey) || '{}') };
+    return { dock: false, auto: true, engine: 'auto', sideW: 300, editorFrac: 0.5, closed: [], fontSize: 14, timeLimit: 0, visual: false, ...JSON.parse(localStorage.getItem(prefsKey) || '{}') };
   } catch {
-    return { dock: false, auto: true, engine: 'auto', sideW: 300, editorFrac: 0.5, closed: [], fontSize: 14 };
+    return { dock: false, auto: true, engine: 'auto', sideW: 300, editorFrac: 0.5, closed: [], fontSize: 14, timeLimit: 0, visual: false };
   }
 })();
 const savePrefs = () => {
@@ -62,6 +70,9 @@ let lastLog = '';
 let engines = [];
 let view = null;
 let editorShown = false;
+let review = { files: {} };
+let writingIssues = [];
+let userName = 'You';
 
 // ---- Editor ----
 
@@ -119,6 +130,8 @@ const texKeys = [
   { key: 'Mod-i', run: wrapWith('\\textit{') },
   { key: 'Mod-/', run: toggleComment },
   { key: 'Mod-Shift-l', run: () => (syncToPdf(), true) },
+  { key: 'Mod-Alt-m', run: () => (reviewPane.startComment(), true) },
+  { key: 'Mod-Shift-e', run: () => (setVisual(!prefs.visual), true) },
 ];
 
 function extensionsFor(kind) {
@@ -145,9 +158,12 @@ function extensionsFor(kind) {
     keymap.of([...texKeys, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, indentWithTab]),
     ...(kind === 'tex' ? [texLanguage, autocompletion({ override: [latexCompletions(() => index)], activateOnTyping: true, icons: true }), commandHover] : []),
     ...(kind === 'bib' ? [autocompletion({ override: [bibCompletions] })] : []),
+    ...(kind === 'tex' || kind === 'bib' ? [reviewExtension({ onAction: () => view?.focus(), onCommentClick: (id) => reviewPane.focusComment(id) })] : []),
+    visualMode.of(kind === 'tex' && prefs.visual ? visualExt : []),
     EditorView.updateListener.of((u) => {
       if (u.docChanged) onEdit();
       if (u.selectionSet || u.docChanged) updateCursorStatus();
+      if (u.docChanged || u.transactions.some((tr) => tr.effects.length)) onReviewChange(u);
     }),
   ];
 }
@@ -168,6 +184,37 @@ function bibCompletions(context) {
     from: word.from,
     options: Object.entries(BIB_TYPES).map(([type, body]) => ({ label: `@${type}`, type: 'class', apply: (view, c, from, to) => snippet(`@${type}{\${key},\n  ${body}\n}`)(view, c, from, to) })),
   };
+}
+
+// Pictures for the Visual editor, read once from the project.
+const pictureCache = new Map();
+const visualExt = visualExtension({
+  pictureSource: {
+    get(name, onLoad) {
+      const file = findGraphic(name, files.map((f) => f.path), {});
+      if (!file) return false;
+      if (pictureCache.has(file)) return pictureCache.get(file);
+      pictureCache.set(file, null);
+      api.read(file).then(async (res) => {
+        let src = false;
+        if (res?.base64) src = res.mime === 'application/pdf' ? await pdfPicture(res.base64).catch(() => false) : `data:${res.mime};base64,${res.base64}`;
+        pictureCache.set(file, src || false);
+        onLoad?.();
+      });
+      return null;
+    },
+  },
+  onWake: () => view?.dispatch({ effects: refreshVisual.of(null) }),
+});
+
+function setVisual(on) {
+  prefs.visual = on;
+  savePrefs();
+  const fx = (kind) => visualMode.reconfigure(kind === 'tex' && on ? visualExt : []);
+  if (view && current) view.dispatch({ effects: fx(fileKind(current)) });
+  for (const [path, buf] of buffers) if (path !== current) buf.state = buf.state.update({ effects: fx(buf.kind) }).state;
+  drawModeSwitch();
+  shell.refresh();
 }
 
 // ---- Ribbon ----
@@ -240,8 +287,13 @@ const insertTab = {
       ] },
     ] },
     { label: 'Floats', items: [
-      { type: 'big', icon: 'table', label: 'Table', run: insertTable },
+      { type: 'menu', big: true, icon: 'table', label: 'Table', items: () => [
+        { label: tableAtCursor() ? 'Edit this table…' : 'Table builder…', icon: 'table', run: () => openTableBuilder() },
+        { label: 'Quick empty table…', icon: 'grid', run: insertTable },
+        { label: 'Table from data with AI…', icon: 'sparkle', run: () => shell.claude.runQuick(QUICK.table) },
+      ] },
       { type: 'menu', big: true, icon: 'image', label: 'Figure', items: () => [
+        { label: 'Figure builder…', icon: 'figure', run: () => openFigureBuilder() },
         { label: 'Image from this computer…', icon: 'attach', run: insertImageFromComputer },
         ...files.filter((f) => f.kind === 'image').slice(0, 30).map((f) => ({ label: f.path, icon: 'imageFile', run: () => insertGraphic(f.path) })),
         ...(files.some((f) => f.kind === 'image') ? [] : [{ label: 'Empty figure', icon: 'image', run: () => insertGraphic('${file}') }]),
@@ -274,12 +326,49 @@ const insertTab = {
   ],
 };
 
+const hasTrack = () => !!view && !!view.state.field(trackField, false);
+const reviewTab = {
+  id: 'review',
+  label: 'Review',
+  groups: [
+    { label: 'Tracking', items: [
+      { type: 'big', icon: 'trackChanges', label: 'Track Changes', title: 'Show edits as suggestions to accept or reject', run: () => (reviewPane.setTrack(!reviewPane.tracking()), reviewPane.show(true), shell.refresh()), active: () => reviewPane.tracking(), enabled: hasTrack },
+      { type: 'stack', items: [
+        { type: 'small', icon: 'acceptChange', label: 'Accept all', run: () => reviewAll(true), enabled: hasTrack },
+        { type: 'small', icon: 'rejectChange', label: 'Reject all', run: () => reviewAll(false), enabled: hasTrack },
+        { type: 'small', icon: 'panel', label: 'Review pane', run: () => (reviewPane.show(!reviewPane.open), shell.refresh()), active: () => reviewPane.open },
+      ] },
+    ] },
+    { label: 'Comments', items: [
+      { type: 'big', icon: 'comment', label: 'New Comment', shortcut: 'Ctrl+Alt+M', run: () => reviewPane.startComment(), enabled: hasTrack },
+    ] },
+    { label: 'Proofing', items: [
+      { type: 'big', icon: 'spellCheck', label: 'Check Writing', title: 'The AI marks spelling, grammar and style problems in the prose, with a fix for each', run: () => checkWriting() },
+      { type: 'stack', items: [
+        { type: 'small', icon: 'clear', label: 'Clear marks', run: () => clearWriting() },
+        { type: 'small', icon: 'log', label: 'List problems', run: () => view && openLintPanel(view) },
+        { type: 'small', icon: 'wordCount', label: 'Word count', run: () => wordCount() },
+      ] },
+    ] },
+    { label: 'Versions', items: [
+      { type: 'big', icon: 'history', label: 'History', title: 'Every saved version: compare and restore', run: () => showHistory() },
+      { type: 'big', icon: 'label', label: 'Name Version', title: 'Keep the project as it is now as a named version', run: () => nameVersion() },
+      { type: 'big', icon: 'gitSync', label: 'Git Sync', title: 'Commit and sync with GitHub, GitLab or any Git host', run: () => showGit() },
+    ] },
+  ],
+};
+
 const viewTab = {
   id: 'view',
   label: 'View',
   groups: [
+    { label: 'Editor mode', items: [
+      { type: 'big', icon: 'code', label: 'Code', title: 'Edit the LaTeX source', run: () => setVisual(false), active: () => !prefs.visual },
+      { type: 'big', icon: 'visual', label: 'Visual', shortcut: 'Ctrl+Shift+E', title: 'See headings, maths, lists and pictures as they will look, and edit around them', run: () => setVisual(true), active: () => prefs.visual },
+    ] },
     { label: 'Panes', items: [
       { type: 'big', icon: 'folderOpen', label: 'Files', run: () => toggleFiles('top'), active: () => prefs.dock || filesOpen },
+      { type: 'big', icon: 'comment', label: 'Review', run: () => (reviewPane.show(!reviewPane.open), shell.refresh()), active: () => reviewPane.open },
       { type: 'big', icon: 'preview', label: 'PDF Preview', run: () => setPreview(prefs.preview === false), active: () => prefs.preview !== false },
       { type: 'big', icon: 'sparkle', label: 'AI Pane', run: () => shell.claude.toggle() },
     ] },
@@ -332,6 +421,13 @@ const QUICK = {
   convert: { label: 'Convert to LaTeX', icon: 'equation', prompt: 'Convert the selected text to LaTeX. Plain-language math (for example “x squared over two”) becomes math mode; tables, lists and headings become the matching LaTeX. Reply with one ```latex code block.', actions: (t) => [replaceSel(t), insertAt(t)] },
   table: { label: 'Table from data', icon: 'table', prompt: 'Make a LaTeX table (booktabs, with \\caption and \\label inside a table float) from the data or description below. Reply with one ```latex code block.', input: 'Paste rows (CSV or tab separated) or describe the table…', actions: (t) => [insertAt(t)] },
   improve: { label: 'Improve the writing', icon: 'wand', prompt: 'Improve the wording of the selected text so it reads clearly and academically. Keep every LaTeX command, citation, label and math expression exactly as it is. Reply with one ```latex code block.', actions: (t) => [replaceSel(t)] },
+  shorter: { label: 'Make it shorter', icon: 'shorter', prompt: 'Rewrite the selected text to say the same thing in fewer words. Keep every LaTeX command, citation, label and math expression exactly as it is. Reply with one ```latex code block.', actions: (t) => [replaceSel(t)] },
+  expand: { label: 'Expand', icon: 'continueWrite', prompt: 'Expand the selected text with more explanation and detail in the same voice, without inventing results, numbers or citations. Keep every LaTeX command, citation, label and math expression. Reply with one ```latex code block.', actions: (t) => [replaceSel(t), insertAt(t)] },
+  formal: { label: 'More academic', icon: 'wand', prompt: 'Rewrite the selected text in a formal academic register suitable for a journal paper. Keep every LaTeX command, citation, label and math expression exactly as it is. Reply with one ```latex code block.', actions: (t) => [replaceSel(t)] },
+  simpler: { label: 'Simpler', icon: 'wand', prompt: 'Rewrite the selected text in plain, simple language a student could follow, keeping the meaning. Keep every LaTeX command, citation, label and math expression. Reply with one ```latex code block.', actions: (t) => [replaceSel(t)] },
+  paraphrase: { label: 'Paraphrase', icon: 'replace', prompt: 'Paraphrase the selected text so it reads differently but means exactly the same. Keep every LaTeX command, citation, label and math expression. Reply with one ```latex code block.', actions: (t) => [replaceSel(t)] },
+  abstract: { label: 'Write an abstract', icon: 'summarize', prompt: 'Write an abstract of about 150 to 250 words for this paper from the open file, in the style of the field, without results that aren’t in the text. Reply with one ```latex code block holding a complete abstract environment.', actions: (t) => [insertAt(t)] },
+  translate: { label: 'Translate', icon: 'translate', prompt: 'Translate the selected text into the language named below, keeping every LaTeX command, citation, label and math expression. Reply with one ```latex code block.', input: 'Into which language? e.g. German', actions: (t) => [replaceSel(t)] },
   command: { label: 'Which command do I need?', icon: 'chat', prompt: 'Answer this LaTeX question briefly. Show the command or environment to use with a small example in a ```latex block, and say which package it needs if any.', input: 'e.g. How do I put two figures side by side?', actions: (t) => [insertAt(t)] },
 };
 
@@ -366,7 +462,7 @@ function claudeConfig() {
         `<errors>${errs || 'none'}</errors>`,
       ].join('\n');
     },
-    quick: [QUICK.write, QUICK.explain, QUICK.convert, QUICK.fix, QUICK.command],
+    quick: [QUICK.write, QUICK.explain, QUICK.convert, QUICK.fix, QUICK.improve, QUICK.shorter, QUICK.command],
     actions: (t) => (/```/.test(t) ? [insertAt(t), replaceSel(t)] : []),
   };
 }
@@ -387,7 +483,21 @@ const aiTab = {
     ] },
     { label: 'Fix', items: [
       { type: 'big', icon: 'proofread', label: 'Fix Errors', run: () => shell.claude.runQuick(QUICK.fix) },
+      { type: 'big', icon: 'spellCheck', label: 'Check Writing', title: 'Mark spelling, grammar and style problems with a fix for each', run: () => checkWriting() },
+    ] },
+    { label: 'Rewrite', items: [
       { type: 'big', icon: 'wand', label: 'Improve Writing', run: () => shell.claude.runQuick(QUICK.improve) },
+      { type: 'stack', items: [
+        { type: 'small', icon: 'shorter', label: 'Shorter', run: () => shell.claude.runQuick(QUICK.shorter) },
+        { type: 'small', icon: 'continueWrite', label: 'Expand', run: () => shell.claude.runQuick(QUICK.expand) },
+        { type: 'small', icon: 'replace', label: 'Paraphrase', run: () => shell.claude.runQuick(QUICK.paraphrase) },
+      ] },
+      { type: 'stack', items: [
+        { type: 'small', icon: 'wand', label: 'More academic', run: () => shell.claude.runQuick(QUICK.formal) },
+        { type: 'small', icon: 'wand', label: 'Simpler', run: () => shell.claude.runQuick(QUICK.simpler) },
+        { type: 'small', icon: 'translate', label: 'Translate', run: () => shell.claude.runQuick(QUICK.translate) },
+      ] },
+      { type: 'big', icon: 'summarize', label: 'Abstract', title: 'Write an abstract from the paper', run: () => shell.claude.runQuick(QUICK.abstract) },
     ] },
     { label: 'Present', items: [
       { type: 'big', icon: 'toPresent', label: 'Send to Present', title: 'Turn this paper into a presentation', run: () => toPresent() },
@@ -430,12 +540,30 @@ function toPresent() {
 }
 
 
+// ---- Review pane ----
+
+const reviewPane = createReviewPanel({
+  getView: () => (view && isTex() || (view && current && fileKind(current) === 'bib') ? view : null),
+  author: () => userName,
+  otherFiles: () => Object.entries(review.files)
+    .filter(([p, d]) => p !== current && d)
+    .map(([p, d]) => {
+      const state = buffers.get(p)?.state;
+      const changes = state?.field(trackField, false) ? state.field(trackField).changes.length : d.base != null ? 'some' : 0;
+      const comments = state?.field(commentField, false) ? state.field(commentField).list.filter((c) => !c.resolved).length : (d.comments || []).filter((c) => !c.resolved).length;
+      return { path: p, changes, comments };
+    })
+    .filter((o) => o.changes || o.comments),
+  openFile: (p) => openFile(p),
+  onClose: () => shell.refresh(),
+});
+
 // ---- Shell ----
 
 const shell = await createShell({
   app: 'docs',
   defaultExt: 'tex',
-  tabs: [homeTab, insertTab, viewTab],
+  tabs: [homeTab, insertTab, reviewTab, viewTab],
   claudeTab: aiTab,
   undo: () => view && undo(view),
   redo: () => view && redo(view),
@@ -519,9 +647,29 @@ const edTools = h('div', 'tex-head-tools');
 const syncBtn = h('button', 'tex-btn', `${icon('toPdf', 16)}<span>Show in PDF</span>`);
 syncBtn.title = 'Show the cursor’s position in the PDF (Ctrl+Shift+L)';
 syncBtn.onclick = () => syncToPdf();
-edTools.append(syncBtn);
+const modeSwitch = h('div', 'tex-mode');
+const reviewBtn = h('button', 'tex-btn', `${icon('comment', 16)}<span>Review</span><b class="tex-review-n"></b>`);
+reviewBtn.title = 'Tracked changes and comments';
+reviewBtn.onclick = () => {
+  reviewPane.show(!reviewPane.open);
+  shell.refresh();
+};
+edTools.append(modeSwitch, reviewBtn, syncBtn);
 edHead.append(crumb, edTools);
 const edBody = h('div', 'tex-ed-body');
+edBody.append(reviewPane.el);
+
+function drawModeSwitch() {
+  modeSwitch.innerHTML = '';
+  for (const [on, label, ic, title] of [[false, 'Code', 'code', 'Edit the LaTeX source'], [true, 'Visual', 'visual', 'See it more like the finished document (Ctrl+Shift+E)']]) {
+    const b = h('button', prefs.visual === on ? 'on' : '', `${icon(ic, 14)}<span>${label}</span>`);
+    b.title = title;
+    b.onmousedown = (e) => e.preventDefault();
+    b.onclick = () => setVisual(on);
+    modeSwitch.append(b);
+  }
+  modeSwitch.hidden = !current || fileKind(current) !== 'tex';
+}
 const viewer = h('div', 'tex-file-view');
 edPane.append(edHead, edBody, viewer);
 
@@ -768,6 +916,7 @@ function uploadMenu(anchor, dir) {
     { label: 'Files from a .zip…', icon: 'zip', run: () => uploadZip(dir) },
     '-',
     { label: 'New project from a .zip…', icon: 'texFile', run: () => api.openZip().then((r) => r?.error && toast(r.error, 'error')) },
+    { label: 'New project from Git…', icon: 'gitSync', run: () => cloneDialog({ api, dialog }) },
     '-',
     { label: 'Download the project as a .zip…', icon: 'zip', run: () => downloadZip() },
   ]));
@@ -853,6 +1002,13 @@ async function renamePath(from, to) {
     }
   }
   if (current && (current === from || current.startsWith(`${from}/`))) current = res.path + current.slice(from.length);
+  for (const p of Object.keys(review.files)) {
+    if (p === from || p.startsWith(`${from}/`)) {
+      review.files[res.path + p.slice(from.length)] = review.files[p];
+      delete review.files[p];
+    }
+  }
+  scheduleReviewSave();
   if (mainFile && (mainFile === from || mainFile.startsWith(`${from}/`))) {
     mainFile = res.path + mainFile.slice(from.length);
     prefs.main = mainFile;
@@ -868,6 +1024,8 @@ async function deletePath(f) {
   const res = await api.remove(f.path);
   if (res?.error) return toast(res.error, 'error');
   for (const p of [...buffers.keys()]) if (p === f.path || p.startsWith(`${f.path}/`)) buffers.delete(p);
+  for (const p of Object.keys(review.files)) if (p === f.path || p.startsWith(`${f.path}/`)) delete review.files[p];
+  scheduleReviewSave();
   if (current && (current === f.path || current.startsWith(`${f.path}/`))) {
     current = null;
     showEmptyEditor();
@@ -895,7 +1053,9 @@ async function openFile(path, line = null) {
       const res = await api.read(path);
       if (res?.error) return toast(res.error, 'error');
       if (res.tooBig || res.binary) return showBinary(f, res);
-      buf = { saved: res.text, dirty: false, kind: f.kind, state: EditorState.create({ doc: res.text, extensions: extensionsFor(f.kind) }) };
+      let state = EditorState.create({ doc: res.text, extensions: extensionsFor(f.kind) });
+      if (review.files[path] && state.field(trackField, false)) state = state.update({ effects: restoreEffects(review.files[path], state.doc) }).state;
+      buf = { saved: res.text, dirty: false, kind: f.kind, state };
       buffers.set(path, buf);
     }
     if (view && current && buffers.has(current)) buffers.get(current).state = view.state;
@@ -911,6 +1071,7 @@ async function openFile(path, line = null) {
     buildIndex();
     drawTree();
     drawCrumb();
+    reviewPane.draw();
     shell.refresh();
   }
   if (line && view) goToLine(line);
@@ -970,6 +1131,16 @@ function showEmptyEditor() {
 function drawCrumb() {
   crumb.innerHTML = current ? `${icon(kindIcon({ kind: fileKind(current) }), 16)}<span>${escapeHtml(current)}</span>${buffers.get(current)?.dirty ? '<span class="tex-dot"></span>' : ''}` : '';
   syncBtn.hidden = !current || fileKind(current) !== 'tex';
+  drawModeSwitch();
+  drawReviewCount();
+}
+
+function drawReviewCount() {
+  const st = view && current && buffers.has(current) ? view.state : null;
+  const n = st?.field(trackField, false) ? st.field(trackField).changes.length + st.field(commentField).list.filter((c) => !c.resolved).length : 0;
+  reviewBtn.querySelector('.tex-review-n').textContent = n || '';
+  reviewBtn.classList.toggle('tracking', !!st?.field(trackField, false)?.tracking);
+  reviewBtn.hidden = !st?.field(trackField, false);
 }
 
 function onEdit() {
@@ -1017,6 +1188,8 @@ async function saveAll() {
   drawCrumb();
   updateDirty();
   if (n) toast(`Saved ${n} file${n === 1 ? '' : 's'}`);
+  await flushReview();
+  api.history.snapshot({ reason: 'save' }).then((r) => r?.error && console.warn(r.error));
   return true;
 }
 
@@ -1143,7 +1316,13 @@ async function compile({ auto = false } = {}) {
   pvPane.classList.add('busy');
   compileBtn.innerHTML = `${icon('stop', 16)}<span>Compiling…</span>`;
   compileBtn.title = 'Stop compiling';
-  const res = await api.compile({ main: mainFile, overrides: overrides(), engine: prefs.engine === 'auto' ? null : prefs.engine });
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const sec = Math.round((Date.now() - started) / 1000);
+    if (sec >= 3) compileBtn.innerHTML = `${icon('stop', 16)}<span>Compiling… ${sec}s</span>`;
+  }, 1000);
+  const res = await api.compile({ main: mainFile, overrides: overrides(), engine: prefs.engine === 'auto' ? null : prefs.engine, timeLimit: prefs.timeLimit || 0 });
+  clearInterval(tick);
   compiling = false;
   pvPane.classList.remove('busy');
   compileBtn.innerHTML = `${icon('compile', 16)}<span>Recompile</span>`;
@@ -1212,6 +1391,13 @@ function showCompileMenu(anchor) {
   }
   const missing = engines.filter((e) => !e.available).map((e) => e.label);
   if (missing.length) list.append(h('div', 'tex-menu-note', `Not found on this computer: ${escapeHtml(missing.join(', '))}`));
+  list.append(h('div', 'rb-menu-sep'), h('div', 'tex-menu-label', 'Time limit'));
+  for (const [sec, label, detail] of [[0, 'No limit', 'Long theses and big TikZ figures can take as long as they need'], [60, '1 minute', ''], [300, '5 minutes', ''], [1200, '20 minutes', '']]) {
+    row(label, (prefs.timeLimit || 0) === sec, () => {
+      prefs.timeLimit = sec;
+      savePrefs();
+    }, detail);
+  }
   list.append(h('div', 'rb-menu-sep'));
   row('Main file…', false, async () => {
     const tex = files.filter((f) => f.kind === 'tex');
@@ -1271,6 +1457,7 @@ function applyDiagnostics() {
       const ln = doc.line(i.line);
       return { from: ln.from, to: ln.to, severity: i.level, message: i.message };
     });
+  list.push(...writingDiagnostics());
   view.dispatch(setDiagnostics(view.state, list));
 }
 
@@ -1465,6 +1652,246 @@ async function insertImageFromComputer() {
   if (img) insertGraphic(img);
 }
 
+// ---- Review: tracked changes and comments ----
+
+let reviewTimer = 0;
+function onReviewChange(u) {
+  const st = u.state;
+  if (!st.field(trackField, false) || !current) return;
+  const was = u.startState;
+  const changed = u.docChanged || st.field(trackField) !== was.field(trackField, false) || st.field(commentField) !== was.field(commentField, false);
+  if (!changed) return;
+  scheduleReviewSave();
+  reviewPane.draw();
+  drawReviewCount();
+  if (st.field(trackField).tracking !== was.field(trackField, false)?.tracking) shell.refresh();
+}
+
+function collectReview() {
+  for (const [path, buf] of buffers) {
+    const state = path === current && view ? view.state : buf.state;
+    if (!state.field(trackField, false)) continue;
+    const d = reviewData(state);
+    if (d.base == null && !d.comments.length && !d.tracking) delete review.files[path];
+    else review.files[path] = d;
+  }
+  return review;
+}
+
+function scheduleReviewSave() {
+  clearTimeout(reviewTimer);
+  reviewTimer = setTimeout(flushReview, 800);
+}
+
+async function flushReview() {
+  clearTimeout(reviewTimer);
+  const res = await api.setReview({ files: collectReview().files });
+  if (res?.error) toast(res.error, 'error');
+}
+
+function reviewAll(accept) {
+  const v = reviewPane.tracking() || view?.state.field(trackField, false)?.base != null ? view : null;
+  if (!v) return toast('There are no tracked changes in this file.');
+  if (accept) acceptAll(v);
+  else rejectAll(v);
+}
+
+// ---- Proofreading ----
+
+let writingVersion = 0;
+async function checkWriting() {
+  if (!view || !isTex()) return toast('Open a .tex file first.');
+  const file = current;
+  const sel = view.state.selection.main;
+  const text = sel.empty ? view.state.doc.toString() : view.state.sliceDoc(sel.from, sel.to);
+  const id = ++writingVersion;
+  toast(sel.empty ? 'Checking the writing in this file…' : 'Checking the selected text…');
+  try {
+    const found = await proofread({ text, base: sel.empty ? 0 : sel.from, onProgress: (d, t) => { if (t > 1) statusEngine.textContent = `Checking writing ${d}/${t}`; } });
+    if (id !== writingVersion || file !== current) return;
+    const doc = view.state.doc;
+    writingIssues = found.filter((x) => doc.sliceString(x.from, x.to) === x.quote).map((x) => ({ ...x, file }));
+    applyDiagnostics();
+    statusEngine.textContent = '';
+    toast(writingIssues.length ? `Found ${writingIssues.length} thing${writingIssues.length === 1 ? '' : 's'} to look at. Hover a dotted underline to fix it.` : 'No problems found.');
+    if (writingIssues.length) openLintPanel(view);
+  } catch (err) {
+    statusEngine.textContent = '';
+    toast(err.message, 'error');
+  }
+}
+
+function clearWriting() {
+  writingIssues = [];
+  applyDiagnostics();
+}
+
+function writingDiagnostics() {
+  if (!view) return [];
+  const doc = view.state.doc;
+  return writingIssues
+    .filter((x) => x.file === current && x.to <= doc.length && doc.sliceString(x.from, x.to) === x.quote)
+    .map((x) => ({
+      from: x.from,
+      to: x.to,
+      severity: x.kind === 'style' || x.kind === 'clarity' ? 'info' : 'warning',
+      markClass: `cm-proof cm-proof-${x.kind}`,
+      source: x.kind[0].toUpperCase() + x.kind.slice(1),
+      message: `${x.why || x.kind}${x.suggestion ? ` → “${x.suggestion}”` : ''}`,
+      actions: [
+        { name: x.suggestion ? 'Fix' : 'Remove', apply: (v, from, to) => {
+          v.dispatch({ changes: { from, to, insert: x.suggestion } });
+          writingIssues = writingIssues.filter((y) => y !== x);
+          applyDiagnostics();
+        } },
+        { name: 'Ignore', apply: () => {
+          writingIssues = writingIssues.filter((y) => y !== x);
+          applyDiagnostics();
+        } },
+      ],
+    }));
+}
+
+// ---- History and Git ----
+
+async function saveForVersions() {
+  if ([...buffers.values()].some((b) => b.dirty)) await saveAll();
+  await flushReview();
+}
+
+// Puts files changed on disk (restored or pulled) into their open editors.
+async function reloadFromDisk(paths = null) {
+  await refreshFiles();
+  for (const [path, buf] of buffers) {
+    if (paths && !paths.includes(path)) continue;
+    const res = await api.read(path);
+    if (res?.text == null || res.text === buf.saved) continue;
+    const state = path === current && view ? view.state : buf.state;
+    const tr = state.update({ changes: { from: 0, to: state.doc.length, insert: res.text } });
+    if (path === current && view) view.dispatch(tr);
+    else buf.state = tr.state;
+    buf.saved = res.text;
+    buf.dirty = false;
+  }
+  review = await api.review().then((r) => (r?.error ? review : { files: r.files || {} }));
+  updateDirty();
+  drawTree();
+  drawCrumb();
+  compile();
+}
+
+function showHistory() {
+  openHistory({ api, host: shell.workspace, beforeOpen: saveForVersions, onRestored: (paths) => reloadFromDisk(paths) });
+}
+
+async function nameVersion() {
+  const v = await dialog({ title: 'Name this version', body: '<p>Keep the project as it is now, under a name you’ll recognise in History, such as “Sent to supervisor”.</p>', fields: [{ name: 'label', label: 'Name', value: '' }], ok: 'Save version' });
+  if (!v?.label?.trim()) return;
+  await saveForVersions();
+  const res = await api.history.snapshot({ label: v.label.trim(), reason: 'named' });
+  if (res?.error) return toast(res.error, 'error');
+  toast(`Saved the version “${v.label.trim()}”. Find it in History.`);
+}
+
+function showGit() {
+  openGit({ api, beforeOpen: saveForVersions, onPulled: async () => {
+    await reloadFromDisk();
+    api.history.snapshot({ reason: 'git' });
+  } });
+}
+
+// ---- Table and figure builders ----
+
+function tableAtCursor() {
+  if (!view || !isTex()) return null;
+  const found = tables.tableAround(view.state.doc.toString(), view.state.selection.main.head);
+  if (!found) return null;
+  const parsed = tables.parseTable(found.text);
+  return parsed ? { ...found, parsed } : null;
+}
+
+async function openTableBuilder() {
+  if (!view || !isTex()) {
+    const main = mainFile || files.find((f) => f.kind === 'tex')?.path;
+    if (main) await openFile(main);
+    else return toast('Open a .tex file first.');
+  }
+  const at = tableAtCursor();
+  tableBuilder({
+    initial: at?.parsed || null,
+    onInsert: (code, { packages }) => {
+      if (at) {
+        // Keep the table's own indentation so only real edits show as changes.
+        const unit = /\n([ \t]+)\S/.exec(at.text)?.[1] || '\t';
+        const out = code.replace(/\n$/, '').replace(/^\t+/gm, (tabs) => unit.repeat(tabs.length));
+        view.dispatch({ changes: { from: at.from, to: at.to, insert: out } });
+      }
+      else insertRaw(code);
+      ensurePackages(packages);
+    },
+  });
+}
+
+function openFigureBuilder() {
+  figureBuilder({
+    images: files.filter((f) => f.kind === 'image').map((f) => ({ path: f.path })),
+    readImage: async (p) => {
+      const res = await api.read(p).catch(() => null);
+      if (!res?.base64) return null;
+      return res.mime === 'application/pdf' ? pdfPicture(res.base64).catch(() => null) : `data:${res.mime};base64,${res.base64}`;
+    },
+    upload: async () => (await uploadTo(files.some((f) => f.dir && f.path === 'figures') ? 'figures' : ''))?.filter((p) => fileKind(p) === 'image'),
+    onInsert: async (code, { packages }) => {
+      if (!view || !isTex()) {
+        const main = mainFile || files.find((f) => f.kind === 'tex')?.path;
+        if (main) await openFile(main);
+      }
+      insertRaw(code);
+      ensurePackages(packages);
+    },
+  });
+}
+
+// Inserts text as it is (no snippet fields) on a line of its own.
+function insertRaw(text) {
+  if (!view) return;
+  const sel = view.state.selection.main;
+  const line = view.state.doc.lineAt(sel.from);
+  const lead = line.text.slice(0, sel.from - line.from).trim() ? '\n' : '';
+  view.dispatch({ changes: { from: sel.from, to: sel.to, insert: lead + text }, selection: { anchor: sel.from + lead.length + text.length }, scrollIntoView: true });
+  view.focus();
+}
+
+// Adds \usepackage lines the builders need to the main file's preamble.
+async function ensurePackages(names) {
+  if (!names?.length || !mainFile) return;
+  const buf = buffers.get(mainFile);
+  const state = buf ? (mainFile === current && view ? view.state : buf.state) : null;
+  let text = state ? state.doc.toString() : (await api.read(mainFile))?.text;
+  if (text == null) return;
+  const begin = text.search(/\\begin\s*\{document\}/);
+  if (begin < 0) return;
+  const pre = text.slice(0, begin);
+  const missing = names.filter((n) => !new RegExp(`\\\\(?:usepackage|RequirePackage)\\s*(?:\\[[^\\]]*\\])?\\s*\\{[^}]*\\b${n}\\b`).test(pre));
+  if (!missing.length) return;
+  const last = [...pre.matchAll(/\\usepackage[^\n]*\n/g)].pop();
+  const dc = /\\documentclass[^\n]*\n/.exec(pre);
+  const at = last ? last.index + last[0].length : dc ? dc.index + dc[0].length : 0;
+  const add = missing.map((n) => `\\usepackage{${n}}\n`).join('');
+  if (state) {
+    const tr = state.update({ changes: { from: at, insert: add } });
+    if (mainFile === current && view) view.dispatch(tr);
+    else {
+      buf.state = tr.state;
+      buf.dirty = true;
+      updateDirty();
+    }
+  } else {
+    await api.write(mainFile, text.slice(0, at) + add + text.slice(at));
+  }
+  toast(`Added ${missing.map((n) => `\\usepackage{${n}}`).join(', ')} to ${mainFile}`);
+}
+
 // ---- Status bar ----
 
 const cursorStatus = h('span');
@@ -1490,7 +1917,10 @@ document.addEventListener('keydown', (e) => {
 
 applyLayout();
 engines = await api.engines();
+review = await api.review().then((r) => (r?.error ? { files: {} } : { files: r.files || {} }));
+userName = (await window.office.pdf.user().catch(() => '')) || 'You';
 await refreshFiles();
+api.history.snapshot({ reason: 'open' });
 const first = (prefs.open && files.some((f) => f.path === prefs.open) && prefs.open) || project.open || mainFile || files.find((f) => f.kind === 'tex')?.path;
 if (first) await openFile(first);
 else showEmptyEditor();

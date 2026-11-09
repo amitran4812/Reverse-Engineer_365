@@ -2,6 +2,37 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.42: Track changes, comments, history and Git for LaTeX
+
+### Review your LaTeX like a pro
+
+- **Track changes.** Turn on Review › Track Changes and every edit shows as a suggestion: new text underlined in green, removed text struck through in red. Hover a change to accept or reject it, or use Accept all and Reject all. Changes made by the AI helper while tracking is on are suggestions too.
+- **Comments.** Select some text and press Ctrl+Alt+M (or Review › New Comment). Comments sit in the Review pane beside the editor with replies, Resolve and Delete, and follow their text as you edit. Tracked changes and comments are saved with the project in `.work/review.json`, so they travel with Git and copies of the folder.
+- **Check Writing.** The AI proofreads the prose (never the commands or maths) and underlines spelling, grammar and style problems, each with a one-click Fix. Select a paragraph to check just that part.
+- **Rewrite with AI.** The LaTeX Helper tab has Shorter, Expand, Paraphrase, More academic, Simpler, Translate and Write an abstract, all keeping your commands, citations and maths as they are.
+
+### Never lose a version
+
+- **History.** Every save keeps a version of the whole project. Review › History shows each one with what changed, word by word, side by side with the version before or with the project now. Restore one file or the whole version, or download any version as a .zip. Restoring keeps the current state first, so it can be undone.
+- **Named versions.** Review › Name Version keeps the project as it is under a name like "Sent to supervisor".
+
+### Sync with GitHub or GitLab
+
+- **Git Sync.** Set up Git for a project, connect it to a repository on GitHub, GitLab or any Git host, then Commit and Sync to send your work and bring in your co-authors' changes. No Git install is needed. Access tokens are kept encrypted on your computer. If both sides changed the same lines, nothing is overwritten and Work says which files clash.
+- **New project from Git.** Files › Upload › New project from Git downloads a repository and opens it.
+
+### Write faster
+
+- **Visual editor.** Switch between Code and Visual above the editor (Ctrl+Shift+E). Visual shows headings as headings, bold and italic as they look, equations and inline maths drawn, pictures under their `\includegraphics`, bullets for lists, the title block, and citations and references as small tags. The preamble folds into one line. Whatever the cursor is in turns back into LaTeX so it can be edited.
+- **Table builder.** Insert › Table › Table builder gives a grid to fill in: add and delete rows and columns, set each column's alignment, choose clean lines (booktabs), all borders or none, and paste cells straight from a spreadsheet. With the cursor in an existing table, Edit this table opens it in the grid and keeps its column widths and indentation.
+- **Figure builder.** Insert › Figure › Figure builder shows the project's pictures as thumbnails. Pick one, or several to place side by side with their own captions, then set the width, caption, label and placement.
+- The builders add any package they need (booktabs, subcaption, float) to the preamble for you.
+
+### Compiling
+
+- **No time limit.** Compiles run as long as they need, with the time shown on the button. Set a limit under the Recompile menu › Time limit if you want one.
+- Fixed "Couldn't show the PDF" after recompiling a project.
+
 ## 0.2.40: Pictures and charts in Plot, visual decks in Present
 
 ### Plot shows the pictures and charts in your workbooks

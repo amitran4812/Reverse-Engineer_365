@@ -20,6 +20,7 @@ const SKIP_DIRS = new Set(['node_modules', '__MACOSX', '.git', '.svn', '.hg', '.
 const MAX_ENTRIES = 3000;
 const MAX_TEXT = 8 * 1024 * 1024;
 const running = new Map(); // project root -> child process
+const limits = new Map(); // project root -> compile time limit in ms (0: none)
 
 // Resolves a project-relative path, refusing anything outside the project.
 function inside(root, rel = '') {
@@ -337,7 +338,7 @@ async function tectonicCache() {
   return dir;
 }
 
-function run(root, cmd, args, { cwd, env, timeout = 180000 } = {}) {
+function run(root, cmd, args, { cwd, env, timeout = limits.get(root) || 0 } = {}) {
   return new Promise((resolve) => {
     let out = '';
     const child = spawn(cmd, args, { cwd, env: { ...process.env, ...env }, windowsHide: true });
@@ -347,10 +348,11 @@ function run(root, cmd, args, { cwd, env, timeout = 180000 } = {}) {
     };
     child.stdout.on('data', add);
     child.stderr.on('data', add);
-    const timer = setTimeout(() => {
-      out += `\nerror: Stopped after ${Math.round(timeout / 1000)} seconds.\n`;
+    // No time limit unless the user set one; Stop always works.
+    const timer = timeout ? setTimeout(() => {
+      out += `\nerror: Stopped after ${Math.round(timeout / 1000)} seconds (the time limit set in Compile options).\n`;
       child.kill();
-    }, timeout);
+    }, timeout) : null;
     child.on('error', (err) => {
       clearTimeout(timer);
       resolve({ code: -1, out: `${out}\nerror: ${err.message}\n` });
@@ -406,10 +408,10 @@ async function runTectonic(root, eng, dir, main) {
   const cache = await tectonicCache();
   const args = ['-X', 'compile', '--synctex', '--keep-logs', '--keep-intermediates', main];
   const env = { TECTONIC_CACHE_DIR: cache };
-  let res = await run(root, eng.path, args, { cwd: dir, env, timeout: 300000 });
+  let res = await run(root, eng.path, args, { cwd: dir, env });
   // Offline: try again with only the packages already downloaded.
   if (res.code !== 0 && !res.killed && NETWORK_TROUBLE.test(res.out)) {
-    const again = await run(root, eng.path, ['-X', 'compile', '--only-cached', ...args.slice(2)], { cwd: dir, env, timeout: 300000 });
+    const again = await run(root, eng.path, ['-X', 'compile', '--only-cached', ...args.slice(2)], { cwd: dir, env });
     if (!again.killed) res = { ...again, out: `${again.out}\n(Offline: compiled with the packages already on this computer.)\n` };
   }
   return res;
@@ -445,7 +447,8 @@ async function runLatex(root, eng, dir, main) {
 
 // Compiles the project. Returns the PDF bytes, the log, parsed issues and
 // the SyncTeX data for jumping between source and preview.
-async function compile(root, { main, overrides, engine } = {}) {
+async function compile(root, { main, overrides, engine, timeLimit = 0 } = {}) {
+  limits.set(root, Math.max(0, Math.min(Number(timeLimit) || 0, 24 * 3600)) * 1000);
   main = main || (await mainFile(root));
   if (!main) return { ok: false, issues: [{ level: 'error', file: null, line: null, message: 'This project has no .tex file with \\documentclass to compile.' }], log: '' };
   inside(root, main);
@@ -506,10 +509,38 @@ function sourcePath(buildRoot, mainDir, file) {
   return rel.startsWith('..') ? file : rel.split(path.sep).join('/');
 }
 
+// Review notes (tracked changes and comments) travel with the project in
+// .work/review.json, so they go along with Git and copies of the folder.
+const REVIEW = path.join('.work', 'review.json');
+
+async function readReview(root) {
+  try {
+    const data = JSON.parse(await fsp.readFile(path.join(root, REVIEW), 'utf8'));
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeReview(root, data) {
+  const file = path.join(root, REVIEW);
+  const files = Object.fromEntries(Object.entries(data?.files || {}).filter(([rel, v]) => {
+    inside(root, rel);
+    return v && (v.base != null || v.comments?.length);
+  }));
+  if (!Object.keys(files).length) {
+    await fsp.rm(file, { force: true });
+    return { ok: true };
+  }
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  await fsp.writeFile(file, JSON.stringify({ version: 1, files }, null, 1));
+  return { ok: true };
+}
+
 async function lastPdf(root, main) {
   const base = (main || (await mainFile(root)) || 'main.tex').replace(/\.[^.]+$/, '');
   const file = path.join(buildDir(root), 'src', `${base}.pdf`);
   return fs.existsSync(file) ? file : null;
 }
 
-module.exports = { inside, list, read, sources, write, create, rename, importPaths, importZip, exportZip, zipFolder, scaffold, mainFile, engines, compile, stop, lastPdf, sourcePath };
+module.exports = { readReview, writeReview, inside, list, read, sources, write, create, rename, importPaths, importZip, exportZip, zipFolder, scaffold, mainFile, engines, compile, stop, lastPdf, sourcePath };
