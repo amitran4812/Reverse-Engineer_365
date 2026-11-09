@@ -244,7 +244,7 @@ class Converter {
         return new TableCell({
           columnSpan: cell.attrs?.colspan > 1 ? cell.attrs.colspan : undefined,
           rowSpan: cell.attrs?.rowspan > 1 ? cell.attrs.rowspan : undefined,
-          shading: cell.type === 'tableHeader' ? { type: ShadingType.CLEAR, color: 'auto', fill: 'EEF1F6' } : undefined,
+          shading: hex(cell.attrs?.background) ? { type: ShadingType.CLEAR, color: 'auto', fill: hex(cell.attrs.background) } : cell.type === 'tableHeader' ? { type: ShadingType.CLEAR, color: 'auto', fill: 'EEF1F6' } : undefined,
           children: children.length ? children : [new Paragraph({ children: [] })],
         });
       }),
@@ -430,7 +430,7 @@ const tocBack = (html) => html.replace(/(?:<p class="work-toc">[\s\S]*?<\/p>)+/g
 // Word's highlight names to colours.
 const HIGHLIGHT = { yellow: '#ffff00', green: '#00ff00', cyan: '#00ffff', magenta: '#ff00ff', blue: '#0000ff', red: '#ff0000', darkBlue: '#000080', darkCyan: '#008080', darkGreen: '#008000', darkMagenta: '#800080', darkRed: '#800000', darkYellow: '#808000', darkGray: '#808080', lightGray: '#c0c0c0', black: '#000000', white: '#ffffff' };
 const JC = { center: 'center', right: 'right', end: 'right', both: 'justify', distribute: 'justify' };
-const M = { open: '\uE000', close: '\uE002', sep: '\uE001', para: '\uE003', size: '\uE004' };
+const M = { open: '\uE000', close: '\uE002', sep: '\uE001', para: '\uE003', size: '\uE004', cell: '\uE005' };
 
 // Marks runs with colours, fonts, sizes and highlights, paragraphs with their
 // alignment and pictures with their size, as private-use text that mammoth
@@ -486,6 +486,15 @@ async function markFormatting(buffer) {
     r.insertBefore(t0, rPr.nextSibling);
     r.appendChild(t1);
   }
+  // table cell fills: a mark at the start of the cell's first paragraph
+  for (const tc of el('tc')) {
+    const fill = (child(child(tc, 'tcPr'), 'shd')?.getAttribute('w:fill') || '').toLowerCase();
+    if (!/^[0-9a-f]{6}$/.test(fill) || fill === 'ffffff') continue;
+    const p = child(tc, 'p');
+    if (!p) continue;
+    const first = Array.from(p.childNodes).find((c) => c.localName !== 'pPr');
+    p.insertBefore(text(`${M.cell}${fill}${M.sep}`), first || null);
+  }
   // picture sizes ride in the alt text
   const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
   for (const holder of [...Array.from(doc.getElementsByTagNameNS(WP, 'inline')), ...Array.from(doc.getElementsByTagNameNS(WP, 'anchor'))]) {
@@ -503,6 +512,7 @@ async function markFormatting(buffer) {
 function restoreMarks(html, spans) {
   const S = M.sep;
   return html
+    .replace(new RegExp(`<(td|th)([^>]*)>((?:<p[^>]*>)?)${M.cell}([0-9a-f]{6})${S}`, 'g'), (m, tag, attrs, p, fill) => `<${tag}${attrs} data-background="#${fill}" style="background-color:#${fill}">${p}`)
     .replace(new RegExp(`<(p|h[1-6])>${M.para}(\\w+)${S}`, 'g'), (m, tag, a) => `<${tag} style="text-align:${a}">`)
     .replace(new RegExp(`${M.open}(\\d+)${S}`, 'g'), (m, i) => spans[i]?.open || '')
     .replace(new RegExp(`${M.close}(\\d+)${S}`, 'g'), (m, i) => spans[i]?.close || '')
@@ -511,7 +521,7 @@ function restoreMarks(html, spans) {
       if (!m) return tag;
       return tag.replace(m[0], '').replace(/ alt=""/, '').replace(/\s*\/?>$/, ` width="${m[1]}" height="${m[2]}" />`);
     })
-    .replace(new RegExp(`${M.para}\\w+${S}|${M.size}\\d+x\\d+${S}|[${M.open}${M.close}]\\d+${S}`, 'g'), '');
+    .replace(new RegExp(`${M.para}\\w+${S}|${M.size}\\d+x\\d+${S}|${M.cell}[0-9a-f]{6}${S}|[${M.open}${M.close}]\\d+${S}`, 'g'), '');
 }
 
 async function importDocx(original) {

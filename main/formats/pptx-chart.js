@@ -11,13 +11,17 @@ const desc = (node, name) => (node ? Array.from(node.getElementsByTagName('*')).
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const r1 = (n) => Math.round(n * 10) / 10;
 
-function cache(ref) {
+// Cached values, or (for files saved without them) the cells the series points at.
+function cache(ref, range) {
   const c = desc(ref, 'strCache')[0] || desc(ref, 'numCache')[0];
-  if (c) {
+  if (c && kids(c, 'pt').length) {
     const out = [];
     for (const p of kids(c, 'pt')) out[Number(p.getAttribute('idx'))] = kid(p, 'v')?.textContent ?? '';
     return Array.from(out, (v) => v ?? '');
   }
+  const f = desc(ref, 'f')[0]?.textContent;
+  const fromCells = f && range ? range(f) : null;
+  if (fromCells) return fromCells.map((v) => (v == null ? '' : String(v)));
   const lit = desc(ref, 'v');
   return lit.map((v) => v.textContent);
 }
@@ -47,9 +51,9 @@ function chartSvg(doc, w, h, theme) {
         dir: kid(t, 'barDir')?.getAttribute('val') || 'col',
         grouping: kid(t, 'grouping')?.getAttribute('val') || 'clustered',
         hole: kind === 'doughnut' ? Number(kid(t, 'holeSize')?.getAttribute('val') || 50) / 100 : 0,
-        name: cache(kid(s, 'tx')).join(' ') || `Series ${series.length + 1}`,
-        cats: cache(kid(s, 'cat') || kid(s, 'xVal')),
-        vals: cache(kid(s, 'val') || kid(s, 'yVal')).map(Number),
+        name: cache(kid(s, 'tx'), theme.range).join(' ') || `Series ${series.length + 1}`,
+        cats: cache(kid(s, 'cat') || kid(s, 'xVal'), theme.range),
+        vals: cache(kid(s, 'val') || kid(s, 'yVal'), theme.range).map((v) => (v === '' ? NaN : Number(v))),
         color,
         points: kids(s, 'dPt').map((d) => ({ i: Number(kid(d, 'idx')?.getAttribute('val')), color: theme.color(kid(d, 'spPr', 'solidFill')) })),
       });
@@ -57,7 +61,7 @@ function chartSvg(doc, w, h, theme) {
   }
   if (!series.length) return null;
   series.forEach((s, i) => { s.color ||= theme.accents[i % theme.accents.length]; });
-  const out = [];
+  const out = theme.background ? [`<rect width="${r1(w)}" height="${r1(h)}" fill="${theme.background}" stroke="#d9d9d9"/>`] : [];
   const text = (x, y, s, anchor = 'middle', size = fontPx, extra = '') => out.push(`<text x="${r1(x)}" y="${r1(y)}" text-anchor="${anchor}" font-size="${size}"${extra}>${esc(s)}</text>`);
   let top = 6;
   const titleNode = kid(desc(doc, 'chart')[0], 'title');
@@ -111,8 +115,9 @@ function chartSvg(doc, w, h, theme) {
     });
     if (s.hole) out.push(`<circle cx="${cx}" cy="${cy}" r="${r1(R * s.hole)}" fill="#fff"/>`);
   } else {
-    const cats = series.reduce((m, s) => (s.cats.length > m.length ? s.cats : m), []);
+    let cats = series.reduce((m, s) => (s.cats.length > m.length ? s.cats : m), []);
     const n = Math.max(cats.length, ...series.map((s) => s.vals.length));
+    if (!cats.length) cats = Array.from({ length: n }, (_, i) => String(i + 1));
     const stacked = series.some((s) => /stacked/i.test(s.grouping));
     const percent = series.some((s) => s.grouping === 'percentStacked');
     const sums = Array.from({ length: n }, (_, i) => series.reduce((a, s) => a + (s.vals[i] || 0), 0));

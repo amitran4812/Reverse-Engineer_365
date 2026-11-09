@@ -39,6 +39,7 @@ function textRuns(el) {
       };
       if (ri === 0) {
         options.align = p.align || el.style?.align || 'left';
+        if (p.level) options.indentLevel = p.level;
         if (p.bullet) options.bullet = p.bullet === 'number' ? { type: 'number' } : typeof p.bullet === 'string' && p.bullet !== '•' ? { characterCode: p.bullet.codePointAt(0).toString(16).padStart(4, '0') } : true;
       }
       if (ri === pruns.length - 1 && pi < paragraphs.length - 1) options.breakLine = true;
@@ -48,13 +49,38 @@ function textRuns(el) {
   return runs;
 }
 
+// A table cell's text formatting, read from the first run of its HTML.
+function cellFormat(html) {
+  const style = [...String(html || '').matchAll(/style="([^"]*)"/g)].map((m) => m[1]).join(';');
+  const pick = (prop) => [...style.matchAll(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'g'))].pop()?.[1].trim();
+  const out = {};
+  const size = parseFloat(pick('font-size'));
+  if (size > 0) out.fontSize = Math.round(size * 0.75 * 2) / 2;
+  const color = hex(pick('color'));
+  if (color) out.color = color;
+  const weight = pick('font-weight');
+  if (/<(b|strong)\b/.test(html) || weight === 'bold' || Number(weight) >= 600) out.bold = true;
+  if (/<(i|em)\b/.test(html) || pick('font-style') === 'italic') out.italic = true;
+  const face = firstFamily(pick('font-family')?.replace(/&quot;/g, '"'));
+  if (face) out.fontFace = face;
+  const align = pick('text-align');
+  if (['left', 'center', 'right', 'justify'].includes(align)) out.align = align;
+  return out;
+}
+
+const cellText = (html) => String(html || '').replace(/<br\s*\/?>/g, '\n').replace(/<\/(div|p)>(?!$)/g, '\n').replace(/<[^>]+>/g, '')
+  .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\n+$/, '');
+
 function tableRows(el) {
   const accent = hex(el.style?.fill) || '444444';
   if (el.cells) {
-    return el.cells.map((row, r) => row.filter((c) => !c.merged).map((c, i) => ({
-      text: String(el.rows?.[r]?.[i] ?? ''),
-      options: { fill: hex(c.fill) ? { color: hex(c.fill) } : undefined, colspan: c.colspan, rowspan: c.rowspan, valign: c.valign },
-    })));
+    return el.cells.map((row, r) => row.filter((c) => !c.merged).map((c, i) => {
+      const pad = Array.isArray(c.pad) && c.pad.length === 4 ? c.pad.map((v) => inch(v)) : undefined;
+      return {
+        text: c.html != null ? cellText(c.html) : String(el.rows?.[r]?.[i] ?? ''),
+        options: { ...cellFormat(c.html), fill: hex(c.fill) ? { color: hex(c.fill) } : undefined, colspan: c.colspan, rowspan: c.rowspan, valign: c.valign || 'top', ...(pad ? { margin: pad } : {}) },
+      };
+    }));
   }
   return el.rows.map((row, r) => row.map((v) => {
     const head = r === 0 && el.header !== false;
@@ -126,9 +152,12 @@ async function exportPptx(model, native) {
       } else if (el.type === 'image' && el.src?.startsWith('data:')) {
         slide.addImage({ ...box, data: el.src });
       } else if (el.type === 'table' && el.rows?.length) {
+        const colW = el.cols?.length ? el.cols.map((pct) => Number(((box.w * pct) / 100).toFixed(3))) : undefined;
+        const rowH = el.cells?.length && el.cells.every((row) => row[0]?.h) ? el.cells.map((row) => inch(row[0].h)) : Number((box.h / el.rows.length).toFixed(3));
         slide.addTable(tableRows(el), {
           ...box,
-          rowH: Number((box.h / el.rows.length).toFixed(3)),
+          ...(colW ? { colW } : {}),
+          rowH,
           fontFace: firstFamily(el.style?.fontFamily || theme.font) || 'Calibri',
           fontSize: Math.round((el.style?.fontSize || 14) * 0.75),
           color: hex(el.style?.color) || hex(theme.text) || '222222',

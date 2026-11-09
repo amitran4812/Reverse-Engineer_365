@@ -10,6 +10,7 @@ import { icon } from '../shared/icons.js';
 import { closePopup, popup } from '../shared/ribbon.js';
 import { fontStack } from '../shared/fonts.js';
 import { createAnalysis } from './analysis/workspace.js';
+import { createPictures } from './pictures.js';
 import { appendTable, joinTable, JOINS, matchHeaders, tableOf } from './combine.js';
 import { RULE_COLORS, RULE_KINDS, columnValues, describeRule, hiddenRows, parseRange, ruleStyles, shiftRange } from './grid-rules.js';
 import '../shared/dark.css';
@@ -75,6 +76,36 @@ function colWidth(c) {
   return sheet().cols?.[colName(c)] || DEFAULT_W;
 }
 
+// Row heights the file set (keyed by row number); other rows are the grid's own height.
+function rowHeight(r) {
+  return sheet().heights?.[r + 1] || sheet().rowH || ROW_H;
+}
+
+// The cell under a point in the grid layer's own coordinates.
+function cellAtPoint(x, y) {
+  let col = 0;
+  let left = 46;
+  while (col < cols - 1 && left + colWidth(col) <= x) left += colWidth(col++);
+  let lo = 0;
+  let hi = rows - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (tbody.rows[mid].offsetTop <= y) lo = mid;
+    else hi = mid - 1;
+  }
+  return { row: lo, col };
+}
+
+const pictures = createPictures({
+  layer,
+  sheet,
+  cellBox: (r, c) => cellBox(r, c),
+  cellAtPoint,
+  snapshot: () => snapshot(),
+  zoom: () => zoom,
+  onChange: () => shell.markDirty(),
+});
+
 function extent() {
   let mr = 0;
   let mc = 0;
@@ -105,8 +136,10 @@ function buildGrid() {
   thead.innerHTML = `${head}</tr>`;
   const parts = [];
   for (let r = 0; r < rows; r += 1) {
-    let tr = `<tr><th class="rh" data-r="${r}">${r + 1}</th>`;
-    for (let c = 0; c < cols; c += 1) tr += `<td data-r="${r}" data-c="${c}"></td>`;
+    const rh = rowHeight(r);
+    const hs = rh === ROW_H ? '' : ` style="height:${rh}px"`;
+    let tr = `<tr><th class="rh" data-r="${r}"${hs}>${r + 1}<span class="row-resize" data-r="${r}"></span></th>`;
+    for (let c = 0; c < cols; c += 1) tr += `<td data-r="${r}" data-c="${c}"${hs}></td>`;
     parts.push(`${tr}</tr>`);
   }
   tbody.innerHTML = parts.join('');
@@ -114,6 +147,18 @@ function buildGrid() {
   renderAll();
   applyFilter();
   applyFreeze();
+  pictures.render();
+}
+
+// Sets one row's height in the open grid without rebuilding it.
+function setRowHeight(r, px) {
+  const heights = { ...(sheet().heights || {}) };
+  if (Math.abs(px - (sheet().rowH || ROW_H)) < 1) delete heights[r + 1];
+  else heights[r + 1] = Math.round(px);
+  if (Object.keys(heights).length) sheet().heights = heights;
+  else delete sheet().heights;
+  const tr = tbody.rows[r];
+  if (tr) for (const cell of tr.cells) cell.style.height = `${rowHeight(r)}px`;
 }
 
 // ---------- freeze panes ----------
@@ -179,6 +224,7 @@ function applyFilter() {
     const tr = tbody.rows[r];
     if (tr) tr.style.display = hide.has(r) ? 'none' : '';
   }
+  pictures.render();
 }
 
 function toggleFilter() {
@@ -379,6 +425,11 @@ function renderCell(r, c) {
     if (cf.bar != null) st.background = `linear-gradient(90deg, ${cf.barColor}aa ${Math.round(cf.bar * 100)}%, ${s.bg || 'transparent'} ${Math.round(cf.bar * 100)}%)`;
     if (cf.bg || cf.bar != null) cell.classList.add('filled');
   }
+  // A picture placed in the cell fills it, keeping its shape.
+  const pic = data?.img && pictures.media[data.img];
+  cell.classList.toggle('has-pic', !!pic);
+  if (pic) Object.assign(st, { backgroundImage: `url("${pic}")`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', backgroundOrigin: 'content-box' });
+  else st.backgroundImage = '';
   const f = sheet().filter;
   const head = filterHead(r, c);
   cell.classList.toggle('flt-head', head);
@@ -480,10 +531,11 @@ function snapshot() {
 
 function restore(json) {
   const prevRefs = Object.keys(sheet().cells);
-  const prevCols = JSON.stringify(sheet().cols);
+  const prevCols = JSON.stringify([sheet().cols, sheet().heights]);
   book = JSON.parse(json);
   book.active = Math.min(book.active, book.sheets.length - 1);
-  if (JSON.stringify(sheet().cols) !== prevCols || extent().rows >= rows || extent().cols >= cols) buildGrid();
+  if (JSON.stringify([sheet().cols, sheet().heights]) !== prevCols || extent().rows >= rows || extent().cols >= cols) buildGrid();
+  else pictures.render();
   renderTabs();
   refreshCells(prevRefs);
   shell.markDirty();
@@ -675,9 +727,18 @@ function cellFromEvent(e) {
 
 layer.addEventListener('mousedown', (e) => {
   if (e.target === editor) return;
+  if (pictures.selected) pictures.select(null);
   if (e.target === fillHandle) {
     e.preventDefault();
     dragging = { mode: 'fill', from: selRect(), to: selRect() };
+    return;
+  }
+  const rowResize = e.target.closest('.row-resize');
+  if (rowResize) {
+    e.preventDefault();
+    const r = Number(rowResize.dataset.r);
+    snapshot();
+    dragging = { mode: 'rowresize', r, y: e.clientY, h: rowHeight(r) };
     return;
   }
   const resize = e.target.closest('.col-resize');
@@ -803,6 +864,13 @@ window.addEventListener('mousemove', (e) => {
     colgroup.children[dragging.c + 1].style.width = `${Math.round(w)}px`;
     table.style.width = `${46 + Array.from({ length: cols }, (_, c) => colWidth(c)).reduce((a, b) => a + b, 0)}px`;
     drawSelection();
+    pictures.render();
+    return;
+  }
+  if (dragging.mode === 'rowresize') {
+    setRowHeight(dragging.r, Math.max(8, dragging.h + (e.clientY - dragging.y) / (zoom / 100)));
+    drawSelection();
+    pictures.render();
     return;
   }
   const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -833,7 +901,7 @@ window.addEventListener('mouseup', () => {
   if (!dragging) return;
   const d = dragging;
   dragging = null;
-  if (d.mode === 'resize') shell.markDirty();
+  if (d.mode === 'resize' || d.mode === 'rowresize') shell.markDirty();
   if (d.mode === 'ref') editor.focus();
   if (d.mode === 'fill') {
     overlay.classList.remove('filling');
@@ -888,6 +956,7 @@ function fill(from, to) {
 scroller.tabIndex = 0;
 scroller.addEventListener('keydown', (e) => {
   if (editing) return;
+  if (pictures.onKey(e)) return undefined;
   const mod = e.ctrlKey || e.metaKey;
   const move = (dr, dc) => {
     e.preventDefault();
@@ -1004,6 +1073,11 @@ document.addEventListener('paste', (e) => {
   if (editing || document.activeElement !== scroller) return;
   e.preventDefault();
   const text = e.clipboardData.getData('text/plain');
+  const file = Array.from(e.clipboardData.files || []).find((f) => /^image\//.test(f.type));
+  if (file && !text) {
+    pictures.insertFile(file, sel.a);
+    return;
+  }
   if (!text && !clip) return;
   snapshot();
   const prev = Object.keys(sheet().cells);
@@ -1067,6 +1141,7 @@ function shiftCells(axis, at, delta) {
     sheet().cols = widths;
   }
   const sh = sheet();
+  shiftPictures(sh, axis, at, delta);
   if (sh.cf) sh.cf = sh.cf.map((r) => ({ ...r, ref: shiftRange(r.ref, axis, at, delta) })).filter((r) => r.ref);
   if (sh.filter) {
     const ref = shiftRange(sh.filter.ref, axis, at, delta);
@@ -1083,6 +1158,23 @@ function shiftCells(axis, at, delta) {
       }
       sh.filter.ref = ref;
     }
+  }
+}
+
+// Pictures move with their cells; row heights move with their rows.
+function shiftPictures(sh, axis, at, delta) {
+  const key = axis === 'row' ? 'row' : 'col';
+  if (sh.images) {
+    sh.images = sh.images.map((p) => (p[key] >= at + (delta < 0 ? 1 : 0) ? { ...p, [key]: Math.max(0, p[key] + delta) } : p));
+  }
+  if (axis === 'row' && sh.heights) {
+    const next = {};
+    for (const [n, px] of Object.entries(sh.heights)) {
+      const r = Number(n) - 1;
+      if (delta < 0 && r === at) continue;
+      next[(r >= at + (delta < 0 ? 1 : 0) ? r + delta : r) + 1] = px;
+    }
+    sh.heights = next;
   }
 }
 
@@ -1929,6 +2021,7 @@ const insertTab = {
       { type: 'big', icon: 'newFile', label: 'New Sheet', run: () => tabsBar.querySelector('.sheet-add').click() },
       { type: 'big', icon: 'trash', label: 'Delete Sheet', run: () => deleteSheet() },
     ] },
+    { label: 'Illustrations', items: [{ type: 'big', icon: 'image', label: 'Picture', title: 'Insert a picture from your computer (or paste one with Ctrl+V)', run: () => pictures.pickFile(sel.a) }] },
     { label: 'Tables', items: [{ type: 'big', icon: 'table', label: 'Table with Claude', run: () => shell.claude.runQuick(QUICK.table) }] },
   ],
 };
@@ -2012,9 +2105,10 @@ const shell = await createShell({
   claudeTab,
   undo,
   redo,
-  getSaveData: () => {
+  getSaveData: async () => {
     if (editing) commitEdit();
     const out = JSON.parse(JSON.stringify(book));
+    out.media = await pictures.mediaForSave(out.sheets);
     const saved = (v) => (v == null ? '' : typeof v === 'object' ? format(v) : v);
     for (const s of out.sheets) {
       const vals = values[s.name];
@@ -2320,6 +2414,8 @@ shell.statusRight.append(zoomBox);
 
 if (shell.info.file?.data?.sheets) {
   book = { ...shell.info.file.data, active: 0 };
+  pictures.load(book.media);
+  delete book.media;
   for (const s of book.sheets) {
     s.cells ||= {};
     s.cols ||= {};

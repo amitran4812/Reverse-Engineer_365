@@ -57,3 +57,14 @@
 .flt-actions { display: flex; gap: 6px; justify-content: flex-end; padding: 8px; border-top: 1px solid var(--line-soft); }
 .cf-list { display: flex; flex-direction: column; gap: 6px; min-width: 380px; }
 .cf-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
+
+/* pictures and charts over the grid */
+.pic-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 1; }
+.sheet-pic { position: absolute; box-sizing: border-box; cursor: move; outline: 1px solid transparent; }
+.sheet-pic img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.sheet-pic.chart img { background: #fff; }
+.sheet-pic.missing { display: flex; align-items: center; justify-content: center; background: #f3f4f6; border: 1px dashed #b0b7c3; color: #555b65; font-size: 12px; }
+.sheet-pic.on { outline: 2px solid var(--accent); }
+.pic-handle { position: absolute; right: -5px; bottom: -5px; width: 9px; height: 9px; background: #fff; border: 1.5px solid var(--accent); border-radius: 2px; cursor: nwse-resize; display: none; }
+.sheet-pic.on .pic-handle { display: block; }
+.row-resize { position: absolute; left: 0; right: 0; bottom: -3px; height: 6px; cursor: row-resize; z-index: 5; }

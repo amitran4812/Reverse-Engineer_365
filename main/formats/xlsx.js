@@ -12,6 +12,8 @@
 const ExcelJS = require('exceljs');
 const { colIndex, colName, parseCsv, parseRef, toCsv } = require('../../common/cellref');
 const { hex } = require('./docx');
+const { readDrawings, mergeDrawings } = require('./xlsx-drawings');
+const { imageSize } = require('./imageSize');
 const { unwrapFormula, wrapFormula, computedFormula, usesGoogleOnly } = require('../../common/gsheets');
 
 const NUMFMT = {
@@ -42,14 +44,30 @@ function scalar(v) {
   return s;
 }
 
+// Pictures ExcelJS can store; the renderer turns charts and other kinds into PNG before saving.
+const PICTURE = /^data:image\/(png|jpeg|gif);base64,/;
+
 async function exportXlsx(model) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Work';
+  const pictureIds = new Map();
+  const picture = (key) => {
+    const src = model.media?.[key];
+    const m = src && PICTURE.exec(src);
+    if (!m) return null;
+    if (!pictureIds.has(key)) pictureIds.set(key, wb.addImage({ base64: src.slice(m[0].length), extension: m[1] }));
+    return pictureIds.get(key);
+  };
   for (const sheet of model.sheets) {
     const ws = wb.addWorksheet(sheet.name || 'Sheet');
     for (const [col, width] of Object.entries(sheet.cols || {})) {
       ws.getColumn(colIndex(col) + 1).width = Math.max(4, Math.round(width / 7));
     }
+    if (sheet.rowH) ws.properties.defaultRowHeight = Math.round(sheet.rowH * 0.75 * 4) / 4;
+    for (const [r, px] of Object.entries(sheet.heights || {})) {
+      if (Number(r) >= 1) ws.getRow(Number(r)).height = Math.round(px * 0.75 * 4) / 4;
+    }
+    writePictures(ws, sheet, picture, model.media);
     const anchors = new Set(sheet.spillAnchors || []);
     for (const [ref, value] of Object.entries(sheet.spilled || {})) {
       if (!parseRef(ref) || sheet.cells?.[ref]?.v) continue;
@@ -95,6 +113,40 @@ async function exportXlsx(model) {
   }
   if (!model.sheets.length) wb.addWorksheet('Sheet1');
   return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+const ROW_PX = 22;
+const COL_PX = 88;
+
+// Floating pictures keep their cell and offset; pictures in cells fill their cell.
+function writePictures(ws, sheet, picture, media) {
+  const colW = (c) => sheet.cols?.[colName(c)] || COL_PX;
+  const rowH = (r) => sheet.heights?.[r + 1] || sheet.rowH || ROW_PX;
+  // A cell and an offset inside it, in the file's own units (EMU), so positions are exact.
+  const at = (col, row, dx = 0, dy = 0) => ({
+    nativeCol: col,
+    nativeColOff: Math.round(Math.min(colW(col) - 1, Math.max(0, dx)) * 9525),
+    nativeRow: row,
+    nativeRowOff: Math.round(Math.min(rowH(row) - 1, Math.max(0, dy)) * 9525),
+  });
+  for (const im of sheet.images || []) {
+    const id = picture(im.media);
+    if (id == null) continue;
+    ws.addImage(id, { tl: at(im.col, im.row, im.dx, im.dy), ext: { width: Math.max(1, Math.round(im.w)), height: Math.max(1, Math.round(im.h)) }, editAs: 'oneCell' });
+  }
+  for (const [ref, cell] of Object.entries(sheet.cells || {})) {
+    const p = cell.img && parseRef(ref);
+    const id = p && picture(cell.img);
+    if (id == null || !p) continue;
+    const cw = colW(p.col);
+    const ch = rowH(p.row);
+    const src = media?.[cell.img] || '';
+    const size = imageSize(Buffer.from(src.slice(src.indexOf(',') + 1), 'base64')) || { width: cw, height: ch };
+    const k = Math.min((cw - 4) / size.width, (ch - 4) / size.height);
+    const w = Math.max(1, size.width * k);
+    const h = Math.max(1, size.height * k);
+    ws.addImage(id, { tl: at(p.col, p.row, (cw - w) / 2, (ch - h) / 2), ext: { width: Math.round(w), height: Math.round(h) }, editAs: 'oneCell' });
+  }
 }
 
 // Conditional formatting rules (see src/sheets/grid-rules.js) as the rules .xlsx files carry.
@@ -271,7 +323,7 @@ async function importOoxml(buffer) {
     return await importXlsx(buffer);
   } catch (err) {
     try {
-      return require('./imports').importSheetJs(buffer);
+      return await withDrawings(buffer, require('./imports').importSheetJs(buffer));
     } catch (sheetJsErr) {
       throw readError(/password/i.test(sheetJsErr?.message) ? sheetJsErr : err);
     }
@@ -286,7 +338,21 @@ function readError(err) {
   return new Error(`Work couldn’t read this workbook. It may be damaged or saved in a format Work doesn’t know yet (${msg}).`);
 }
 
+// Pictures, charts and row heights come from the package itself; a damaged
+// drawing never stops the cells from opening.
+async function withDrawings(buffer, model) {
+  try {
+    return mergeDrawings(model, await readDrawings(buffer, model));
+  } catch {
+    return model;
+  }
+}
+
 async function importXlsx(buffer) {
+  return withDrawings(buffer, await importCells(buffer));
+}
+
+async function importCells(buffer) {
   const wb = await loadWorkbook(buffer);
   const sheets = [];
   wb.eachSheet((ws) => {

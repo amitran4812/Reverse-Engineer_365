@@ -2,6 +2,24 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## Next: pictures and charts in Plot
+
+### Plot shows the pictures and charts in your workbooks
+
+- **Pictures and charts in .xlsx files now show in Plot.** Before, Plot opened only the cells, so photos, logos and charts added in Excel, Google Sheets, WPS or LibreOffice were missing. Now they sit over the cells where they were placed, at their own size. Charts (column, bar, line, area, scatter, pie and doughnut) are drawn from the workbook's data, including files saved without a chart preview.
+- **Pictures placed in a cell** (Excel's *Place in Cell* and WPS cell pictures) show inside their cell.
+- **Row heights come across**, so tall rows made for pictures keep their height. Drag the bottom edge of a row number to change a row's height.
+- **Move, resize and delete pictures:** click one to select it, drag to move it, drag the corner to resize it (Shift for free resizing), and press Delete to remove it. Right-click for Bring to Front and Send to Back. Pictures move with their cells when you insert or delete rows and columns.
+- **Insert › Picture** adds a picture from your computer, and pasting an image with Ctrl+V puts it at the selected cell.
+- **Saving keeps them.** Pictures save back into the .xlsx where they were. Charts save as pictures of the chart, so they look the same in every app.
+- A workbook that is large only because of its pictures now opens in the sheet instead of the Analysis workspace.
+
+### Saving PowerPoint and Word files keeps more
+
+- **Present: tables in a saved .pptx keep their text size, colours, bold, column widths and row heights.** Before, every table came out in small black text with equal columns.
+- **Present: sub-points stay indented** when a deck is saved as .pptx, instead of all becoming top-level bullets.
+- **Write: table cell colours stay.** Shaded cells in a .docx (header rows, highlighted cells) keep their fill when opened and saved.
+
 ## 0.2.39: Projects, more fonts, PowerPoint saving and files from other apps
 
 ### Files from other apps open with their pictures and formatting

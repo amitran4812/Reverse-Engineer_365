@@ -434,3 +434,70 @@ test('more file types open in the right app, and Apple files say how to export t
   fs.writeFileSync(path.join(dir, 'deck.key'), 'PK');
   await assert.rejects(openFile(path.join(dir, 'deck.key')), /Export To > PowerPoint/);
 });
+
+test('xlsx pictures and charts open over their cells and save back as pictures', async () => {
+  const model = await importOoxml(fs.readFileSync(fixture('pictures-charts.xlsx')));
+  const [sales, trend] = model.sheets;
+  assert.equal(sales.images.length, 3);
+  const chart = sales.images.find((p) => p.chart);
+  assert.deepEqual([chart.row, chart.col], [11, 4]);
+  const svg = Buffer.from(model.media[chart.media].split(',')[1], 'base64').toString();
+  assert.match(svg, /Sales by month/);
+  assert.match(svg, /<rect[^>]+fill="#/); // bars drawn from the cell values
+  const photo = sales.images.find((p) => !p.chart && p.w === 200);
+  assert.deepEqual([photo.row, photo.col, photo.h], [1, 4, 120]);
+  assert.match(model.media[photo.media], /^data:image\/png;base64,/);
+  assert.equal(sales.heights[8], 80);
+  assert.equal(trend.images.filter((p) => p.chart).length, 2);
+
+  // Charts arrive as PNG from the renderer when saving; pictures keep their place.
+  model.media[chart.media] = PNG_1x1;
+  for (const p of trend.images) model.media[p.media] = PNG_1x1;
+  photo.col = 7;
+  photo.dx = 10;
+  const again = await importXlsx(await exportXlsx(model));
+  assert.equal(again.sheets[0].images.length, 3);
+  const moved = again.sheets[0].images.find((p) => p.w === 200);
+  assert.deepEqual([moved.row, moved.col, moved.dx, moved.h], [1, 7, 10, 120]);
+  assert.equal(again.sheets[0].heights[8], 80);
+  assert.equal(again.sheets[1].images.length, 2);
+});
+
+test('xlsx pictures placed in cells (rich values and WPS DISPIMG) show in their cells', async () => {
+  const model = await importOoxml(fs.readFileSync(fixture('cell-pictures.xlsx')));
+  const cells = model.sheets[0].cells;
+  assert.equal(cells.B2.v, '');
+  assert.match(model.media[cells.B2.img], /^data:image\/png/);
+  assert.equal(cells.C2.v, '');
+  assert.match(model.media[cells.C2.img], /^data:image\/jpeg/);
+  // Saved as pictures that sit inside the cell, so other apps show them too.
+  const again = await importXlsx(await exportXlsx(model));
+  const pics = again.sheets[0].images;
+  assert.equal(pics.length, 2);
+  assert.deepEqual(pics.map((p) => [p.row, p.col]), [[1, 1], [1, 2]]);
+});
+
+test('pptx tables keep cell text formatting, column widths and row heights; sub-points keep their level', async () => {
+  const cell = (text, color, more = {}) => ({ html: `<div style="font-size:24px"><span style="font-family:'Calibri', sans-serif;font-size:24px;color:${color};font-weight:${more.bold ? 700 : 400}">${text}</span></div>`, h: 48, fill: more.fill, pad: [4, 8, 4, 8] });
+  const buf = await exportPptx({ slides: [{ elements: [
+    { type: 'table', x: 40, y: 40, w: 600, h: 96, cols: [50, 25, 25], rows: [['Region', 'Q1', 'Q2'], ['North', '1', '2']], cells: [
+      [cell('Region', '#FFFFFF', { bold: true, fill: '#4F81BD' }), cell('Q1', '#FFFFFF', { bold: true, fill: '#4F81BD' }), cell('Q2', '#FFFFFF', { bold: true, fill: '#4F81BD' })],
+      [cell('North', '#000000'), cell('1', '#000000'), cell('2', '#000000')],
+    ] },
+    { type: 'text', x: 40, y: 200, w: 600, h: 200, style: { fontSize: 32 }, paragraphs: [{ bullet: '•', runs: [{ text: 'Top' }] }, { bullet: '–', level: 1, runs: [{ text: 'Sub' }] }] },
+  ] }] });
+  const xml = await (await JSZip.loadAsync(buf)).file('ppt/slides/slide1.xml').async('string');
+  assert.match(xml, /sz="1800"[^>]*b="1"[\s\S]*?FFFFFF[\s\S]*?Region/);
+  assert.match(xml, /4F81BD/);
+  assert.match(xml, /<a:gridCol w="2857500"\/>/); // half of 6.25in
+  assert.match(xml, /<a:pPr[^>]*lvl="1"[\s\S]*?Sub/);
+});
+
+test('docx table cell colours survive opening and saving', async () => {
+  const { html } = await importDocx(fs.readFileSync(fixture('writer.docx')));
+  assert.match(html, /<td data-background="#4f81bd" style="background-color:#4f81bd"><p style="text-align:center">Region/);
+  assert.doesNotMatch(html, //);
+  const buf = await exportDocx({ json: { type: 'doc', content: [{ type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: { background: '#4f81bd' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Region' }] }] }] }] }] } });
+  const xml = await (await JSZip.loadAsync(buf)).file('word/document.xml').async('string');
+  assert.match(xml, /w:fill="4F81BD"/i);
+});

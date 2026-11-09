@@ -1124,8 +1124,8 @@ function htmlToParagraphs(html, base) {
   div.innerHTML = html || '';
   const paras = [];
   let cur = null;
-  const open = (align, bu) => {
-    cur = { align: align || base.align, bullet: bu || (base.bullets ? true : undefined), runs: [] };
+  const open = (align, bu, level) => {
+    cur = { align: align || base.align, bullet: bu || (base.bullets ? true : undefined), runs: [], ...(level ? { level } : {}) };
     paras.push(cur);
   };
   const walk = (node, fmt) => {
@@ -1151,7 +1151,9 @@ function htmlToParagraphs(html, base) {
         if (child.style.fontFamily) next.font = child.style.fontFamily.replace(/["']/g, '').split(',')[0].trim();
         const block = ['div', 'p', 'li', 'h1', 'h2', 'h3'].includes(tag);
         const bu = child.dataset?.bu;
-        if (block) open(child.style.textAlign || undefined, bu ? (/^\(?[0-9ivxlcdmIVXLCDMa-zA-Z]+[.)]/.test(bu) ? 'number' : bu) : undefined);
+        // Sub-points: the left indent beyond the bullet's own hang, in half-inch steps.
+        const level = block ? Math.min(8, Math.max(0, Math.round(((parseFloat(child.style.paddingLeft) || 0) - Math.abs(parseFloat(child.style.textIndent) || 0)) / 36))) : 0;
+        if (block) open(child.style.textAlign || undefined, bu ? (/^\(?[0-9ivxlcdmIVXLCDMa-zA-Z]+[.)]/.test(bu) ? 'number' : bu) : undefined, level);
         walk(child, next);
         if (block) cur = null;
       }
