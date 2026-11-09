@@ -410,6 +410,8 @@ ipcMain.handle('accounts:remove', safe((e, id) => profiles.remove(id)));
 ipcMain.handle('accounts:open', safe((e, id) => profiles.open(id)));
 ipcMain.handle('cloud:sheet', safe((e, local, op, args) => cloud.sheet(local, op, args)));
 ipcMain.handle('web:data', safe(async (e, kind, params) => ({ value: await require('./webdata').data(kind, params) })));
+// Free photos from the web for Send to Present.
+ipcMain.handle('web:photo', safe((e, query, skip) => require('./images').find(query, skip)));
 // References for papers (the Cite dialog).
 ipcMain.handle('cite:lookup', safe((e, req) => require('./cite').lookup(req)));
 ipcMain.handle('cite:search', safe((e, text) => require('./cite').search(text)));

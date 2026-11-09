@@ -1,18 +1,22 @@
 // Send to Present: turns the document (or the selected part) into a new
 // presentation. With an AI connected it plans the slides from the text,
 // pictures and equations, as many as the document needs unless the author
-// asks for a number; without one, each heading becomes a slide. Write's
-// LaTeX mode uses the same dialog through presentDialog.
+// asks for a number; without one, each heading becomes a slide. Tables of
+// numbers (and figures the AI finds in the text) also become charts drawn in
+// the template's colours, and some slides get a free photo from the web.
+// Write's LaTeX mode uses the same dialog through presentDialog.
 
 import './to-present.css';
 import { dialog, escapeHtml, h, toast } from '../shared/shell.js';
 import { allThemes, themePicker } from '../shared/themes.js';
-import { DECK_SCHEMA, DECK_SYSTEM, buildDeck, cleanDeck, deckPrompt, isEmpty, plainDeck, readDocument } from './deck.js';
+import { DECK_SCHEMA, DECK_SYSTEM, PHOTO_BOX, buildDeck, capPhotos, cleanDeck, deckPrompt, isEmpty, plainDeck, readDocument } from './deck.js';
+import { slideChartPng } from './notes-chart.js';
 
 const MAX_SIDE = 1600; // pictures larger than this are scaled down for the deck
 const AI_SIDE = 1024; // and to this for the AI to look at
 const MAX_SLIDES = 300;
-const last = { theme: 'slate', ai: true, notes: true, extra: '', count: '' };
+const last = { theme: 'slate', ai: true, notes: true, extra: '', count: '', charts: true, photos: true };
+const PHOTO_JOBS = 3; // photos downloaded at once
 
 function loadImage(src) {
   return new Promise((resolve) => {
@@ -98,6 +102,67 @@ async function drawEquations(doc, slides, color) {
   }
 }
 
+// The box a slide's chart is drawn for, so it fills it exactly.
+const chartBox = (s) => (s.layout === 'chart_bullets' ? { w: 496, h: 370 } : { w: 840, h: s.subtitle ? 352 : 392 });
+
+async function drawCharts(slides, theme) {
+  for (const s of slides) {
+    if (!s.chart) continue;
+    const box = chartBox(s);
+    try {
+      Object.assign(s.chart, await slideChartPng(s.chart, box.w, box.h, theme));
+    } catch {}
+  }
+}
+
+// A picture cropped to fill a box (like a photo frame), at twice the box size.
+async function cover(src, box) {
+  const img = await loadImage(src);
+  if (!img?.naturalWidth) return null;
+  const k = Math.min(2, 1600 / box.w);
+  const c = document.createElement('canvas');
+  c.width = Math.round(box.w * k);
+  c.height = Math.round(box.h * k);
+  const s = Math.max(c.width / img.naturalWidth, c.height / img.naturalHeight);
+  const w = img.naturalWidth * s;
+  const hh = img.naturalHeight * s;
+  // Keep the upper part of tall pictures, where faces and skylines usually are.
+  c.getContext('2d').drawImage(img, (c.width - w) / 2, hh > c.height ? (c.height - hh) * 0.35 : (c.height - hh) / 2, w, hh);
+  return c.toDataURL('image/jpeg', 0.86);
+}
+
+// Finds a free photo for every slide that names one, a few at a time.
+// Slides whose photo can't be found are laid out without one.
+async function addPhotos(slides) {
+  const want = slides.filter((s) => s.photo && PHOTO_BOX[s.layout]);
+  if (!want.length || !window.office.web?.photo) return;
+  const bar = progress('Adding photos');
+  let stopped = false;
+  let offline = false;
+  let done = 0;
+  bar.onStop(() => { stopped = true; });
+  bar.say(`Finding photos… 0 of ${want.length}`);
+  const used = [];
+  const queue = want.slice();
+  const work = async () => {
+    while (queue.length && !stopped && !offline) {
+      const s = queue.shift();
+      const res = await window.office.web.photo(s.photo, used).catch(() => null);
+      if (res?.error === 'offline') offline = true;
+      if (res?.src && !used.includes(res.link)) {
+        used.push(res.link);
+        const src = await cover(res.src, PHOTO_BOX[s.layout]).catch(() => null);
+        if (src) s.photoImg = { src, credit: res.credit || '', link: res.link || '' };
+      }
+      done += 1;
+      bar.say(`Finding photos… ${done} of ${want.length}`);
+    }
+  };
+  await Promise.all(Array.from({ length: PHOTO_JOBS }, work));
+  bar.close();
+  if (offline && !want.some((s) => s.photoImg)) toast('Couldn’t reach the free photo library, so the slides have no photos. Check your internet connection.', 'error');
+}
+
 function progress(label) {
   const back = h('div', 'modal-back');
   const box = h('div', 'modal wp-progress', `<div class="modal-title">${escapeHtml(label)}</div><div class="wp-bar"><i></i></div><p class="muted" data-count>Reading your document…</p>`);
@@ -112,6 +177,7 @@ function progress(label) {
   return {
     onStop: (fn) => { stop.onclick = fn; },
     update: (n, slides) => { count.textContent = slides > 1 ? `Writing slide ${slides.toLocaleString()}…` : `Writing the slides… ${n.toLocaleString()} characters`; },
+    say: (t) => { count.textContent = t; },
     close: () => back.remove(),
   };
 }
@@ -243,6 +309,21 @@ export async function presentDialog({ name, whole, part, showAi, prepare = prepa
   notesRow.append(notesBox, h('span', '', 'Write speaker notes'));
   aiOpts.append(countRow, extra, notesRow);
   body.append(aiOpts);
+  body.append(h('b', 'wp-label', 'Make it visual'));
+  const visual = h('div', 'wp-visual');
+  const option = (on, label) => {
+    const box = h('input');
+    box.type = 'checkbox';
+    box.checked = on;
+    const l = h('label', 'wp-check');
+    l.append(box, h('span', '', label));
+    visual.append(l);
+    return box;
+  };
+  const chartsBox = option(last.charts, 'Charts for numbers: tables of figures, and with AI, numbers in the text');
+  const photosBox = option(last.photos, 'Free photos from the web on the title and some slides (openly licensed, credited on the slide)');
+  body.append(visual);
+
   const sync = () => { aiOpts.hidden = !aiRadio.checked; };
   how.addEventListener('change', sync);
   sync();
@@ -251,7 +332,8 @@ export async function presentDialog({ name, whole, part, showAi, prepare = prepa
   if (!ok) return;
   const useAi = aiRadio.checked;
   const slideCount = Math.min(MAX_SLIDES, Math.max(0, Math.round(Number(countInput.value) || 0)));
-  Object.assign(last, { theme: themes.read(), ai: useAi, notes: notesBox.checked, extra: extra.value, count: slideCount ? String(slideCount) : '' });
+  Object.assign(last, { theme: themes.read(), ai: useAi, notes: notesBox.checked, extra: extra.value, count: slideCount ? String(slideCount) : '', charts: chartsBox.checked, photos: photosBox.checked });
+  const look = { charts: chartsBox.checked, photos: photosBox.checked };
   const doc = structuredClone(onlySel?.checked ? part : whole);
   const title = titleInput.value.trim() || base;
   await prepare(doc);
@@ -259,16 +341,23 @@ export async function presentDialog({ name, whole, part, showAi, prepare = prepa
   let spec = null;
   if (useAi) {
     try {
-      const answer = await askAi(doc, { name: title, extra: extra.value, notes: notesBox.checked, count: slideCount }, settings.providerLabel);
+      const answer = await askAi(doc, { name: title, extra: extra.value, notes: notesBox.checked, count: slideCount, ...look }, settings.providerLabel);
       if (!answer) return;
-      spec = cleanDeck(answer, doc, { notes: notesBox.checked, count: slideCount });
+      spec = cleanDeck(answer, doc, { notes: notesBox.checked, count: slideCount, ...look });
     } catch (err) {
       const again = await dialog({ title: 'Send to Present', body: `<p>${escapeHtml(err.message || String(err))}</p><p>Make simple slides without AI instead?</p>`, ok: 'Make simple slides' });
       if (!again) return;
     }
   }
-  if (!spec) spec = plainDeck(doc, title);
-  await drawEquations(doc, spec.slides, allThemes()[last.theme]?.text || '#1f2328');
+  if (!spec) {
+    spec = plainDeck(doc, title, look);
+    // Without AI, the title and section slides look for a photo of their own title.
+    if (look.photos) capPhotos(spec.slides.map((s) => Object.assign(s, { photo: s.layout === 'title' || s.layout === 'section' ? s.title : '' })));
+  }
+  const theme = allThemes()[last.theme] || allThemes().slate;
+  await drawEquations(doc, spec.slides, theme?.text || '#1f2328');
+  await drawCharts(spec.slides, theme);
+  if (look.photos) await addPhotos(spec.slides);
   const slides = buildDeck(spec, doc);
   // An untitled document's deck takes the title the slides were given.
   const deckName = title === base && /^(Document|Untitled)\d*$/.test(base) ? spec.title || base : title;

@@ -51,7 +51,7 @@ async function toFileInfo(spec) {
       id: String(sl.id || `s${i}`),
       layout: sl.layout || 'blank',
       notes: String(sl.notes || ''),
-      elements: (sl.elements || []).filter((el) => ['text', 'image', 'table'].includes(el?.type) && el.id),
+      elements: (sl.elements || []).filter((el) => ['text', 'shape', 'image', 'table'].includes(el?.type) && el.id),
     }));
     const custom = spec.themeData?.custom && spec.themeData.id === spec.theme ? spec.themeData : null;
     return { app: 'slides', path: null, name: title, generated: true, data: { slides, theme: custom ? custom.id : THEMES.includes(spec.theme) ? spec.theme : 'paper', ...(custom ? { themeData: custom } : {}) } };

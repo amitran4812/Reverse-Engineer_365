@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SLIDE_H, SLIDE_W, buildDeck, cleanDeck, fitImage, isEmpty, outlineText, plainDeck, readDocument } from '../src/docs/deck.js';
+import { PHOTO_BOX, SLIDE_H, SLIDE_W, buildDeck, capPhotos, cellNumber, cleanChart, cleanDeck, deckPrompt, fitImage, isEmpty, outlineText, plainDeck, readDocument, tableChart } from '../src/docs/deck.js';
 
 const t = (text) => ({ type: 'text', text });
 const p = (text) => ({ type: 'paragraph', content: [t(text)] });
@@ -132,4 +132,69 @@ test('equation pictures in Write are read as equations with their TeX', () => {
   const img = slides.at(-1).elements.find((e) => e.type === 'image');
   assert.equal(img.w, 200);
   assert.ok(img.x + img.w <= SLIDE_W && img.y + img.h <= SLIDE_H);
+});
+
+test('numbers in table cells are read with their currency, commas, percent and brackets', () => {
+  assert.deepEqual(['$12,500', '42%', '(3.5)', '−2', '1e3', '€ 7', '4 kW', '', 'n/a'].map(cellNumber), [12500, 42, -3.5, -2, 1000, 7, NaN, NaN, NaN]);
+});
+
+test('a table of numbers becomes a chart: bars for categories, a line over years, no totals', () => {
+  const bars = tableChart([['Region', 'Sales', 'Rank'], ['North', '$1,200', '2'], ['South', '$900', '3'], ['West', '$1,500', '1'], ['Total', '$3,600', '']]);
+  assert.equal(bars.type, 'bar');
+  assert.deepEqual(bars.labels, ['North', 'South', 'West']);
+  assert.deepEqual(bars.series, [{ name: 'Sales', values: [1200, 900, 1500] }]);
+  const line = tableChart([['Year', 'Panels', 'Share'], ['2021', '10', '5%'], ['2022', '14', '7%'], ['2023', '19', '9%']]);
+  assert.equal(line.type, 'line');
+  assert.deepEqual(line.series.map((s) => s.name), ['Panels', 'Share']);
+  assert.equal(tableChart([['Name', 'Role'], ['Ann', 'Lead'], ['Bo', 'Dev'], ['Cy', 'QA']]), null);
+  assert.equal(tableChart([['Size', 'Price'], ['4 kW', '$9,000'], ['6 kW', '$12,500']]), null, 'two rows are left as a table');
+});
+
+test('without AI a table of numbers gets a chart slide after it', () => {
+  const doc = readDocument({ type: 'doc', content: [hd(1, 'Report'), hd(2, 'Sales'), table(['Year', 'Sales'], ['2021', '10'], ['2022', '12'], ['2023', '15'])] });
+  assert.deepEqual(plainDeck(doc, 'x').slides.map((s) => s.layout), ['title', 'table', 'chart']);
+  assert.deepEqual(plainDeck(doc, 'x', { charts: false }).slides.map((s) => s.layout), ['title', 'table']);
+  const spec = plainDeck(doc, 'x');
+  spec.slides[2].chart = { ...spec.slides[2].chart, src: 'data:image/png;base64,AA', w: 840, h: 392 };
+  const chart = buildDeck(spec, doc)[2].elements.find((e) => e.type === 'image');
+  assert.deepEqual([chart.x, chart.y, chart.w, chart.h], [60, 124, 840, 392]);
+});
+
+test('AI charts are checked, and photos are kept to the title and about one slide in three', () => {
+  assert.equal(cleanChart({ type: 'none', labels: ['a', 'b'], series: [] }), null);
+  assert.equal(cleanChart({ type: 'bar', title: '', labels: ['a'], series: [{ name: 'x', values: [1] }], x_label: '', y_label: '' }), null);
+  assert.deepEqual(cleanChart({ type: 'line', title: 'T', labels: ['a', 'b', 'c'], series: [{ name: 'x', values: [1, 2] }, { name: 'y', values: [] }], x_label: '', y_label: 'kW' }).series, [{ name: 'x', values: [1, 2, NaN] }]);
+  const doc = readDocument({ type: 'doc', content: [p('Sales grew from 10 to 15.')] });
+  const none = { type: 'none', title: '', labels: [], series: [], x_label: '', y_label: '' };
+  const slide = (layout, title, more = {}) => ({ layout, title, subtitle: '', bullets: ['b'], right_bullets: [], image: 0, table: 0, equation: 0, chart: none, photo: `${title} photo`, notes: '', ...more });
+  const answer = { title: 'Deck', slides: [
+    slide('title', 'Deck'),
+    slide('chart_bullets', 'Growth', { chart: { type: 'bar', title: '', labels: ['2021', '2022'], series: [{ name: 'Sales', values: [10, 15] }], x_label: '', y_label: '' } }),
+    slide('chart', 'Broken', { bullets: [], chart: { type: 'pie', title: '', labels: [], series: [], x_label: '', y_label: '' } }),
+    ...['A', 'B', 'C', 'D', 'E', 'F'].map((t) => slide('bullets', t)),
+  ] };
+  const spec = cleanDeck(answer, doc, { photos: true });
+  assert.deepEqual(spec.slides.map((s) => s.layout), ['title', 'chart_bullets', 'section', 'bullets', 'bullets', 'bullets', 'bullets', 'bullets', 'bullets']);
+  assert.equal(spec.slides[1].chart.series[0].values[1], 15);
+  assert.equal(spec.slides[1].photo, '', 'no photo beside a chart');
+  assert.deepEqual(spec.slides.map((s) => Boolean(s.photo)), [true, false, true, false, false, true, false, false, true]);
+  assert.ok(cleanDeck(answer, doc).slides.every((s) => !s.photo), 'no photos unless asked');
+  assert.equal(cleanDeck(answer, doc, { charts: false }).slides[1].layout, 'bullets');
+  assert.match(deckPrompt(doc, { name: 'x', photos: true }), /Set photo to 2-5 plain English words/);
+  assert.match(deckPrompt(doc, { name: 'x', charts: false }), /Do not use the "chart"/);
+  assert.equal(capPhotos([{ photo: 'a' }, { photo: 'b' }, { photo: 'c' }]).map((s) => s.photo).join(), 'a,b,');
+});
+
+test('photo slides put the photo on its side with a credit, inside the slide', () => {
+  const doc = readDocument({ type: 'doc', content: [p('x')] });
+  const ph = { src: 'data:image/jpeg;base64,AA', credit: '“Roof” by Sam, CC BY 2.0', link: 'https://example.org/roof' };
+  const slides = buildDeck({ title: 'T', slides: [
+    { layout: 'title', title: 'Solar at home', subtitle: 'A guide', bullets: [], right_bullets: [], image: 0, table: 0, equation: 0, chart: null, photo: 'roof', photoImg: ph, notes: '' },
+    { layout: 'bullets', title: 'Why', subtitle: '', bullets: ['Cheaper', 'Cleaner'], right_bullets: [], image: 0, table: 0, equation: 0, chart: null, photo: 'roof', photoImg: ph, notes: 'Say why.' },
+  ] }, doc);
+  const [first, second] = slides;
+  assert.deepEqual(first.elements.find((e) => e.type === 'image'), { ...first.elements.find((e) => e.type === 'image'), ...PHOTO_BOX.title });
+  assert.ok(first.elements.some((e) => e.type === 'shape' && /Sam/.test(e.html)));
+  assert.match(second.notes, /Say why\.\n\nPhoto: “Roof” by Sam, CC BY 2.0 \(https:\/\/example.org\/roof\)/);
+  for (const s of slides) for (const el of s.elements) assert.ok(el.x >= 0 && el.y >= 0 && el.x + el.w <= SLIDE_W && el.y + el.h <= SLIDE_H, `${el.type} fits the slide`);
 });

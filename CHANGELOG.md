@@ -2,6 +2,12 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## Next: Send to Present with charts and photos
+
+- **Send to Present makes visual decks, not just text.** Tables of numbers in Write and LaTeX documents now also become charts (bars, or lines for years and months), drawn in the template's own colours. With AI, Claude also charts figures it finds in the text and can put a chart beside the bullets.
+- **Free photos from the web.** The title slide and some other slides get a photo that fits their topic, from Openverse (or Wikimedia Commons), openly licensed for reuse. Each photo is credited in the corner of the slide and in the speaker notes. Turn charts or photos off under "Make it visual" in the Send to Present dialog.
+- **Plot: one slide for each plot.** Send to Present from Analyze can now put each plot on a slide of its own, titled with the plot's name, instead of all plots on one slide.
+
 ## 0.2.39: Projects, more fonts, PowerPoint saving and files from other apps
 
 ### Files from other apps open with their pictures and formatting
