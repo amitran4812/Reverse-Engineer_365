@@ -64,6 +64,8 @@
 
   /* ---- Cite ---- */
   .cite-status.ok { color: #7fd09a; }
+  .tex-cite-badge.ok { color: #7fd09a; border-color: #2f5a3b; }
+  .tex-cite-badge.warn, .tex-hover-cite em { color: #e3b341; border-color: #5c4a1a; }
   .cite-status.warn { color: #e3b341; }
   .cite-status.error { color: #ffb4ab; }
 

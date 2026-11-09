@@ -537,6 +537,8 @@ ipcMain.handle('projects:add-paths', safe((e, id, paths, opts) => projects.addFi
 ipcMain.handle('projects:remove-item', safe((e, id, itemId) => projects.removeItem(id, itemId)));
 ipcMain.handle('projects:pdf-bytes', safe((e, id, file) => projects.pdfBytes(id, file)));
 ipcMain.handle('projects:save-text', safe((e, id, key, body) => projects.saveText(id, key, body)));
+ipcMain.handle('projects:papers', safe((e, id) => projects.papers(id)));
+ipcMain.handle('projects:save-ref', safe((e, id, file, item, opts) => projects.saveRef(id, file, item, opts || {})));
 ipcMain.handle('projects:for-path', (e, file) => projects.forPath(file).catch(() => []));
 ipcMain.handle('projects:reveal', safe(async (e, id, file) => {
   if (file) shell.showItemInFolder(file);

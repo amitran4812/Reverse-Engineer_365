@@ -151,6 +151,9 @@ contextBridge.exposeInMainWorld('office', {
     pdfBytes: (id, file) => ipcRenderer.invoke('projects:pdf-bytes', id, file),
     saveText: (id, key, text) => ipcRenderer.invoke('projects:save-text', id, key, text),
     forPath: (file) => ipcRenderer.invoke('projects:for-path', file),
+    // The project's PDFs with the reference found for each, for citing.
+    papers: (id) => ipcRenderer.invoke('projects:papers', id),
+    saveRef: (id, file, item, opts) => ipcRenderer.invoke('projects:save-ref', id, file, item, opts),
     reveal: (id, file) => ipcRenderer.invoke('projects:reveal', id, file),
     openFile: (file) => ipcRenderer.invoke('projects:open-file', file),
   },

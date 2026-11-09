@@ -116,12 +116,52 @@ function bibEntries(text) {
     if (['string', 'comment', 'preamble'].includes(type)) continue;
     const next = text.slice(re.lastIndex).search(/\n\s*@[a-zA-Z]+\s*[{(]/);
     const body = text.slice(re.lastIndex, next < 0 ? text.length : re.lastIndex + next);
-    out.push({ key: m[2], type, title: bibField(body, 'title'), author: bibField(body, 'author'), year: bibField(body, 'year') || bibField(body, 'date').slice(0, 4), line: lineAt(text, m.index) });
+    out.push({ key: m[2], type, title: bibField(body, 'title'), author: bibField(body, 'author'), year: bibField(body, 'year') || bibField(body, 'date').slice(0, 4), doi: bibField(body, 'doi').toLowerCase(), line: lineAt(text, m.index) });
   }
   return out;
 }
 
 const plainTitle = (s) => s.replace(/\\[a-zA-Z]+\s*/g, '').replace(/[{}$]/g, '').replace(/\s+/g, ' ').trim();
+
+// Citing a paper: the key it goes into the .bib under. An entry for the same
+// paper (same DOI, or same title and year) keeps its key; a different paper
+// whose key is taken gets a letter, like smith2020a. entries: bibEntries().
+const normTitle = (s) => plainTitle(String(s || '')).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function citeKeyFor(base, paper, entries) {
+  const doi = String(paper.doi || '').toLowerCase();
+  const title = normTitle(paper.title);
+  const same = entries.find((e) => (doi && e.doi === doi) || (title && normTitle(e.title) === title && (!paper.year || !e.year || String(e.year) === String(paper.year))));
+  if (same) return { key: same.key, known: true };
+  const taken = new Set(entries.map((e) => e.key));
+  if (!taken.has(base)) return { key: base, known: false };
+  for (let i = 0; i < 26 * 27; i++) {
+    const suffix = i < 26 ? String.fromCharCode(97 + i) : String.fromCharCode(96 + Math.floor(i / 26)) + String.fromCharCode(97 + (i % 26));
+    if (!taken.has(base + suffix)) return { key: base + suffix, known: false };
+  }
+  return { key: `${base}${Date.now()}`, known: false };
+}
+
+// The citation command the cursor is in: { from, to, keys } where from..to is
+// the text between its braces, or null.
+function citeAt(text, pos) {
+  const before = text.slice(Math.max(0, pos - 400), pos);
+  const m = /\\(?:[a-zA-Z]*cite[a-zA-Z]*|nocite)\*?(?:\s*\[[^\]]*\]){0,2}\s*\{([^{}]*)$/.exec(before);
+  if (!m) return null;
+  const from = pos - m[1].length;
+  const rest = /^[^{}]*/.exec(text.slice(pos, pos + 400))[0];
+  if (text[pos + rest.length] !== '}') return null;
+  const to = pos + rest.length;
+  return { from, to, keys: text.slice(from, to).split(',').map((k) => k.trim()).filter(Boolean) };
+}
+
+// How often each key is cited: Map(key -> count).
+function citedKeys(text) {
+  const out = new Map();
+  for (const m of stripComments(text).matchAll(/\\(?:[a-zA-Z]*cite[a-zA-Z]*|nocite)\*?(?:\s*\[[^\]]*\]){0,2}\s*\{([^{}]*)\}/g)) {
+    for (const k of m[1].split(',').map((x) => x.trim()).filter(Boolean)) out.set(k, (out.get(k) || 0) + 1);
+  }
+  return out;
+}
 
 // \label{...} definitions: [{ label, line, context }].
 function labels(text) {
@@ -478,6 +518,9 @@ module.exports = {
   stripComments,
   completionContext,
   bibEntries,
+  citeKeyFor,
+  citeAt,
+  citedKeys,
   labels,
   userCommands,
   userEnvironments,

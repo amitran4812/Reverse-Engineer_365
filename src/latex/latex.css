@@ -389,3 +389,40 @@ li[aria-selected] .cm-completionDetail { color: rgba(255,255,255,.85); }
 .cm-vis-title .t { font-size: 1.7em; line-height: 1.25; }
 .cm-vis-title .a, .cm-vis-title .d { font-size: 1.05em; margin-top: 6px; color: var(--text); }
 .bx-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* Cite picker: project papers, the .bib and My Library */
+.tex-cite { width: 720px; max-width: calc(100vw - 32px); max-height: calc(100vh - 48px); display: flex; flex-direction: column; }
+.tex-cite.busy { opacity: .7; pointer-events: none; }
+.tex-cite .modal-title { display: flex; align-items: center; gap: 8px; }
+.tex-cite-proj { margin-left: 4px; font-weight: 400; font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tex-cite-online { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; font-weight: 400; }
+.tex-cite .modal-actions .btn { white-space: nowrap; }
+.tex-cite-bar { display: flex; gap: 8px; margin-bottom: 8px; }
+.tex-cite-q { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; outline: 0; font-size: 14px; background: var(--surface); color: var(--text); }
+.tex-cite-q:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tex-cite-cmd { border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; font-family: Consolas, monospace; background: var(--surface); color: var(--text); }
+.tex-cite-rows { flex: 1; min-height: 120px; max-height: 56vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.tex-cite-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 6px 10px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--ribbon); border-bottom: 1px solid var(--line); }
+.tex-cite-head em { font-style: normal; font-weight: 400; margin-left: 2px; }
+.tex-cite-head .btn { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; font-size: 12px; font-weight: 400; }
+.tex-cite-busy { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
+.tex-cite-empty { padding: 10px 12px; font-size: 12.5px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.tex-cite-empty .btn { display: inline-flex; align-items: center; gap: 6px; }
+.tex-cite-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.tex-cite-row.active { background: var(--accent-soft); }
+.tex-cite-row.on { box-shadow: inset 3px 0 0 var(--accent); }
+.tex-cite-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tex-cite-info b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tex-cite-info span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tex-cite-info code { font-size: 11.5px; color: var(--hl-keyword, var(--accent)); }
+.tex-cite-acts { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.tex-cite-acts .icon-btn { padding: 3px 5px; display: inline-flex; }
+.tex-cite-badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.tex-cite-badge.ok { color: #1a7f37; border-color: color-mix(in srgb, #1a7f37 40%, transparent); }
+.tex-cite-badge.warn { color: #9a6700; border-color: color-mix(in srgb, #9a6700 40%, transparent); }
+.tex-cite-badge.wait { color: var(--accent); }
+.tex-cite-hint { font-size: 12px; }
+.tex-hover-cite { display: flex; flex-direction: column; gap: 3px; }
+.tex-hover-cite b { font-family: inherit; }
+.tex-hover-cite span { color: var(--muted); }
+.tex-hover-cite em { color: #9a6700; font-style: normal; font-size: 12px; }
+.tex-hover-cite .btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; font-size: 12px; margin-top: 3px; }

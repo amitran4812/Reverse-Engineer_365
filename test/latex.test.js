@@ -250,3 +250,16 @@ test('a project downloads as a .zip with its files, unsaved edits and PDF', asyn
   await assert.rejects(project.exportZip(empty, path.join(tmp, 'e.zip')), /no files/);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('citing: keys for new papers, the \\cite the cursor is in, cited keys', () => {
+  const entries = tex.bibEntries('@article{smith2020study, title = {A Study of Things}, year = 2020, doi = {10.1000/ABC}}\n@misc{lee2019, title={Other}}');
+  assert.equal(entries[0].doi, '10.1000/abc');
+  assert.deepEqual(tex.citeKeyFor('smith2020study', { doi: '10.1000/abc', title: 'Different' }, entries), { key: 'smith2020study', known: true });
+  assert.deepEqual(tex.citeKeyFor('x', { title: 'A study of things!', year: 2020 }, entries), { key: 'smith2020study', known: true });
+  assert.deepEqual(tex.citeKeyFor('smith2020study', { title: 'Another paper', year: 2020 }, entries), { key: 'smith2020studya', known: false });
+  assert.deepEqual(tex.citeKeyFor('new2024', { title: 'New' }, entries), { key: 'new2024', known: false });
+  const text = 'as in \\citep[p.~3]{a, b} and \\cite{c}';
+  assert.deepEqual(tex.citeAt(text, text.indexOf('b}') + 1), { from: text.indexOf('{a') + 1, to: text.indexOf('b}') + 1, keys: ['a', 'b'] });
+  assert.equal(tex.citeAt(text, 3), null);
+  assert.deepEqual([...tex.citedKeys(`${text} \\parencite{a}\n% \\cite{z}`)], [['a', 2], ['b', 1], ['c', 1]]);
+});

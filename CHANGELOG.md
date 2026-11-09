@@ -2,6 +2,15 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.43: Cite the papers in your Project from LaTeX
+
+- **Every paper in a Project can be cited from the LaTeX file you are writing.** When your LaTeX project is in a Project, each PDF in that Project is looked up once (by its DOI, arXiv id or title) and listed under **Insert › Cite** (Ctrl+Shift+C). Pick a paper and it is cited at the cursor and added to your .bib in the same step. There is no need to look it up or copy a BibTeX entry.
+- **Suggestions after `\cite{`** now include the Project's papers and My Library, along with what is already in the .bib. Picking one that isn't in the .bib adds it there for you.
+- **Quick search like a reference manager:** type part of a title, author, year or key, then press Enter to cite. Tick several papers (or press Ctrl+Enter on each) to cite them together in one `\cite{a, b}`. With the cursor inside an existing `\cite{…}`, new keys are added to it.
+- **The picker shows what you have already cited** (*Cited 2×*, *In .bib*). It flags papers whose details need checking, and the pencil button lets you fix a paper's details once for the whole Project. **Add all to .bib** adds every paper at once.
+- **Hover a citation key** to see the paper's title, authors and year, with a button that opens its PDF.
+- The citation command follows your document (`\citep` with natbib, `\parencite` with biblatex), and you can change it in the picker. The same paper is never added to the .bib twice. A different paper whose key is already taken gets a letter, like `smith2020a`. If the document has no bibliography yet, one is added before `\end{document}`.
+- Compiled PDFs and figures inside the LaTeX folder are not listed as papers.
 ## 0.2.42: Track changes, comments, history and Git for LaTeX
 
 ### Review your LaTeX like a pro

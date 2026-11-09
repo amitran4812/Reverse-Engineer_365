@@ -90,7 +90,8 @@ const TYPES = [
   ['webpage', 'Web page'],
 ];
 
-// paper: { text, info, metadata, fileName, filePath, doi, arxiv, isbn, title }, all optional;
+// paper: { text, info, metadata, fileName, filePath, doi, arxiv, isbn, title, item }, all optional
+// (item: a reference to start from, shown for editing);
 // auto: 'id' looks it up only when the text carries a DOI, arXiv id or ISBN.
 // actions: [{ label, icon, run(item, { style, html, text, inText }) }] shown beside Copy.
 export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style: startStyle = '' } = {}) {
@@ -372,6 +373,12 @@ export function openCiteDialog(paper = {}, { actions = [], title = 'Cite', style
     }
 
     draw();
+    // A reference already found (a project paper's), opened to check or fix its details.
+    if (paper?.item) {
+      $('.cite-file').textContent = paper.fileName || '';
+      show({ items: [paper.item], match: 'file', note: paper.note || 'Check the details and fix anything that’s wrong.' });
+      return input.focus();
+    }
     let hasPaper = paper && (paper.text || paper.doi || paper.arxiv || paper.isbn || paper.metadata || paper.info?.Title);
     // A document that may be the user's own writing is only looked up when it carries an identifier.
     if (hasPaper && paper.auto === 'id') {
