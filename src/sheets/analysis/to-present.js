@@ -1,14 +1,15 @@
 // Send to Present: pick charts from any page of the analysis, a Present
 // template and an optional table of rows, and open them as a new
-// presentation with everything on one slide.
+// presentation, all on one slide or with each chart on a slide of its own.
 
 import { dialog, escapeHtml, h, toast } from '../../shared/shell.js';
 import { themePicker } from '../../shared/themes.js';
 import { PLOT_TYPES, autoTitle } from './plot.js';
 import { buildSlide, planSlide } from './slide.js';
 
-const MAX_CHARTS = 12;
-const last = { theme: 'paper', table: false, source: 'filtered', where: '', columns: null, limit: 15 };
+const MAX_CHARTS = 12; // on one slide
+const MAX_SLIDES = 60; // one chart each
+const last = { theme: 'paper', each: false, table: false, source: 'filtered', where: '', columns: null, limit: 15 };
 
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const dataUrl = (blob) => new Promise((resolve, reject) => {
@@ -71,6 +72,17 @@ export async function sendToPresent({ st, client, showPage, refreshPlots, setLoa
   head.append(h('b', '', 'Plots'), count, h('span', 'an-spacer'), all, none);
   body.append(head, list);
 
+  const each = h('select');
+  for (const [value, label] of [['one', 'All on one slide'], ['each', 'One slide for each plot']]) {
+    const o = h('option', '', label);
+    o.value = value;
+    each.append(o);
+  }
+  each.value = last.each ? 'each' : 'one';
+  const eachRow = h('label', 'an-field');
+  eachRow.append(h('span', '', 'Slides'), each);
+  body.append(eachRow);
+
   body.append(h('b', '', 'Template'));
   const themes = themePicker(last.theme);
   body.append(themes);
@@ -129,8 +141,8 @@ export async function sendToPresent({ st, client, showPage, refreshPlots, setLoa
     if (!got) return;
     chosen = picks.filter((p) => p.box.checked);
     table = null;
-    if (chosen.length > MAX_CHARTS) {
-      toast(`Pick at most ${MAX_CHARTS} plots for one slide.`, 'error');
+    if (chosen.length > (each.value === 'each' ? MAX_SLIDES : MAX_CHARTS)) {
+      toast(each.value === 'each' ? `Pick at most ${MAX_SLIDES} plots.` : `Pick at most ${MAX_CHARTS} plots for one slide, or choose one slide for each plot.`, 'error');
       continue;
     }
     if (tableOn.box.checked) {
@@ -162,8 +174,11 @@ export async function sendToPresent({ st, client, showPage, refreshPlots, setLoa
   }
   last.theme = themes.read();
   last.table = tableOn.box.checked;
+  last.each = each.value === 'each' && chosen.length > 1;
 
-  const plan = planSlide({ count: chosen.length, table });
+  // With a slide for each plot, the table gets a slide of its own at the end.
+  const plan = planSlide({ count: last.each ? 1 : chosen.length, table: last.each ? null : table });
+  const cellFor = (i) => plan.cells[last.each ? 0 : i];
   const charts = [];
   const start = st.page;
   setLoading('Making the slide…');
@@ -175,7 +190,7 @@ export async function sendToPresent({ st, client, showPage, refreshPlots, setLoa
       await frame();
       await frame();
       for (const v of views) {
-        const cell = plan.cells[charts.length];
+        const cell = cellFor(charts.length);
         const blob = await v.toPng(3, cell.image.w, cell.image.h);
         charts.push({ src: await dataUrl(blob), caption: v.spec.title || autoTitle(v.spec) });
       }
@@ -191,8 +206,14 @@ export async function sendToPresent({ st, client, showPage, refreshPlots, setLoa
     setLoading(null);
   }
   const title = titleInput.value.trim() || base;
-  const slide = buildSlide({ title, plan, charts, table });
-  const res = await window.office.newWith({ kind: 'deck', title, theme: last.theme, slides: [slide] });
+  // A chart on a slide of its own takes its own title, without the caption above it.
+  const slides = last.each
+    ? [
+      ...charts.map((c) => buildSlide({ title: c.caption || title, plan, charts: [{ ...c, caption: '' }] })),
+      ...(table ? [buildSlide({ title, plan: planSlide({ count: 0, table }), charts: [], table })] : []),
+    ]
+    : [buildSlide({ title, plan, charts, table })];
+  const res = await window.office.newWith({ kind: 'deck', title, theme: last.theme, slides });
   if (res?.error) toast(res.error, 'error');
-  else toast(`Opened the slide in Present. Save it as .pptx from File › Save As.`);
+  else toast(`Opened ${slides.length === 1 ? 'the slide' : `${slides.length} slides`} in Present. Save as .pptx from File › Save As.`);
 }

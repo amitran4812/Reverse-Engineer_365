@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('office', {
   // Live data for formulas (GOOGLEFINANCE, IMPORT*): resolves to { value } or { error }.
   web: {
     data: (kind, params) => ipcRenderer.invoke('web:data', kind, params),
+    // A free photo for a slide: resolves to { src, credit, link } or { error }.
+    photo: (query, skip) => ipcRenderer.invoke('web:photo', String(query || ''), Array.isArray(skip) ? skip : []),
   },
   // References for papers: lookup({ doi, arxiv, isbn, text, info, metadata, title, fileName }) and search(text)
   // resolve to { items, match, ids, note } or { error }.

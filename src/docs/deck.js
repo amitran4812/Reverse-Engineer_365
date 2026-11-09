@@ -3,10 +3,17 @@
 // LaTeX project), then either the AI (outlineText + DECK_SCHEMA)
 // or plainDeck plans the slides, and buildDeck lays them out on Present's
 // 960 x 540 canvas, with the document's pictures and tables placed on them.
+// Charts drawn from the document's numbers and photos found on the web (for
+// slides that name a photo) are placed the same way once the dialog has
+// drawn or downloaded them into slide.chart.src and slide.photoImg.
 
 export const SLIDE_W = 960;
 export const SLIDE_H = 540;
-export const LAYOUTS = ['title', 'section', 'bullets', 'two', 'image_bullets', 'image', 'table', 'equation', 'quote'];
+export const LAYOUTS = ['title', 'section', 'bullets', 'two', 'image_bullets', 'image', 'table', 'chart', 'chart_bullets', 'equation', 'quote'];
+export const CHART_TYPES = ['bar', 'line', 'area', 'pie'];
+// Where a photo goes on the layouts that can have one; the dialog crops it to this shape.
+export const PHOTO_BOX = { title: { x: 520, y: 0, w: 440, h: 540 }, section: { x: 520, y: 0, w: 440, h: 540 }, bullets: { x: 576, y: 132, w: 324, h: 370 } };
+const PHOTO_SHARE = 3; // about one slide in this many gets a photo
 const MAX_BULLETS = 6;
 const TABLE_ROWS = 12;
 
@@ -133,9 +140,23 @@ const SLIDE_SPEC = {
     image: { type: 'integer' },
     table: { type: 'integer' },
     equation: { type: 'integer' },
+    chart: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['none', ...CHART_TYPES] },
+        title: { type: 'string' },
+        labels: { type: 'array', items: { type: 'string' } },
+        series: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, values: { type: 'array', items: { type: 'number' } } }, required: ['name', 'values'], additionalProperties: false } },
+        x_label: { type: 'string' },
+        y_label: { type: 'string' },
+      },
+      required: ['type', 'title', 'labels', 'series', 'x_label', 'y_label'],
+      additionalProperties: false,
+    },
+    photo: { type: 'string' },
     notes: { type: 'string' },
   },
-  required: ['layout', 'title', 'subtitle', 'bullets', 'right_bullets', 'image', 'table', 'equation', 'notes'],
+  required: ['layout', 'title', 'subtitle', 'bullets', 'right_bullets', 'image', 'table', 'equation', 'chart', 'photo', 'notes'],
   additionalProperties: false,
 };
 export const DECK_SCHEMA = {
@@ -150,6 +171,7 @@ export const DECK_SYSTEM = [
   'Work only from the document: keep its facts, names and numbers, and do not invent new ones.',
   'Layouts: "title" opens the deck (title and subtitle). "section" introduces a major part. "bullets" is a title with 3-6 short bullets. "two" compares two things (bullets on the left, right_bullets on the right, subtitle unused). "image_bullets" puts a picture beside 2-5 bullets. "image" shows one picture large, with subtitle as its caption. "table" shows one of the document\'s tables. "equation" shows one of the document\'s equations large, with 0-3 bullets under it saying what it means or what its symbols stand for. "quote" shows one striking sentence (in title) with who said it in subtitle.',
   'Pictures and tables are numbered as in the document ([Picture 1], [Table 1]). Set image or table to that number on the slide that shows it, and to 0 on every other slide. Use every picture and every table once, on the slide where its topic is.',
+  'Charts make numbers easy to see. When the document gives figures that compare things or change over time (a table of numbers, amounts, percentages, results by year), show them on a slide with layout "chart" (one chart large, subtitle as a one-line takeaway) or "chart_bullets" (the chart beside 2-4 bullets). Fill chart: type "bar" to compare, "line" or "area" for change over time, "pie" only for parts of one whole; labels are the categories or times, and each series has a name and one value per label. Use only the document\'s own numbers, exactly, as plain numbers without units (put units in y_label). A table of numbers may get both a table slide and a chart slide. On every other slide set chart type to "none" with empty labels and series.',
   'Equations are numbered the same way ([Equation 1]). Give the equations that matter for the story a slide of their own with layout "equation" and equation set to its number; leave out minor steps of a derivation. Set equation to 0 on every other slide. Never write TeX in titles or bullets: say it in words or plain symbols.',
   'Bullets are short phrases, under 12 words, without a final full stop. Put the detail in the speaker notes instead: 2-4 sentences a presenter can say out loud.',
   'Leave fields a layout does not use empty.',
@@ -167,12 +189,14 @@ export function slideGoal(doc, count = 0) {
   ].join(' ');
 }
 
-export function deckPrompt(doc, { name, extra = '', notes = true, count = 0 } = {}) {
+export function deckPrompt(doc, { name, extra = '', notes = true, count = 0, photos = false, charts = true } = {}) {
   return [
     `Make a presentation from the document "${name}" below. Start with a title slide and give the deck a short title.`,
     slideGoal(doc, count),
     notes ? '' : 'Leave speaker notes empty.',
     extra.trim() ? `The author adds: ${extra.trim()}` : '',
+    charts ? '' : 'Do not use the "chart" and "chart_bullets" layouts.',
+    photos ? `Photos: a few slides look better with a real photograph. Set photo to 2-5 plain English words for a stock photo to search for (like "solar panels on a roof" or "students in a lecture hall") on the title slide, on section slides and on about one "bullets" slide in ${PHOTO_SHARE} whose topic is something you can photograph. Leave photo empty on slides with a picture, chart, table or equation, on "two" and "quote" slides, and for abstract ideas.` : 'Leave photo empty on every slide.',
     doc.images.length ? `The pictures are attached in order (Picture 1 first), so you can see what each one shows.` : '',
     `<document>\n${outlineText(doc).slice(0, 400000)}\n</document>`,
   ].filter(Boolean).join('\n\n');
@@ -188,14 +212,14 @@ const chunk = (list, n) => {
 const balance = (list, n) => (list.length <= n + 1 ? [list] : chunk(list, Math.ceil(list.length / Math.ceil(list.length / n))));
 // A picture's alt text is a caption only when it says something more than a file name would.
 const caption = (im) => (/\s/.test(im?.alt || '') ? im.alt : '');
-const slideOf = (layout, title, fields = {}) => ({ layout, title, subtitle: '', bullets: [], right_bullets: [], image: 0, table: 0, equation: 0, notes: '', ...fields });
+const slideOf = (layout, title, fields = {}) => ({ layout, title, subtitle: '', bullets: [], right_bullets: [], image: 0, table: 0, equation: 0, chart: null, photo: '', notes: '', ...fields });
 const PLAIN_EQUATIONS = 2; // equation slides per section without AI
 
 // Slides without AI: the first heading opens the deck, each heading starts a
 // slide, paragraphs and lists become bullets, and pictures and tables get
 // slides of their own beside the text they came with. A section's first
 // equations get slides of their own too.
-export function plainDeck(doc, name) {
+export function plainDeck(doc, name, { charts = true } = {}) {
   const blocks = doc.blocks.slice();
   let title = name;
   let subtitle = '';
@@ -229,6 +253,10 @@ export function plainDeck(doc, name) {
     }
     for (const image of images) slides.push(slideOf('image', t, { image, subtitle: caption(doc.images[image - 1]) }));
     for (const table of tables) slides.push(slideOf('table', t, { table }));
+    for (const table of charts ? cur.tables : []) {
+      const chart = tableChart(doc.tables[table - 1]);
+      if (chart) slides.push(slideOf('chart', t, { chart }));
+    }
     for (const equation of cur.equations.slice(0, PLAIN_EQUATIONS)) slides.push(slideOf('equation', t, { equation }));
     if (cur.quote) slides.push(slideOf('quote', cur.quote, { notes: cur.bullets.length ? '' : notes }));
     if (!cur.bullets.length && !cur.quote && !images.length && !cur.tables.length && !cur.equations.length && cur.title) slides.push(slideOf('section', cur.title));
@@ -273,10 +301,77 @@ export function plainDeck(doc, name) {
   return { title, slides: slides.map((s) => (s.layout === 'quote' ? s : { ...s, title: s.title.length > 90 ? `${s.title.slice(0, 87).trimEnd()}…` : s.title })) };
 }
 
+const arr = (v) => (Array.isArray(v) ? v : []);
+
+// A chart the AI planned, made safe to draw: a known type, 2-40 labels and
+// up to 6 series with a number (or a gap) for each label. Null when unusable.
+export function cleanChart(c) {
+  if (!c || !CHART_TYPES.includes(c.type)) return null;
+  const labels = arr(c.labels).map((l) => tidy(l).slice(0, 40)).slice(0, 40);
+  let series = arr(c.series).map((s, i) => ({
+    name: tidy(s?.name).slice(0, 40) || `Series ${i + 1}`,
+    values: labels.map((_, k) => (Number.isFinite(arr(s?.values)[k]) ? arr(s.values)[k] : NaN)),
+  })).filter((s) => s.values.some(Number.isFinite)).slice(0, 6);
+  if (c.type === 'pie') series = series.slice(0, 1).filter((s) => s.values.filter((v) => v > 0).length >= 2);
+  if (labels.length < 2 || !series.length) return null;
+  return { type: c.type, title: tidy(c.title).slice(0, 90), labels, series, xLabel: tidy(c.x_label ?? c.xLabel).slice(0, 40), yLabel: tidy(c.y_label ?? c.yLabel).slice(0, 40) };
+}
+
+// A number written in a table cell, like 12,500, $9.5, 42% or (3.2); NaN otherwise.
+export function cellNumber(text) {
+  let s = tidy(text).replace(/[\s,]/g, '').replace(/^[$€£¥₹]|[$€£¥₹]$/g, '').replace(/%$/, '');
+  const neg = /^\(.*\)$/.test(s);
+  if (neg) s = s.slice(1, -1);
+  if (!/^[-+−]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s)) return NaN;
+  const v = Number(s.replace('−', '-'));
+  return neg ? -v : v;
+}
+
+const TIME = /^(?:(?:19|20)\d\d(?:[-/ ]?(?:Q[1-4]|H[12]|\d{1,2}))?|Q[1-4](?:\s*(?:19|20)?\d\d)?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s*'?\d{2,4})?|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*|week\s*\d+|day\s*\d+|month\s*\d+|year\s*\d+)$/i;
+
+// A chart for a table of numbers: the first text column labels the bars (or
+// the points, when it reads as years, quarters or months) and every column of
+// numbers is a series. Null when the table isn't a table of numbers.
+export function tableChart(rows) {
+  if (!Array.isArray(rows) || rows.length < 4) return null;
+  const [head, ...body0] = rows;
+  const body = body0.filter((r) => !/^(grand\s+)?total|^sum$|^average$/i.test(tidy(r[0])));
+  if (body.length < 3 || body.length > 30) return null;
+  const numeric = head.map((_, c) => body.filter((r) => Number.isFinite(cellNumber(r[c]))).length >= Math.max(2, Math.ceil(body.length * 0.8)));
+  const timeCol = body.every((r) => TIME.test(tidy(r[0])));
+  const labelCol = timeCol ? 0 : head.findIndex((_, c) => !numeric[c]);
+  if (labelCol < 0) return null;
+  const cols = head.map((_, c) => c).filter((c) => c !== labelCol && numeric[c] && !/^(#|no\.?|id|rank|year)$/i.test(tidy(head[c]))).slice(0, 4);
+  if (!cols.length) return null;
+  const labels = body.map((r) => tidy(r[labelCol]).slice(0, 40) || '—');
+  const series = cols.map((c) => ({ name: tidy(head[c]) || `Column ${c + 1}`, values: body.map((r) => cellNumber(r[c])) }));
+  const pct = cols.every((c) => body.every((r) => !tidy(r[c]) || /%$/.test(tidy(r[c]))));
+  return {
+    type: timeCol && body.length >= 3 ? 'line' : 'bar',
+    title: cols.length === 1 ? tidy(head[cols[0]]) : '',
+    labels,
+    series,
+    xLabel: tidy(head[labelCol]),
+    yLabel: pct ? '%' : '',
+  };
+}
+
+// Photos stay a touch: the title slide, then at most one other slide in PHOTO_SHARE.
+export function capPhotos(slides) {
+  let since = PHOTO_SHARE;
+  slides.forEach((s, i) => {
+    since += 1;
+    if (!s.photo || i === 0) return;
+    if (since < PHOTO_SHARE) s.photo = '';
+    else since = 0;
+  });
+  return slides;
+}
+
 // Makes an AI answer safe to lay out: known layouts, valid picture, table and
 // equation numbers, and every picture and table used somewhere. With count,
 // the deck keeps exactly the slides the author asked for.
-export function cleanDeck(spec, doc, { notes = true, count = 0 } = {}) {
+export function cleanDeck(spec, doc, { notes = true, count = 0, photos = false, charts = true } = {}) {
   const valid = (n, list) => (Number.isInteger(n) && n >= 1 && n <= list.length ? n : 0);
   const usedImages = new Set();
   const usedTables = new Set();
@@ -293,14 +388,20 @@ export function cleanDeck(spec, doc, { notes = true, count = 0 } = {}) {
     if ((out.layout === 'image' || out.layout === 'image_bullets') && !out.image) out.layout = 'bullets';
     if (out.layout === 'table' && !out.table) out.layout = 'bullets';
     if (out.layout === 'equation' && !out.equation) out.layout = 'bullets';
+    if (out.layout === 'chart' || out.layout === 'chart_bullets') out.chart = charts ? cleanChart(s?.chart) : null;
+    if ((out.layout === 'chart' || out.layout === 'chart_bullets') && !out.chart) out.layout = 'bullets';
+    if (out.layout === 'chart_bullets' && !out.bullets.length) out.layout = 'chart';
     if (out.layout === 'bullets' && !out.bullets.length && !out.subtitle) out.layout = 'section';
     if (out.layout !== 'image' && out.layout !== 'image_bullets') out.image = 0;
     if (out.layout !== 'table') out.table = 0;
     if (out.layout !== 'equation') out.equation = 0;
+    if (out.layout !== 'chart' && out.layout !== 'chart_bullets') out.chart = null;
+    out.photo = PHOTO_BOX[out.layout] && photos ? tidy(s?.photo).slice(0, 80) : '';
     if (out.image) usedImages.add(out.image);
     if (out.table) usedTables.add(out.table);
     return out;
-  }).filter((s) => s.title || s.subtitle || s.bullets.length || s.right_bullets.length || s.image || s.table || s.equation);
+  }).filter((s) => s.title || s.subtitle || s.bullets.length || s.right_bullets.length || s.image || s.table || s.equation || s.chart);
+  capPhotos(slides);
   if (!slides.length || slides[0].layout !== 'title') slides.unshift(slideOf('title', tidy(spec?.title) || 'Presentation'));
   if (count > 0) return { title: tidy(spec?.title) || slides[0].title, slides: slides.slice(0, count) };
   const extra = [
@@ -346,6 +447,16 @@ export function fitImage(im, box, top = false) {
 }
 
 const imageEl = (im, box, top) => ({ id: nid(), type: 'image', src: im.src, ...fitImage(im, box, top) });
+// A photo already cropped to its box fills it.
+const photoEl = (ph, box) => ({ id: nid(), type: 'image', src: ph.src, ...box });
+// The photo's credit, small, in the corner of the photo.
+const creditEl = (ph, box) => {
+  if (!ph.credit) return [];
+  const label = ph.credit.length > 80 ? `${ph.credit.slice(0, 79)}…` : ph.credit;
+  const w = Math.min(box.w, Math.round(label.length * 5.2 + 14));
+  return [{ id: nid(), type: 'shape', shape: 'rect', x: box.x + box.w - w, y: box.y + box.h - 18, w, h: 18, html: esc(label), style: { fontSize: 9, fill: '#000000', color: '#ffffff' } }];
+};
+const withCredit = (notes, ph) => [notes, ph.credit && `Photo: ${ph.credit}${ph.link ? ` (${ph.link})` : ''}`].filter(Boolean).join('\n\n');
 
 // An equation at up to twice its drawn size, centred in the box.
 export function fitEquation(eq, box) {
@@ -369,7 +480,27 @@ export function buildDeck(spec, doc) {
   const push = (layout, elements, notes) => out.push({ id: nid(), layout, notes: notes || '', elements });
   for (const s of spec.slides) {
     const im = s.image ? doc.images[s.image - 1] : null;
-    if (s.layout === 'title') {
+    const ph = s.photoImg?.src && PHOTO_BOX[s.layout] ? s.photoImg : null;
+    if ((s.layout === 'title' || s.layout === 'section') && ph) {
+      const big = s.layout === 'title';
+      // The photo fills the right side; the title sits on the left above an accent bar.
+      push('blank', [
+        photoEl(ph, PHOTO_BOX[s.layout]),
+        text('title', 56, big ? 130 : 170, 440, big ? 170 : 120, esc(s.title), { fontSize: fitTitle(s.title, 440, big ? 46 : 40, 24), align: 'left' }),
+        { id: nid(), type: 'shape', shape: 'rect', x: 58, y: big ? 312 : 302, w: 90, h: 4, html: '', style: {} },
+        text('subtitle', 56, big ? 330 : 320, 440, 90, esc(s.subtitle), { fontSize: s.subtitle.length > 70 ? 18 : 22, align: 'left' }),
+        ...creditEl(ph, PHOTO_BOX[s.layout]),
+      ], withCredit(s.notes, ph));
+    } else if (s.layout === 'bullets' && ph && s.bullets.length <= MAX_BULLETS) {
+      const box = PHOTO_BOX.bullets;
+      push('titleOnly', [headEl(s.title), bulletsEl(s.bullets, 60, 132, 490, 370, 24), photoEl(ph, box), ...creditEl(ph, box)], withCredit(s.notes, ph));
+    } else if (s.layout === 'chart' && s.chart?.src) {
+      const els = [headEl(s.title), imageEl(s.chart, { x: 60, y: 124, w: 840, h: s.subtitle ? 352 : 392 })];
+      if (s.subtitle) els.push(text('subtitle', 60, 484, 840, 34, esc(s.subtitle), { fontSize: 18, align: 'center' }));
+      push('titleOnly', els, s.notes);
+    } else if (s.layout === 'chart_bullets' && s.chart?.src) {
+      push('titleOnly', [headEl(s.title), bulletsEl(s.bullets, 60, 132, 330, 370, 22), imageEl(s.chart, { x: 404, y: 132, w: 496, h: 370 })], s.notes);
+    } else if (s.layout === 'title') {
       push('title', [
         text('title', 80, 150, 800, 135, esc(s.title), { fontSize: fitTitle(s.title, 800, 54, 30), align: 'center' }),
         text('subtitle', 140, 302, 680, 80, esc(s.subtitle), { fontSize: s.subtitle.length > 70 ? 20 : 24, align: 'center' }),
