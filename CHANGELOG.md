@@ -2,6 +2,12 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.46: Fit a picture or shape to the slide
+
+- **Fit to slide** (Home › Align): makes the selected picture, shape or text box as large as fits on the slide, keeping its shape, and centres it.
+- **Stretch to fill slide** (Home › Align): makes it cover the whole slide, edge to edge.
+- Both work on several boxes picked with Shift+click, and Ctrl+Z undoes them.
+
 ## 0.2.45: Save goes back to your file, and AutoSave
 
 - **Save writes straight back to the file you opened.** Open a PowerPoint, Word or Excel file (.pptx, .docx, .xlsx), or an .ods, .csv, .html or .txt file, press **Ctrl+S** and it is saved in the same place and the same format. Work no longer asks where to save it. **Save As** is still there when you want a copy.

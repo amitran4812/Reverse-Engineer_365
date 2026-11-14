@@ -713,6 +713,24 @@ function alignTo(edge) {
   updateThumb();
 }
 
+// Make the picked box as big as the slide: 'fit' keeps its shape and centres it, 'fill' stretches it edge to edge.
+function fitToSlide(mode) {
+  const els = picked();
+  if (!els.length) return toast('Select a picture or box first');
+  snapshot();
+  for (const e of els) {
+    if (mode === 'fill' || !e.w || !e.h) Object.assign(e, { x: 0, y: 0, w: W, h: H });
+    else {
+      const k = Math.min(W / e.w, H / e.h);
+      const w = Math.round(e.w * k);
+      const h = Math.round(e.h * k);
+      Object.assign(e, { x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h });
+    }
+  }
+  renderStage();
+  updateThumb();
+}
+
 function distribute(axis) {
   const els = picked();
   if (els.length < 3) return toast('Shift+click to pick three or more boxes to distribute');
@@ -1368,6 +1386,9 @@ const homeTab = {
         '-',
         { label: 'Distribute horizontally', icon: 'insertCol', run: () => distribute('h') },
         { label: 'Distribute vertically', icon: 'insertRow', run: () => distribute('v') },
+        '-',
+        { label: 'Fit to slide', icon: 'fitView', run: () => fitToSlide('fit') },
+        { label: 'Stretch to fill slide', icon: 'fitView', run: () => fitToSlide('fill') },
       ] },
     ] },
     { label: 'Claude', items: [{ type: 'big', icon: 'sparkle', label: 'Ask Claude', title: 'Open Claude (Ctrl+J)', run: () => shell.claude.toggle() }] },
