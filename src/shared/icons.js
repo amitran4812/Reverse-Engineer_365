@@ -204,6 +204,15 @@ const P = {
   code: '<path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/><path class="a-s" d="M11 4.5l-2 11"/>',
   spellCheck: '<path d="M3 13l3-9 3 9M4 10h4"/><path d="M11 4v9h2.5a2.2 2.2 0 0 0 0-4.5H11"/><path class="a-s" d="M10 16.2l1.8 1.8 4.7-4.7"/>',
   figure: '<rect x="3" y="2.5" width="14" height="11" rx="1.5"/><path d="M5 11l3.2-3.5 2.3 2.4 1.7-1.6L15 11"/><path class="a-s" d="M5 16.5h10"/>',
+  // Read's Draw tab: original glyphs.
+  marker: '<path d="M6.5 12.5l7-9 3 2.5-6.5 8.5z"/><path d="M6.5 12.5L5 16l3.5-1"/><path class="a-s" stroke-width="3" opacity=".6" d="M3 18h14"/>',
+  touchDraw: '<path d="M8 10V4.5a1.5 1.5 0 013 0V9l4 1a1.6 1.6 0 011.2 1.8L15.5 17h-7l-3-4a1.4 1.4 0 012-1.8z"/><path class="a-s" d="M3 4c1.5-1.5 3-1.5 4 0M13.5 4c1-1.5 2.5-1.5 4 0"/>',
+  pressure: '<path d="M3 15c3 0 3-10 7-10s4 10 7 10"/><path class="a-s" stroke-width="2.6" d="M8 7.5c.8-1.6 1.3-2.5 2-2.5"/>',
+  eraseStroke: '<path d="M2.5 13c2.5-5 5-5 7.5 0s5 5 7.5 0"/><path class="a-s" d="M7 6l6 8M13 6l-6 8"/>',
+  erasePart: '<path d="M2.5 13c2.5-5 4-5 5.5-2.5M12 15.5c2 .5 3.8-.5 5.5-2.5"/><circle class="a-s" cx="10" cy="13" r="2.6"/>',
+  paperLined: '<rect x="3.5" y="2.5" width="13" height="15" rx="1.5"/><path class="a-s" d="M3.5 7h13M3.5 10.5h13M3.5 14h13"/><path d="M6.5 2.5v15"/>',
+  paperGrid: '<rect x="3.5" y="2.5" width="13" height="15" rx="1.5"/><path class="a-s" d="M3.5 7.5h13M3.5 12.5h13M8 2.5v15M12 2.5v15"/>',
+  paperDots: '<rect x="3.5" y="2.5" width="13" height="15" rx="1.5"/><path class="a-s" stroke-width="1.8" d="M7 6.5h.01M10 6.5h.01M13 6.5h.01M7 10h.01M10 10h.01M13 10h.01M7 13.5h.01M10 13.5h.01M13 13.5h.01"/>',
   // App marks: original glyphs, not based on any vendor logo.
   appDocs: '<rect class="a" x="3" y="1.5" width="14" height="17" rx="2.5"/><path stroke="#fff" d="M6.5 6h7M6.5 9h7M6.5 12h7M6.5 15h4"/>',
   appSheets: '<rect class="a" x="2" y="2" width="16" height="16" rx="2.5"/><path stroke="#fff" d="M2.5 7.5h15M2.5 12.5h15M8 7.5v10"/>',
