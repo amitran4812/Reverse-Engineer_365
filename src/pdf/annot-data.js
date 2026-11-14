@@ -3,7 +3,9 @@
 //
 // Annotation geometry is kept in PDF user space (points, origin bottom-left):
 //   highlight | underline | strike  { rects: [[x0, y0, x1, y1]…] }
-//   ink                             { paths: [[x, y, x, y…]…], width }
+//   ink                             { paths: [[x, y, x, y…]…], width, pressure?, marker? }
+//                                   pressure: per path, null or one 0-1 value per point
+//                                   marker: a see-through highlighter pen
 //   rect | ellipse                  { rect: [x0, y0, x1, y1], width, fill }
 //   line | arrow                    { line: [x1, y1, x2, y2], width }
 //   note (sticky note)              { at: [x, y] }  top-left corner
@@ -11,6 +13,8 @@
 //   image (signature, stamp)        { rect, src, rot }  drawn into the page on save
 // Every annotation also has id, type, page (0-based), color, opacity, note,
 // author and modified.
+
+import { erasePath, pathDistance } from '../shared/ink-stroke.js';
 
 export const MARKUPS = ['highlight', 'underline', 'strike'];
 export const RECT_TYPES = ['rect', 'ellipse', 'text', 'image'];
@@ -142,6 +146,51 @@ export function thinPath(points, min = 0.8) {
   }
   if (points.length > 2 && (out[out.length - 2] !== points[points.length - 2] || out[out.length - 1] !== points[points.length - 1])) out.push(points[points.length - 2], points[points.length - 1]);
   return out;
+}
+
+// Rubs out ink under an eraser of radius r at (x, y): 'stroke' takes whole
+// strokes it touches, 'part' only what it touches. Returns the annotation
+// unchanged when nothing was hit, null when nothing is left.
+export function eraseInk(a, x, y, r, mode = 'stroke') {
+  const reach = r + (a.width || 1) / 2;
+  const paths = [];
+  const pressure = [];
+  let hit = false;
+  a.paths.forEach((path, i) => {
+    const pr = a.pressure?.[i] || null;
+    if (mode === 'stroke') {
+      if (pathDistance(path, x, y) <= reach) hit = true;
+      else {
+        paths.push(path);
+        pressure.push(pr);
+      }
+      return;
+    }
+    const left = erasePath(path, pr, x, y, reach);
+    if (!left) {
+      paths.push(path);
+      pressure.push(pr);
+      return;
+    }
+    hit = true;
+    for (const piece of left) {
+      paths.push(piece.path);
+      pressure.push(piece.pressure);
+    }
+  });
+  if (!hit) return a;
+  if (!paths.length) return null;
+  const b = { ...a, paths, modified: new Date().toISOString() };
+  if (pressure.some(Boolean)) b.pressure = pressure;
+  else delete b.pressure;
+  return b;
+}
+
+// Adds a stroke to an ink annotation, keeping pressure lined up with paths.
+export function addStroke(a, path, pressure) {
+  const b = { ...a, paths: [...a.paths, path] };
+  if (pressure || a.pressure) b.pressure = [...(a.pressure || a.paths.map(() => null)), pressure || null];
+  return b;
 }
 
 // Splits text into lines that fit `width`, measuring with `measure(str)`.

@@ -10,8 +10,9 @@ import { closePopup, popup } from '../shared/ribbon.js';
 import { Reader, CSS_PER_PT } from './viewer.js';
 import { AnnotLayer, DRAW_TOOLS } from './annots.js';
 import { Finder } from './find.js';
-import { PDFDocument, blankPage, buildPdf, deletePages, extractPages, insertPdf, movePage, openForEditing, rotatePages } from './pdf-edit.js';
+import { PAPERS, PDFDocument, blankPage, buildPdf, deletePages, extractPages, insertPdf, movePage, openForEditing, rotatePages } from './pdf-edit.js';
 import { MARKUPS, TYPE_LABELS, bounds, newId } from './annot-data.js';
+import { PEN_COLORS } from '../shared/ink-stroke.js';
 import { createSignature } from './sign.js';
 import { paperInfo } from './paper.js';
 import { marksToNotes, toPlot, toPresent, toWrite } from './convert.js';
@@ -35,12 +36,28 @@ const style = {
   highlight: { color: '#ffd400', opacity: 0.45 },
   underline: { color: '#1f6feb' },
   strike: { color: '#d1242f' },
-  ink: { color: '#d1242f', width: 2, opacity: 1 },
+  ink: { color: '#1f2328', width: 2, opacity: 1, pressure: true },
+  marker: { color: '#ffd400', width: 12, opacity: 0.4 },
   shape: { color: '#d1242f', width: 2, fill: null, opacity: 1 },
   text: { color: '#111111', size: 12 },
   note: { color: '#ffd400' },
 };
-const styleFor = (t) => (MARKUPS.includes(t) ? style[t] : t === 'ink' ? style.ink : t === 'text' ? style.text : t === 'note' ? style.note : style.shape);
+const styleFor = (t) => (MARKUPS.includes(t) ? style[t] : t === 'ink' ? style.ink : t === 'marker' ? style.marker : t === 'text' ? style.text : t === 'note' ? style.note : style.shape);
+
+const eraser = { mode: 'stroke', size: 4 };
+// Fingers draw until a pen is used here; after that the pen writes and
+// fingers scroll, and a resting palm is ignored.
+const store = (k, v) => {
+  try {
+    if (v === undefined) return localStorage.getItem(k);
+    localStorage.setItem(k, v);
+  } catch {
+    /* storage off */
+  }
+  return null;
+};
+let penSeen = store('rd-pen-seen') === '1';
+let touchDraw = store('rd-touch-draw') ? store('rd-touch-draw') === '1' : !penSeen;
 
 // --- Layout ---------------------------------------------------------------
 
@@ -52,6 +69,7 @@ side.append(sideTabs, sideBody);
 const mainCol = h('div', 'rd-main');
 const viewHost = h('div', 'rd-view');
 mainCol.append(viewHost);
+viewHost.classList.toggle('touch-draw', touchDraw);
 frame.append(side, mainCol);
 const empty = h('div', 'rd-empty', `${icon('appRead', 56)}<h2>Open a PDF to read, mark up and sign it</h2><button class="btn primary">${icon('open', 16)} Open a PDF…</button>`);
 empty.querySelector('button').onclick = () => window.office.openDialog('pdf');
@@ -61,7 +79,10 @@ const reader = new Reader(viewHost, {
     pageInput.value = n;
     thumbs.mark(n);
   },
-  onPageReady: (p) => layer.attach(p),
+  onPageReady: (p) => {
+    layer.attach(p);
+    addInsertButtons(p);
+  },
   onDrawn: (p) => finder.matches.length && finder.paintPage(p),
   onScale: (s) => {
     zoomLabel.textContent = `${Math.round(s * 100)}%`;
@@ -83,7 +104,26 @@ const layer = new AnnotLayer(reader, {
     comments.mark(a?.id);
   },
   onEditNote: (a, fresh) => editNote(a, fresh),
+  touchDraw: () => touchDraw,
+  eraser: () => eraser,
+  editable: () => editable,
+  onPen: () => {
+    if (penSeen) return;
+    penSeen = true;
+    store('rd-pen-seen', '1');
+    if (touchDraw && !store('rd-touch-draw')) {
+      setTouchDraw(false, false);
+      toast('Pen found: the pen writes and your finger scrolls. Turn on Draw with Touch on the Draw tab to write with a finger.');
+    }
+  },
 });
+
+function setTouchDraw(on, remember = true) {
+  touchDraw = on;
+  if (remember) store('rd-touch-draw', on ? '1' : '0');
+  viewHost.classList.toggle('touch-draw', on);
+  shell.refresh();
+}
 
 const finder = new Finder(reader, mainCol);
 
@@ -150,7 +190,8 @@ const TOOL_HINTS = {
   highlight: 'Select text to highlight it',
   underline: 'Select text to underline it',
   strike: 'Select text to strike it out',
-  ink: 'Draw on the page. Strokes close together join into one drawing',
+  ink: 'Write or draw with a mouse, finger or pen. Pen pressure changes the line',
+  marker: 'Draw over the page with a see-through highlighter pen',
   rect: 'Drag to draw a rectangle (Shift for a square)',
   ellipse: 'Drag to draw an oval (Shift for a circle)',
   line: 'Drag to draw a line',
@@ -158,14 +199,14 @@ const TOOL_HINTS = {
   note: 'Click where the sticky note goes',
   text: 'Click or drag where the text goes',
   place: 'Click where it goes',
-  eraser: 'Click a comment or drawing to remove it',
+  eraser: 'Drag over ink to rub it out, or tap a comment to remove it. The back of a pen erases too',
 };
 
 function setTool(t) {
   tool = t;
   if (t !== 'place') pendingImage = null;
   viewHost.dataset.tool = t;
-  layer.setActive(DRAW_TOOLS.includes(t), t === 'eraser' ? 'not-allowed' : t === 'place' ? 'copy' : t === 'note' ? 'cell' : 'crosshair');
+  layer.setActive(DRAW_TOOLS.includes(t), t === 'eraser' ? 'cell' : t === 'place' ? 'copy' : t === 'note' ? 'cell' : 'crosshair');
   toolHint.textContent = TOOL_HINTS[t] || '';
   if (t !== 'select') layer.select(null);
   // A selection made before picking a markup tool gets marked straight away.
@@ -174,6 +215,27 @@ function setTool(t) {
 }
 
 const toolBtn = (id, label, ic, title) => ({ type: 'big', icon: ic, label, title: title || TOOL_HINTS[id], active: () => tool === id, enabled: () => !!reader.doc, run: () => setTool(tool === id && id !== 'select' ? 'select' : id) });
+
+function setEraser(mode, size = mode === 'part' && eraser.mode !== 'part' ? 9 : eraser.size) {
+  eraser.mode = mode;
+  eraser.size = size;
+  setTool('eraser');
+}
+
+// A colour dot on the Draw tab: picks the pen (or highlighter) in that colour.
+function swatch(kind, c) {
+  return {
+    type: 'text', text: '', title: c,
+    style: `display:block;width:14px;height:14px;border-radius:50%;background:${c};box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)`,
+    active: () => tool === kind && style[kind].color === c,
+    enabled: has,
+    run: () => {
+      style[kind].color = c;
+      if (selectedAnnot?.type === 'ink' && !!selectedAnnot.marker === (kind === 'marker')) update(selectedAnnot.id, { color: c });
+      setTool(kind);
+    },
+  };
+}
 
 function pickColor(kind, anchor) {
   const box = h('div', 'rd-swatches');
@@ -403,10 +465,44 @@ async function insertFromFile(atEnd = false) {
   toast(`Added ${added} page${added === 1 ? '' : 's'}`);
 }
 
-async function insertBlank() {
-  const at = reader.currentPage();
-  await pageOp((d) => blankPage(d, at), (l) => l.map((a) => (a.page >= at ? { ...a, page: a.page + 1 } : a)));
+// Adds a page to write on at index `at` (0 = before the first page).
+async function insertBlank(paper = 'blank', at = reader.currentPage()) {
+  await pageOp((d) => blankPage(d, at, paper), (l) => l.map((a) => (a.page >= at ? { ...a, page: a.page + 1 } : a)));
   reader.scrollToPage(at + 1);
+}
+
+const PAPER_ICONS = { blank: 'newFile', lined: 'paperLined', grid: 'paperGrid', dots: 'paperDots' };
+const paperItems = (at) => PAPERS.map((pp) => ({ label: pp.label, icon: PAPER_ICONS[pp.id], run: () => insertBlank(pp.id, at()) }));
+
+function paperMenu(anchor, at) {
+  const list = h('div', 'rb-menu');
+  list.append(h('div', 'rd-menu-head', at === 0 ? 'Add a page before page 1' : at >= reader.pageCount ? 'Add a page at the end' : `Add a page between pages ${at} and ${at + 1}`));
+  for (const it of paperItems(() => at)) {
+    const m = h('button', 'rb-menu-item', `${icon(it.icon, 16)}<span>${it.label}</span>`);
+    m.onclick = () => {
+      closePopup();
+      it.run();
+    };
+    list.append(m);
+  }
+  popup(anchor, list);
+}
+
+// A + between pages (and before the first) adds a page right there.
+function addInsertButtons(p) {
+  for (const b of p.el.querySelectorAll('.rd-insert')) b.remove();
+  const make = (at, cls) => {
+    const b = h('button', `rd-insert ${cls}`, icon('plus', 14));
+    b.title = 'Add a page here';
+    b.onpointerdown = (e) => e.stopPropagation();
+    b.onclick = (e) => {
+      e.stopPropagation();
+      paperMenu(b, at);
+    };
+    p.el.append(b);
+  };
+  if (p.index === 0) make(0, 'top');
+  make(p.index + 1, 'bottom');
 }
 
 async function extract() {
@@ -556,7 +652,7 @@ function readAloud() {
 function stopReading() {
   speech.on = false;
   speechSynthesis.cancel();
-  shell?.refresh();
+  shell.refresh();
 }
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && speech.on) stopReading();
@@ -949,6 +1045,47 @@ const tabs = [
     ],
   },
   {
+    id: 'draw',
+    label: 'Draw',
+    groups: [
+      { label: 'Tools', items: [
+        toolBtn('select', 'Select', 'pointer'),
+        toolBtn('ink', 'Pen', 'pen'),
+        toolBtn('marker', 'Highlighter', 'marker'),
+        toolBtn('eraser', 'Eraser', 'eraser'),
+        { type: 'stack', items: [
+          { type: 'small', icon: 'eraseStroke', label: 'Whole strokes', title: 'The eraser takes away each stroke it touches', active: () => eraser.mode === 'stroke', run: () => setEraser('stroke') },
+          { type: 'small', icon: 'erasePart', label: 'Just what it touches', title: 'The eraser rubs out only the ink under it', active: () => eraser.mode === 'part', run: () => setEraser('part') },
+          { type: 'select', title: 'Eraser size', width: 92, options: [{ value: '4', label: 'Small' }, { value: '9', label: 'Medium' }, { value: '18', label: 'Large' }], value: () => String(eraser.size), change: (v) => setEraser(eraser.mode, +v) },
+        ] },
+      ] },
+      { label: 'Colours', items: [
+        { type: 'stack', items: [
+          { type: 'row', items: PEN_COLORS.map((c) => swatch('ink', c)) },
+          { type: 'row', items: ['#ffd400', '#7ee081', '#6cc7f5', '#ff8fb1', '#ffa94d', '#c19bff'].map((c) => swatch('marker', c)) },
+        ] },
+        { type: 'big', icon: 'color', label: 'More', title: 'Pick any colour for the pen or highlighter', run: (e, b) => pickColor(tool === 'marker' ? 'marker' : 'ink', b) },
+      ] },
+      { label: 'Thickness', items: [
+        { type: 'stack', items: [
+          { type: 'select', title: 'Pen thickness', width: 92, options: [0.5, 1, 1.5, 2, 3, 4, 6].map((w) => ({ value: String(w), label: `Pen ${w} pt` })), value: () => String(style.ink.width), change: (v) => { style.ink.width = +v; setTool('ink'); } },
+          { type: 'select', title: 'Highlighter thickness', width: 92, options: [6, 9, 12, 16, 24].map((w) => ({ value: String(w), label: `Marker ${w} pt` })), value: () => String(style.marker.width), change: (v) => { style.marker.width = +v; setTool('marker'); } },
+          { type: 'small', icon: 'pressure', label: 'Pen pressure', title: 'Press harder with a pen for a thicker line', active: () => style.ink.pressure, run: () => { style.ink.pressure = !style.ink.pressure; shell.refresh(); } },
+        ] },
+      ] },
+      { label: 'Input', items: [
+        { type: 'big', icon: 'touchDraw', label: 'Draw with Touch', title: 'On: your finger writes. Off: your finger scrolls and only a pen or mouse writes', active: () => touchDraw, run: () => setTouchDraw(!touchDraw) },
+      ] },
+      { label: 'Pages', items: [
+        { type: 'menu', big: true, icon: 'pageAdd', label: 'Add Page', title: 'Add a blank, lined, grid or dotted page after this one', enabled: canEdit, items: () => paperItems(() => reader.currentPage()) },
+      ] },
+      { label: 'Undo', items: [
+        { type: 'big', icon: 'undo', label: 'Undo', shortcut: 'Ctrl+Z', enabled: () => undoStack.length > 0, run: () => undo() },
+        { type: 'big', icon: 'redo', label: 'Redo', shortcut: 'Ctrl+Y', enabled: () => redoStack.length > 0, run: () => redo() },
+      ] },
+    ],
+  },
+  {
     id: 'sign',
     label: 'Fill & Sign',
     groups: [
@@ -990,7 +1127,7 @@ const tabs = [
         { type: 'stack', items: [
           { type: 'small', icon: 'up', label: 'Move page up', enabled: canEdit, run: () => moveCurrent(-1) },
           { type: 'small', icon: 'down', label: 'Move page down', enabled: canEdit, run: () => moveCurrent(1) },
-          { type: 'small', icon: 'newFile', label: 'Blank page', enabled: canEdit, run: () => insertBlank() },
+          { type: 'menu', icon: 'newFile', label: 'Blank page', enabled: canEdit, items: () => paperItems(() => reader.currentPage()) },
         ] },
       ] },
       { label: 'Combine', items: [

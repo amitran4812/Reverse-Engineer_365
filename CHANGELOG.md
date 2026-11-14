@@ -2,6 +2,15 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.44: Write on PDFs with a pen or your finger
+
+- **A new Draw tab in Read** for writing and drawing straight on a PDF with a stylus, a touch screen or a mouse. Pick the **Pen** or the see-through **Highlighter**, a colour and a thickness, and write.
+- **Pen pressure.** Press harder for a thicker line and lighter for a thinner one, like real ink. Turn it off with **Pen pressure** if you want an even line.
+- **Pen and finger work together.** Until you use a pen, your finger writes. Once Read sees a pen, the pen writes and your finger scrolls the pages, and a hand resting on the screen while you write is ignored. **Draw with Touch** switches finger writing back on or off at any time.
+- **A better eraser.** Drag the eraser over your writing to take away whole strokes, or choose **Just what it touches** to rub out only the part under it, in three sizes. The eraser end (or eraser button) of a pen erases too. Each drag is one step for **Undo**, which is also on the Draw tab for when there's no keyboard.
+- **Add a page anywhere to write on.** Point between two pages (or tap the **+** there) and pick a blank, lined, grid or dotted page. It comes in the same size as the pages around it. **Draw › Add Page** and **Organize › Blank page** add one after the page you are on.
+- Your writing is saved inside the PDF as standard ink annotations, so other PDF readers show it too, and Read keeps the pressure and highlighter look when you open the file again.
+
 ## 0.2.43: Cite the papers in your Project from LaTeX
 
 - **Every paper in a Project can be cited from the LaTeX file you are writing.** When your LaTeX project is in a Project, each PDF in that Project is looked up once (by its DOI, arXiv id or title) and listed under **Insert › Cite** (Ctrl+Shift+C). Pick a paper and it is cited at the cursor and added to your .bib in the same step. There is no need to look it up or copy a BibTeX entry.

@@ -1,10 +1,12 @@
 // Draws annotations over each page and runs the tools that make and change
-// them: pen, shapes, sticky notes, text boxes, placing signatures, and
+// them: pen and highlighter pen (mouse, finger or stylus, with pressure),
+// eraser, shapes, sticky notes, text boxes, placing signatures, and
 // selecting, moving and resizing what is already there.
 
 import { h } from '../shared/shell.js';
 import { CSS_PER_PT } from './viewer.js';
-import { MARKUPS, RECT_TYPES, bounds, mergeLineRects, moveAnnot, newId, normRect, thinPath } from './annot-data.js';
+import { MARKUPS, RECT_TYPES, addStroke, bounds, eraseInk, mergeLineRects, moveAnnot, newId, normRect } from './annot-data.js';
+import { isPenEraser, pointerPressure, pressureRuns, thinStroke } from '../shared/ink-stroke.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const s = (tag, attrs = {}) => {
@@ -13,14 +15,30 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export const DRAW_TOOLS = ['ink', 'rect', 'ellipse', 'line', 'arrow', 'note', 'text', 'place', 'eraser'];
+export const DRAW_TOOLS = ['ink', 'marker', 'rect', 'ellipse', 'line', 'arrow', 'note', 'text', 'place', 'eraser'];
 
 export class AnnotLayer {
-  // ctx: { annots(), commit(fn), tool(), style(), author(), onSelect(a), onEditNote(a), setTool(t), pending() }
+  // ctx: { annots(), commit(fn), tool(), style(), author(), onSelect(a), onEditNote(a), setTool(t), pending(),
+  //        touchDraw(), onPen(), eraser() }
   constructor(reader, ctx) {
     this.reader = reader;
     this.ctx = ctx;
     this.selected = null;
+    this.working = null; // annotations being erased, shown before they are committed
+    this.live = null; // the stroke being drawn
+    this.penAt = 0;
+    // A pen near the screen means a resting hand is a palm, not a finger.
+    const pen = (e) => {
+      if (e.pointerType !== 'pen') return;
+      this.penAt = Date.now();
+      ctx.onPen?.();
+    };
+    window.addEventListener('pointermove', pen, { passive: true, capture: true });
+    window.addEventListener('pointerdown', pen, { passive: true, capture: true });
+  }
+
+  list() {
+    return this.working || this.ctx.annots();
   }
 
   // Called for every page as it is laid out (and again when the view rotates).
@@ -59,7 +77,7 @@ export class AnnotLayer {
     const p = this.reader.pages[index];
     if (!p?.svg) return;
     p.svg.replaceChildren();
-    for (const a of this.ctx.annots()) if (a.page === index) p.svg.append(this.shape(p, a));
+    for (const a of this.list()) if (a.page === index) p.svg.append(this.shape(p, a));
     const sel = this.selected && this.find(this.selected);
     if (sel?.page === index) p.svg.append(this.selection(p, sel));
   }
@@ -97,13 +115,15 @@ export class AnnotLayer {
         }
         break;
       case 'ink':
-        for (const path of a.paths) {
-          const pts = [];
-          for (let i = 0; i + 1 < path.length; i += 2) pts.push(R.toView(p, path[i], path[i + 1]));
-          const el = s('path', { d: pts.length === 1 ? `M${pts[0][0]} ${pts[0][1]}h.01` : `M${pts.map((q) => q.join(' ')).join('L')}`, ...stroke });
-          g.append(el);
-          hit(el);
-        }
+        if (a.marker) g.classList.add('marker');
+        a.paths.forEach((path, k) => {
+          const runs = pressureRuns(path, a.pressure?.[k], w);
+          for (const run of runs) {
+            const el = s('path', { d: this.viewPath(p, run.pts), ...stroke, 'stroke-width': run.w, 'stroke-linecap': a.marker ? 'square' : 'round' });
+            g.append(el);
+          }
+          hit(s('path', { d: this.viewPath(p, path), 'stroke-width': w }));
+        });
         break;
       case 'rect':
       case 'ellipse': {
@@ -169,6 +189,12 @@ export class AnnotLayer {
     return g;
   }
 
+  viewPath(p, path) {
+    const pts = [];
+    for (let i = 0; i + 1 < path.length; i += 2) pts.push(this.reader.toView(p, path[i], path[i + 1]));
+    return pts.length === 1 ? `M${pts[0][0]} ${pts[0][1]}h.01` : `M${pts.map((q) => q.join(' ')).join('L')}`;
+  }
+
   selection(p, a) {
     const [x0, y0, x1, y1] = this.reader.viewRect(p, bounds(a));
     const k = 1 / (this.reader.scale * CSS_PER_PT);
@@ -193,17 +219,23 @@ export class AnnotLayer {
   // --- Pointer tools --------------------------------------------------------
 
   down(p, e) {
-    if (e.button !== 0) return;
     const tool = this.ctx.tool();
+    if (e.pointerType === 'touch') {
+      // Palm rejection: while a pen is in use, touches are ignored.
+      if (this.live?.pen || Date.now() - this.penAt < 700) return;
+      // A second finger means a pinch or scroll: drop the stroke just begun.
+      if (this.live) return this.live.cancel();
+      if (DRAW_TOOLS.includes(tool) && !this.ctx.touchDraw()) return;
+    }
+    const penEraser = isPenEraser(e);
+    if (e.button !== 0 && !penEraser) return;
     const R = this.reader;
     const start = R.clientToView(p, e.clientX, e.clientY);
     const g = e.target.closest?.('[data-id]');
     const target = g && this.find(g.dataset.id);
     const handle = e.target.dataset?.handle;
-    if (tool === 'eraser') {
-      if (target) this.ctx.commit((list) => list.filter((a) => a.id !== target.id));
-      return;
-    }
+    if (tool === 'eraser' || (penEraser && this.ctx.editable?.() !== false)) return this.erase(p, e, target);
+    if (tool === 'ink' || tool === 'marker') return this.ink(p, e, tool);
     if (handle) return this.resize(p, e, this.find(this.selected));
     if (!DRAW_TOOLS.includes(tool)) {
       if (target) this.drag(p, e, target, start);
@@ -228,27 +260,6 @@ export class AnnotLayer {
       };
     };
     const base = { page: p.index, color: st.color, opacity: st.opacity ?? 1, author: this.ctx.author(), modified: new Date().toISOString(), note: '' };
-    if (tool === 'ink') {
-      const pts = [start];
-      const path = s('path', { stroke: st.color, 'stroke-width': st.width, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: st.opacity ?? 1 });
-      const redraw = () => path.setAttribute('d', `M${pts.map((q) => q.join(' ')).join('L')}${pts.length === 1 ? 'h.01' : ''}`);
-      redraw();
-      p.svg.append(path);
-      done(() => {
-        path.remove();
-        const flat = thinPath(pts.flatMap(([vx, vy]) => R.toUser(p, vx, vy)), 0.6);
-        // Strokes made one after another join into one drawing.
-        const last = this.ctx.annots().at(-1);
-        const recent = last?.type === 'ink' && last.page === p.index && last.color === st.color && last.width === st.width && last._at && Date.now() - last._at < 1500;
-        this.ctx.commit((list) => (recent
-          ? list.map((a) => (a.id === last.id ? { ...a, paths: [...a.paths, flat], _at: Date.now() } : a))
-          : [...list, { ...base, id: newId(), type: 'ink', paths: [flat], width: st.width, _at: Date.now() }]));
-      })((pt) => {
-        pts.push(pt);
-        redraw();
-      });
-      return;
-    }
     if (['rect', 'ellipse', 'line', 'arrow', 'text'].includes(tool)) {
       const ghost = tool === 'line' || tool === 'arrow' ? s('line', { stroke: st.color, 'stroke-width': st.width }) : s(tool === 'ellipse' ? 'ellipse' : 'rect', { stroke: tool === 'text' ? '#5b8def' : st.color, 'stroke-width': tool === 'text' ? 1 : st.width, fill: tool === 'text' ? 'rgba(91,141,239,.08)' : 'none', 'stroke-dasharray': tool === 'text' ? '4 3' : null });
       p.svg.append(ghost);
@@ -301,6 +312,133 @@ export class AnnotLayer {
       this.ctx.setTool('select');
       this.select(a.id);
     }
+  }
+
+  // Pen and highlighter pen. Pressure from a stylus thins and thickens the
+  // pen's line; strokes made one after another join into one drawing.
+  ink(p, e, tool) {
+    e.preventDefault();
+    const R = this.reader;
+    const svg = p.svg;
+    svg.setPointerCapture(e.pointerId);
+    const st = this.ctx.style(tool);
+    const marker = tool === 'marker';
+    const usePressure = !marker && e.pointerType === 'pen' && st.pressure !== false;
+    const path = [];
+    const pressure = [];
+    const add = (ev) => {
+      const [vx, vy] = R.clientToView(p, ev.clientX, ev.clientY);
+      path.push(vx, vy);
+      pressure.push(pointerPressure(ev));
+    };
+    add(e);
+    const ghost = s('g', { opacity: st.opacity ?? 1, class: marker ? 'an marker' : 'an' });
+    svg.append(ghost);
+    let frame = 0;
+    const redraw = () => {
+      frame = 0;
+      ghost.replaceChildren(...pressureRuns(path, usePressure ? pressure : null, st.width).map((run) => s('path', {
+        d: `M${run.pts.reduce((acc, v, i) => acc + (i % 2 ? ` ${v}` : `${i ? 'L' : ''}${v}`), '')}${run.pts.length === 2 ? 'h.01' : ''}`,
+        stroke: st.color, 'stroke-width': run.w, fill: 'none', 'stroke-linecap': marker ? 'square' : 'round', 'stroke-linejoin': 'round',
+      })));
+    };
+    redraw();
+    const move = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      for (const c of ev.getCoalescedEvents?.() || [ev]) add(c);
+      frame ||= requestAnimationFrame(redraw);
+    };
+    const stop = () => {
+      svg.removeEventListener('pointermove', move);
+      svg.removeEventListener('pointerup', up);
+      svg.removeEventListener('pointercancel', up);
+      cancelAnimationFrame(frame);
+      ghost.remove();
+      this.live = null;
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      stop();
+      // A touch the browser took over for scrolling isn't a stroke.
+      if (ev.type === 'pointercancel' && path.length < 8) return;
+      const user = [];
+      for (let i = 0; i < path.length; i += 2) user.push(...R.toUser(p, path[i], path[i + 1]));
+      const thin = thinStroke(user, usePressure ? pressure : null, 0.6);
+      const flat = thin.path.map((v) => Math.round(v * 100) / 100);
+      const pr = thin.pressure?.map((v) => Math.round(v * 100) / 100) || null;
+      const last = this.ctx.annots().at(-1);
+      const recent = last?.type === 'ink' && last.page === p.index && last.color === st.color && last.width === st.width && !!last.marker === marker && last._at && Date.now() - last._at < 1500;
+      const base = { page: p.index, color: st.color, opacity: st.opacity ?? 1, author: this.ctx.author(), modified: new Date().toISOString(), note: '' };
+      this.ctx.commit((list) => (recent
+        ? list.map((a) => (a.id === last.id ? { ...addStroke(a, flat, pr), _at: Date.now(), modified: base.modified } : a))
+        : [...list, { ...base, id: newId(), type: 'ink', paths: [flat], ...(pr ? { pressure: [pr] } : {}), ...(marker ? { marker: true } : {}), width: st.width, _at: Date.now() }]));
+    };
+    svg.addEventListener('pointermove', move);
+    svg.addEventListener('pointerup', up);
+    svg.addEventListener('pointercancel', up);
+    this.live = { pen: e.pointerType === 'pen', cancel: stop };
+  }
+
+  // Eraser: a tap removes what it touches; dragging rubs out ink, either
+  // whole strokes or just the part under the eraser. One undo step per drag.
+  erase(p, e, target) {
+    e.preventDefault();
+    const R = this.reader;
+    const svg = p.svg;
+    svg.setPointerCapture(e.pointerId);
+    const { mode, size } = this.ctx.eraser();
+    const begin = this.ctx.annots();
+    let list = target && target.type !== 'ink' ? begin.filter((a) => a.id !== target.id) : begin;
+    const k = 1 / (R.scale * CSS_PER_PT);
+    const ring = s('circle', { class: 'rd-eraser-ring', r: Math.max(size, 3 * k), 'stroke-width': k });
+    const at = (ev) => {
+      const [vx, vy] = R.clientToView(p, ev.clientX, ev.clientY);
+      ring.setAttribute('cx', vx);
+      ring.setAttribute('cy', vy);
+      const [ux, uy] = R.toUser(p, vx, vy);
+      const touched = mode === 'stroke'
+        ? new Set(document.elementsFromPoint(ev.clientX, ev.clientY).map((n) => n.closest?.('[data-id]')?.dataset.id).filter(Boolean))
+        : null;
+      let changed = false;
+      const next = [];
+      for (const a of list) {
+        if (a.page !== p.index) next.push(a);
+        else if (a.type === 'ink') {
+          const b = eraseInk(a, ux, uy, size, mode);
+          if (b !== a) changed = true;
+          if (b) next.push(b);
+        } else if (touched?.has(a.id)) changed = true;
+        else next.push(a);
+      }
+      if (changed) list = next;
+      return changed;
+    };
+    const show = () => {
+      this.working = list;
+      this.render(p.index);
+      p.svg.append(ring);
+    };
+    at(e);
+    show();
+    const move = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      let changed = false;
+      for (const c of ev.getCoalescedEvents?.() || [ev]) changed = at(c) || changed;
+      if (changed) show();
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      svg.removeEventListener('pointermove', move);
+      svg.removeEventListener('pointerup', up);
+      svg.removeEventListener('pointercancel', up);
+      ring.remove();
+      this.working = null;
+      if (list !== begin) this.ctx.commit(() => list);
+      else this.render(p.index);
+    };
+    svg.addEventListener('pointermove', move);
+    svg.addEventListener('pointerup', up);
+    svg.addEventListener('pointercancel', up);
   }
 
   drag(p, e, a, start) {

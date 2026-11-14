@@ -10,6 +10,7 @@ import {
   setLineCap, setLineJoin, setLineWidth, setStrokingRgbColor, showText, stroke, LineCapStyle, LineJoinStyle,
 } from 'pdf-lib';
 import { hexToRgb, normRect, quadsToRects, rectsToQuads, rgbToHex, newId } from './annot-data.js';
+import { pressureRuns } from '../shared/ink-stroke.js';
 
 const SUBTYPES = { Highlight: 'highlight', Underline: 'underline', StrikeOut: 'strike', Ink: 'ink', Square: 'rect', Circle: 'ellipse', Line: 'line', Text: 'note', FreeText: 'text' };
 const N = (s) => PDFName.of(s);
@@ -71,8 +72,20 @@ function readAnnot(doc, dict, page, rotation = 0) {
     case 'ink': {
       const list = dict.lookup(N('InkList'));
       if (!(list instanceof PDFArray)) return null;
-      const paths = list.asArray().map((p) => nums(doc, doc.context.lookup(p))).filter((p) => p?.length >= 2);
-      return paths.length ? { ...base, paths, width } : null;
+      const raw = list.asArray().map((p) => nums(doc, doc.context.lookup(p)));
+      const keep = raw.map((p) => p?.length >= 2);
+      const paths = raw.filter((_, i) => keep[i]);
+      if (!paths.length) return null;
+      const a = { ...base, paths, width };
+      // Read keeps pen pressure and the highlighter pen in its own keys.
+      const pl = dict.lookup(N('WorkPressure'));
+      if (pl instanceof PDFArray) {
+        const pr = pl.asArray().map((x) => nums(doc, doc.context.lookup(x))).filter((_, i) => keep[i]);
+        if (pr.length === paths.length) a.pressure = pr.map((v, i) => (v?.length === paths[i].length / 2 ? v : null));
+        if (!a.pressure?.some(Boolean)) delete a.pressure;
+      }
+      if (String(dict.lookup(N('WorkMarker')) || '') === 'true') a.marker = true;
+      return a;
     }
     case 'rect':
     case 'ellipse': {
@@ -261,16 +274,25 @@ function writeAnnot(doc, page, a, font) {
       const w = a.width || 1;
       const xs = a.paths.flatMap((p) => p.filter((_, i) => i % 2 === 0));
       const ys = a.paths.flatMap((p) => p.filter((_, i) => i % 2 === 1));
-      const bbox = [Math.min(...xs) - w, Math.min(...ys) - w, Math.max(...xs) + w, Math.max(...ys) + w];
-      const ops = [pushGraphicsState(), setGraphicsState('GS0'), setStrokingRgbColor(...c), setLineWidth(w), setLineCap(LineCapStyle.Round), setLineJoin(LineJoinStyle.Round)];
-      for (const p of a.paths) {
-        ops.push(moveTo(p[0], p[1]));
-        if (p.length === 2) ops.push(lineTo(p[0] + 0.01, p[1]));
-        for (let i = 2; i + 1 < p.length; i += 2) ops.push(lineTo(p[i], p[i + 1]));
-        ops.push(stroke());
-      }
+      const pad = a.pressure ? w * 1.7 : w;
+      const bbox = [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad];
+      const ops = [pushGraphicsState(), setGraphicsState('GS0'), setStrokingRgbColor(...c), setLineCap(a.marker ? LineCapStyle.Projecting : LineCapStyle.Round), setLineJoin(LineJoinStyle.Round)];
+      let lw = null;
+      a.paths.forEach((path, k) => {
+        // Pen pressure: each run of one width is its own line.
+        for (const run of pressureRuns(path, a.pressure?.[k], w)) {
+          if (run.w !== lw) ops.push(setLineWidth((lw = run.w)));
+          const p = run.pts;
+          ops.push(moveTo(p[0], p[1]));
+          if (p.length === 2) ops.push(lineTo(p[0] + 0.01, p[1]));
+          for (let i = 2; i + 1 < p.length; i += 2) ops.push(lineTo(p[i], p[i + 1]));
+          ops.push(stroke());
+        }
+      });
       ops.push(popGraphicsState());
-      dict = { ...common, Subtype: 'Ink', Rect: bbox, InkList: a.paths, BS: { W: w }, AP: { N: appearance(ctx, ops, bbox, gstate(ctx, opacity)) } };
+      dict = { ...common, Subtype: 'Ink', Rect: bbox, InkList: a.paths, BS: { W: w }, AP: { N: appearance(ctx, ops, bbox, gstate(ctx, opacity, a.marker)) } };
+      if (a.pressure?.some(Boolean)) dict.WorkPressure = a.pressure.map((p) => (p ? p.map((v) => Math.round(v * 100) / 100) : []));
+      if (a.marker) dict.WorkMarker = true;
       break;
     }
     case 'rect':
@@ -403,10 +425,47 @@ export async function insertPdf(doc, bytes, at) {
   return copies.length;
 }
 
-export async function blankPage(doc, at) {
-  const ref = doc.getPage(Math.max(0, Math.min(at, doc.getPageCount()) - 1));
-  const { width, height } = ref ? ref.getSize() : { width: 612, height: 792 };
-  doc.insertPage(at, [width, height]);
+export const PAPERS = [
+  { id: 'blank', label: 'Blank page' },
+  { id: 'lined', label: 'Lined page' },
+  { id: 'grid', label: 'Grid page' },
+  { id: 'dots', label: 'Dotted page' },
+];
+
+// Faint lines for writing on, drawn into the new page itself.
+export function paperOps(paper, width, height) {
+  const ops = [];
+  const line = (x0, y0, x1, y1) => ops.push(moveTo(x0, y0), lineTo(x1, y1));
+  if (paper === 'lined') {
+    const gap = 24;
+    ops.push(setStrokingRgbColor(0.68, 0.8, 0.92), setLineWidth(0.6));
+    for (let y = height - 72; y > 36; y -= gap) line(0, y, width, y);
+    ops.push(stroke(), setStrokingRgbColor(0.93, 0.6, 0.6), setLineWidth(0.8));
+    line(Math.min(72, width / 6), 0, Math.min(72, width / 6), height);
+    ops.push(stroke());
+  } else if (paper === 'grid') {
+    const gap = 72 / 25.4 * 5;
+    ops.push(setStrokingRgbColor(0.82, 0.86, 0.9), setLineWidth(0.4));
+    for (let x = gap; x < width; x += gap) line(x, 0, x, height);
+    for (let y = height - gap; y > 0; y -= gap) line(0, y, width, y);
+    ops.push(stroke());
+  } else if (paper === 'dots') {
+    const gap = 72 / 25.4 * 5;
+    ops.push(setStrokingRgbColor(0.66, 0.7, 0.76), setLineWidth(1.1), setLineCap(LineCapStyle.Round));
+    for (let x = gap; x < width; x += gap) for (let y = height - gap; y > 0; y -= gap) line(x, y, x + 0.01, y);
+    ops.push(stroke());
+  }
+  return ops.length ? [pushGraphicsState(), ...ops, popGraphicsState()] : [];
+}
+
+// A new page the size the page before it is shown at, blank or with paper lines.
+export async function blankPage(doc, at, paper = 'blank') {
+  const ref = doc.getPageCount() ? doc.getPage(Math.max(0, Math.min(at, doc.getPageCount()) - 1)) : null;
+  let { width, height } = ref ? ref.getSize() : { width: 612, height: 792 };
+  if (ref && ref.getRotation().angle % 180) [width, height] = [height, width];
+  const page = doc.insertPage(at, [width, height]);
+  const ops = paperOps(paper, width, height);
+  if (ops.length) page.pushOperators(...ops);
 }
 
 // A new PDF with just these pages (and their annotations), for Extract.

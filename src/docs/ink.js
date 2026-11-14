@@ -5,8 +5,8 @@
 
 import { escapeHtml, h } from '../shared/shell.js';
 import { icon } from '../shared/icons.js';
+import { PEN_COLORS as COLORS, isPenEraser, pointerPressure, pressureScale } from '../shared/ink-stroke.js';
 
-const COLORS = ['#1f2328', '#2a6fdb', '#d13b3b', '#19a979', '#e8a317', '#8c62c9'];
 const SIZES = [{ label: 'Fine', w: 2 }, { label: 'Medium', w: 4 }, { label: 'Bold', w: 8 }];
 const PAD_W = 1000;
 const PAD_H = 560;
@@ -33,7 +33,7 @@ function drawStroke(ctx, s) {
     const a = pts[i - 1];
     const b = pts[i];
     const c = pts[i + 1] || b;
-    ctx.lineWidth = s.tool === 'marker' ? s.width : Math.max(0.6, s.width * (0.35 + 1.3 * ((a.p + b.p) / 2)));
+    ctx.lineWidth = s.tool === 'marker' ? s.width : Math.max(0.6, s.width * pressureScale((a.p + b.p) / 2));
     ctx.beginPath();
     const m0 = i === 1 ? a : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const m1 = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
@@ -145,7 +145,7 @@ export function drawingPad({ base = null, title = 'Drawing' } = {}) {
     let live = null;
     const at = (e) => {
       const r = canvas.getBoundingClientRect();
-      return { x: ((e.clientX - r.left) / r.width) * PAD_W, y: ((e.clientY - r.top) / r.height) * PAD_H, p: e.pointerType === 'pen' || (e.pressure > 0 && e.pressure !== 0.5) ? e.pressure : 0.5 };
+      return { x: ((e.clientX - r.left) / r.width) * PAD_W, y: ((e.clientY - r.top) / r.height) * PAD_H, p: pointerPressure(e) };
     };
     const erase = (pt) => {
       const before = strokes.length;
@@ -157,7 +157,7 @@ export function drawingPad({ base = null, title = 'Drawing' } = {}) {
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       // The back of a stylus (or its eraser button) erases.
-      const kind = e.buttons & 32 ? 'eraser' : tool.kind;
+      const kind = isPenEraser(e) ? 'eraser' : tool.kind;
       const pt = at(e);
       if (kind === 'eraser') {
         live = { erasing: true };
