@@ -49,6 +49,7 @@ nativeTheme.on('updated', () => {
 
 const launches = new Map(); // webContents id -> { app, file }
 const dirty = new Set(); // webContents ids with unsaved changes
+const autoSaving = new Set(); // dirty windows whose file saves itself on close
 
 const ICON = { home: 'work', docs: 'write', sheets: 'plot', slides: 'present', pdf: 'read' };
 const iconFile = (appName) => path.join(app.isPackaged ? path.join(process.resourcesPath, 'icons') : path.join(__dirname, '..', 'build', 'apps'), `${ICON[appName]}.ico`);
@@ -107,6 +108,7 @@ function openWindow(appName, file = null) {
     clearTimeout(shown);
     launches.delete(id);
     dirty.delete(id);
+    autoSaving.delete(id);
     fresh.delete(id);
     data.closeOwner(id);
     pdfFiles.setFile(id, null);
@@ -114,6 +116,12 @@ function openWindow(appName, file = null) {
   win.on('close', (e) => {
     if (!dirty.has(id)) return;
     e.preventDefault();
+    // AutoSave is on and the file has a place on disk: save it, like a modern office app.
+    if (autoSaving.has(id)) {
+      autoSaving.delete(id);
+      win.webContents.send('app:save-and-close');
+      return;
+    }
     const choice = dialog.showMessageBoxSync(win, {
       type: 'warning',
       buttons: ['Save', "Don't Save", 'Cancel'],
@@ -248,37 +256,73 @@ ipcMain.handle('app:open-dialog', async (e, appName) => {
 
 ipcMain.handle('app:open-path', (e, file) => openPath(file, senderWin(e)));
 
-ipcMain.handle('app:save', async (e, { app: appName, payload, path: current, saveAs, suggestedName }) => {
+// Saving to the file's own path never asks where; only a new file, Save As or
+// a format Work can't write back opens the dialog. quiet (AutoSave) reports
+// problems to the window instead of a dialog box.
+ipcMain.handle('app:save', async (e, { app: appName, payload, path: current, saveAs, suggestedName, quiet }) => {
   const win = senderWin(e);
   let file = saveAs ? null : current;
   if (!file) {
+    if (quiet) return null;
     const res = await dialog.showSaveDialog(win, {
-      defaultPath: current || suggestedName || 'Untitled',
+      defaultPath: suggestedName || current || 'Untitled',
       filters: formats.APPS[appName].save,
     });
     if (res.canceled || !res.filePath) return null;
     file = res.filePath;
     if (!path.extname(file)) file += `.${formats.APPS[appName].save[0].extensions[0]}`;
   }
+  const fail = (title, message) => {
+    if (quiet) return { error: message };
+    dialog.showErrorBox(title, message);
+    return null;
+  };
   try {
+    await keepOriginal(file);
     const saved = await formats.saveFile(appName, file, payload);
+    const kind = appName === 'docs' ? (payload?.notes ? 'notes' : null) : null;
     if (cloud.bindingFor(file)) {
       try {
         const label = await cloud.uploadBack(file);
-        settings.addRecent(appName, file, { kind: appName === 'docs' ? (payload?.notes ? 'notes' : null) : null, cloud: recentCloud(cloud.bindingFor(file)) });
+        settings.addRecent(appName, file, { kind, cloud: recentCloud(cloud.bindingFor(file)) });
         return { ...saved, cloud: label };
       } catch (err) {
-        dialog.showErrorBox('Couldn’t upload', `Your changes are saved on this computer, but uploading them failed: ${err.message || err}`);
-        return null;
+        return fail('Couldn’t upload', `Your changes are saved on this computer, but uploading them failed: ${err.message || err}`);
       }
     }
-    settings.addRecent(appName, file, { kind: appName === 'docs' ? (payload?.notes ? 'notes' : null) : null });
+    settings.addRecent(appName, file, { kind });
     return saved;
   } catch (err) {
-    dialog.showErrorBox('Couldn’t save', String(err.message || err));
-    return null;
+    return fail('Couldn’t save', String(err.message || err));
   }
 });
+
+// The first time Work writes over a file it didn't save itself, the file as it
+// was goes to userData/Backups first, in case the other app had something
+// Work can't keep. Backups older than 30 days are cleared.
+const keptOriginals = new Set();
+async function keepOriginal(file) {
+  if (keptOriginals.has(file)) return;
+  keptOriginals.add(file);
+  const fsp = require('fs/promises');
+  const stat = await fsp.stat(file).catch(() => null);
+  if (!stat?.isFile() || !stat.size) return;
+  if (await formats.savedByWork(file)) return;
+  const dir = path.join(app.getPath('userData'), 'Backups');
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    await fsp.copyFile(file, path.join(dir, `${stamp} ${path.basename(file)}`));
+    const old = Date.now() - 30 * 24 * 3600 * 1000;
+    for (const name of await fsp.readdir(dir)) {
+      const f = path.join(dir, name);
+      const st = await fsp.stat(f).catch(() => null);
+      if (st && st.mtimeMs < old) await fsp.rm(f, { force: true });
+    }
+  } catch {
+    // A backup that can't be made never stops the save.
+  }
+}
 
 ipcMain.handle('app:export-pdf', async (e, { suggestedName, landscape, pageSize }) => {
   const win = senderWin(e);
@@ -317,9 +361,11 @@ ipcMain.handle('app:print', (e) => {
   senderWin(e).webContents.print({ printBackground: true });
 });
 
-ipcMain.handle('app:set-dirty', (e, isDirty) => {
+ipcMain.handle('app:set-dirty', (e, isDirty, opts) => {
   if (isDirty) dirty.add(e.sender.id);
   else dirty.delete(e.sender.id);
+  if (isDirty && opts?.autoSave) autoSaving.add(e.sender.id);
+  else autoSaving.delete(e.sender.id);
   senderWin(e)?.setDocumentEdited?.(isDirty);
 });
 
