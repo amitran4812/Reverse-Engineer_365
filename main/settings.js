@@ -85,6 +85,7 @@ function publicSettings() {
     ready: provider === 'anthropic' ? hasKey : others[provider].hasKey && Boolean(others[provider].model),
     ai: others,
     coach: Boolean(raw.coach),
+    autoSave: raw.autoSave !== false,
     theme: THEMES.includes(raw.theme) ? raw.theme : 'system',
     hasKey,
     keyFromEnv: Boolean(process.env.ANTHROPIC_API_KEY),
@@ -95,7 +96,7 @@ function publicSettings() {
   };
 }
 
-function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, coach, autoUpdate, theme }) {
+function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, coach, autoUpdate, autoSave, theme }) {
   let raw = readRaw();
   if (aiKeys && typeof aiKeys === 'object') {
     for (const [id, k] of Object.entries(aiKeys)) if (['openai', 'gemini'].includes(id) && typeof k === 'string') setSecret(`ai-key:${id}`, k.trim() || null);
@@ -108,6 +109,7 @@ function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModel
   if (provider && AI[provider]) raw.provider = provider;
   if (typeof coach === 'boolean') raw.coach = coach;
   if (typeof autoUpdate === 'boolean') raw.autoUpdate = autoUpdate;
+  if (typeof autoSave === 'boolean') raw.autoSave = autoSave;
   if (THEMES.includes(theme)) raw.theme = theme;
   if (cloudClients && typeof cloudClients === 'object') {
     raw.cloudClients = { ...(raw.cloudClients || {}) };

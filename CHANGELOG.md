@@ -2,6 +2,15 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.45: Save goes back to your file, and AutoSave
+
+- **Save writes straight back to the file you opened.** Open a PowerPoint, Word or Excel file (.pptx, .docx, .xlsx), or an .ods, .csv, .html or .txt file, press **Ctrl+S** and it is saved in the same place and the same format. Work no longer asks where to save it. **Save As** is still there when you want a copy.
+- **No more "Do you want to save?" for files you didn't change.** Opening a file and closing it again closes it straight away.
+- **AutoSave**, switched on in the title bar of Write, Plot, Present and Read. Once a file has a place on your computer (or in your cloud drive), every change is saved to it a moment later, and closing the window saves it instead of asking. Turn the switch off to go back to saving yourself; the choice is remembered. New files still ask for a name the first time.
+- **Your original is kept.** The first time Work saves over a file another app made, a copy of the file as it was goes to the Backups folder in Work's data folder for 30 days.
+- Files Work can open but can't write in their own format (.odt, .odp, .rtf, .xls, .pptm and similar) open unchanged. Saving one suggests a .docx, .xlsx or .pptx with the same name in the same folder.
+- If the file is open in another app that locks it, Work says so instead of failing quietly, and AutoSave pauses until you save again.
+
 ## 0.2.44: Write on PDFs with a pen or your finger
 
 - **A new Draw tab in Read** for writing and drawing straight on a PDF with a stylus, a touch screen or a mouse. Pick the **Pen** or the see-through **Highlighter**, a colour and a thickness, and write.

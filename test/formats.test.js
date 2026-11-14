@@ -10,7 +10,7 @@ const { exportDocx, importDocx } = require('../main/formats/docx');
 const { exportXlsx, importXlsx, importOoxml, importCsv, exportCsv } = require('../main/formats/xlsx');
 const { reshape } = require('./fixtures/odd-xlsx');
 const { exportPptx } = require('../main/formats/pptx');
-const { openFile, saveFile, appForFile } = require('../main/formats');
+const { openFile, saveFile, appForFile, savedByWork } = require('../main/formats');
 const cellref = require('../common/cellref');
 
 const PNG_1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -206,8 +206,11 @@ test('openFile / saveFile route by extension', async () => {
   const edited = path.join(dir, 'edited.pptx');
   fs.writeFileSync(edited, await zip.generateAsync({ type: 'nodebuffer' }));
   const foreign = await openFile(edited);
-  assert.equal(foreign.path, null);
+  // It still opens in place: Save writes back to the same .pptx.
+  assert.equal(foreign.path, edited);
   assert.notEqual(foreign.data.theme, 'midnight');
+  assert.equal(await savedByWork(deck), true);
+  assert.equal(await savedByWork(fixture('styled.pptx')), false);
 
   // Older versions saved .reaslides: it opens as a copy that saves as .pptx.
   const old = path.join(dir, 'old.reaslides');
@@ -243,9 +246,11 @@ test('imports PowerPoint, OpenDocument and legacy Excel files', async () => {
   assert.deepEqual([words(first), first.notes], [[['title', 'Launch plan'], ['subtitle', 'Q3 review']], 'Welcome everyone.']);
   assert.deepEqual([words(second), second.notes], [[['title', 'Goals'], ['body', 'Grow revenue\nHire two engineers']], 'Focus on revenue first.']);
   assert.deepEqual(words(third).slice(1), [['body', 'Slow'], ['body', 'Fast']]);
+  assert.equal(odp.importedFrom, fx('deck.odp'));
+  assert.equal(odp.generated, undefined);
   const pptx = await openFile(fx('deck.pptx'));
   assert.equal(pptx.app, 'slides');
-  assert.equal(pptx.path, null);
+  assert.equal(pptx.path, fx('deck.pptx'));
   const text = (s) => s.elements.map((e) => (e.html || '').replace(/<[^>]+>/g, '')).filter(Boolean);
   const [p1, p2, p3] = pptx.data.slides;
   assert.deepEqual(text(p1), ['Launch plan', 'Q3 review']);
@@ -500,4 +505,16 @@ test('docx table cell colours survive opening and saving', async () => {
   const buf = await exportDocx({ json: { type: 'doc', content: [{ type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: { background: '#4f81bd' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Region' }] }] }] }] }] } });
   const xml = await (await JSZip.loadAsync(buf)).file('word/document.xml').async('string');
   assert.match(xml, /w:fill="4F81BD"/i);
+});
+
+test('saving over a file swaps it in whole and leaves nothing beside it', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'work-'));
+  const file = path.join(dir, 'Report.docx');
+  fs.copyFileSync(fixture('writer.docx'), file);
+  const opened = await openFile(file);
+  assert.equal(opened.path, file);
+  await saveFile('docs', file, { json: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Changed' }] }] } });
+  assert.deepEqual(fs.readdirSync(dir), ['Report.docx']);
+  assert.match((await openFile(file)).data.html, /Changed/);
+  assert.equal(await savedByWork(file), true);
 });

@@ -1499,6 +1499,8 @@ const shell = await createShell({
     return { format: 'rea-slides', version: 1, theme: deck.theme, ...(custom ? { themeData: custom } : {}), slides: deck.slides, ...own, export: exportModel() };
   },
   pdfOptions: () => ({ pageSize: { width: 10, height: (10 * H) / W } }),
+  // Not while a text box is being typed in: saving would end the edit.
+  canAutoSave: () => !editingId,
   beforePrint: () => {
     finishEditing();
     printDeck.innerHTML = '';

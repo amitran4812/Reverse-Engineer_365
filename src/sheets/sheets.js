@@ -2133,6 +2133,8 @@ const shell = await createShell({
     }
     return liveSave();
   },
+  // Google Sheets files sync themselves; the analysis workspace saves its own project.
+  canAutoSave: () => !editing && !live && !(analysisOn && analysis.hasData()),
   exports: [{ label: 'CSV (current sheet)', detail: 'Values of the current sheet, comma-separated.', icon: 'grid', ext: 'csv' }],
   pdfOptions: () => ({ landscape: true }),
   claude: {

@@ -41,10 +41,11 @@ const APPS = {
   },
 };
 
-// Formats Work reads but can't write back: they open as an unsaved copy.
-// A .pptx Work saved itself opens in place; other .pptx files open as a copy
-// so saving never rewrites someone's PowerPoint deck by surprise.
-const IMPORT_ONLY = ['odt', 'fodt', 'ott', 'rtf', 'docm', 'dotx', 'dotm', 'xlsm', 'xltx', 'xltm', 'xlsb', 'xls', 'fods', 'ots', 'numbers', 'pptx', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm', 'odp', 'fodp', 'otp', 'reaslides'];
+// Formats Work reads but can't write back: they open unchanged, and the first
+// Save asks for a name next to the original in a format Work writes. .docx,
+// .xlsx, .pptx, .ods, .csv, .html and .txt save straight back to their file
+// (the first time over a file another app made, a copy goes to Backups).
+const IMPORT_ONLY = ['odt', 'fodt', 'ott', 'rtf', 'docm', 'dotx', 'dotm', 'xlsm', 'xltx', 'xltm', 'xlsb', 'xls', 'fods', 'ots', 'numbers', 'pptm', 'ppsx', 'ppsm', 'potx', 'potm', 'odp', 'fodp', 'otp', 'reaslides'];
 
 // Apple's own formats are a private database, not a document; the apps export standard files.
 const APPLE = {
@@ -201,7 +202,7 @@ async function openFile(file) {
     default:
       throw new Error(`Unsupported file type: .${ext}`);
   }
-  if (IMPORT_ONLY.includes(ext)) return { app, path: null, name, ext, data, generated: true, importedFrom: file };
+  if (IMPORT_ONLY.includes(ext)) return { app, path: null, name, ext, data, importedFrom: file };
   return { app, path: file, name, ext, data };
 }
 
@@ -263,8 +264,38 @@ async function saveFile(appName, file, payload) {
     if (ext === 'pptx') out = await exportPptx({ ...(resolved || native), title }, native);
   }
   if (out === undefined) throw new Error(`Can't save ${appName} as .${ext}`);
-  await fs.writeFile(file, out);
+  await writeSafely(file, out);
   return { path: file, name: path.basename(file), ext };
 }
 
-module.exports = { APPS, IMPORT_ONLY, TABLE_EXTS, appForFile, openFile, readTable, saveFile, extOf };
+// Write next to the file, then swap it in, so a save that fails halfway
+// (or AutoSave while the computer shuts down) never leaves half a document.
+async function writeSafely(file, out) {
+  const tmp = path.join(path.dirname(file), `~$${path.basename(file)}.saving`);
+  try {
+    await fs.writeFile(tmp, out);
+    await fs.rename(tmp, file);
+  } catch (err) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    // Windows locks a file another app has open.
+    if (['EBUSY', 'EPERM', 'EACCES'].includes(err.code)) throw new Error(`${path.basename(file)} is open in another app or is read-only. Close it there and save again, or use Save As.`);
+    throw err;
+  }
+}
+
+// Whether Work wrote this file last (its own .docx/.xlsx/.pptx), so writing
+// over it can't lose anything another app put there.
+async function savedByWork(file) {
+  const ext = extOf(file);
+  if (!['docx', 'xlsx', 'pptx'].includes(ext)) return false;
+  try {
+    const zip = await require('jszip').loadAsync(await fs.readFile(file));
+    if (zip.file('work/deck.json')) return true;
+    const core = (await zip.file('docProps/core.xml')?.async('string')) || '';
+    return /<dc:creator>Work<\/dc:creator>/.test(core);
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { APPS, IMPORT_ONLY, TABLE_EXTS, appForFile, openFile, readTable, saveFile, savedByWork, extOf };

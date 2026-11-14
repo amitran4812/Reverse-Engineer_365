@@ -518,7 +518,7 @@ async function extract() {
 
 const baseName = () => shell.state.name.replace(/\.pdf$/i, '');
 
-async function savePdf({ saveAs = false, copy = false } = {}) {
+async function savePdf({ saveAs = false, copy = false, quiet = false } = {}) {
   if (!reader.doc) return false;
   if (!editable && !copy) {
     toast(locked || 'This PDF can’t be changed.', 'error');
@@ -529,6 +529,7 @@ async function savePdf({ saveAs = false, copy = false } = {}) {
     const res = await window.office.pdf.save({ bytes, saveAs, copy, suggestedName: copy ? `${baseName()} copy.pdf` : shell.state.name });
     if (!res) return false;
     if (res.error) {
+      if (quiet) throw new Error(res.error);
       toast(res.error, 'error');
       return false;
     }
@@ -537,9 +538,10 @@ async function savePdf({ saveAs = false, copy = false } = {}) {
       shell.state.name = res.name;
       shell.markClean();
     }
-    toast(`Saved ${res.name}`);
+    if (!quiet) toast(`Saved ${res.name}`);
     return true;
   } catch (err) {
+    if (quiet) throw err;
     toast(`Couldn’t save: ${err.message || err}`, 'error');
     return false;
   }
@@ -1225,6 +1227,8 @@ const shell = await createShell({
   redo: () => redo(),
   customSave: () => savePdf(),
   customSaveAs: () => savePdf({ saveAs: true }),
+  autoSave: () => savePdf({ quiet: true }),
+  canAutoSave: () => !!reader.doc && editable,
   getSaveData: () => null,
   exportPdf: () => savePdf({ copy: true }),
   print: () => printPdf(),

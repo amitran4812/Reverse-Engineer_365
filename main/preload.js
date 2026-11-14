@@ -20,7 +20,8 @@ contextBridge.exposeInMainWorld('office', {
   save: (req) => ipcRenderer.invoke('app:save', req),
   exportPdf: (opts) => ipcRenderer.invoke('app:export-pdf', opts || {}),
   print: () => ipcRenderer.invoke('app:print'),
-  setDirty: (d) => ipcRenderer.invoke('app:set-dirty', !!d),
+  // autoSave: closing saves this window's file instead of asking.
+  setDirty: (d, opts) => ipcRenderer.invoke('app:set-dirty', !!d, { autoSave: !!opts?.autoSave }),
   setTitle: (t) => ipcRenderer.invoke('app:set-title', String(t)),
   close: () => ipcRenderer.invoke('app:close'),
   fullscreen: (on) => ipcRenderer.invoke('app:fullscreen', on),

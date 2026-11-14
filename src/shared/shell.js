@@ -149,6 +149,7 @@ export async function createShell(opts) {
     path: info.file?.path || null,
     name: info.file?.name || `${meta.kind}1`,
     dirty: false,
+    rev: 0, // goes up with every change, so a save knows if more came in meanwhile
   };
 
   const root = h('div', `app app-${opts.app}`);
@@ -160,6 +161,10 @@ export async function createShell(opts) {
     { icon: 'undo', title: 'Undo (Ctrl+Z)', run: () => opts.undo?.() },
     { icon: 'redo', title: 'Redo (Ctrl+Y)', run: () => opts.redo?.() },
   ];
+  const autoBtn = h('button', 'qa-autosave', '<span>AutoSave</span><i class="qa-switch"></i>');
+  autoBtn.setAttribute('role', 'switch');
+  autoBtn.onmousedown = (e) => e.preventDefault();
+  qa.append(autoBtn);
   for (const b of qaButtons) {
     const btn = h('button', 'qa-btn', icon(b.icon, 16));
     btn.title = b.title;
@@ -208,33 +213,40 @@ export async function createShell(opts) {
       window.office.setTitle(document.title);
     },
     markDirty() {
+      state.rev += 1;
       if (!state.dirty) {
         state.dirty = true;
-        window.office.setDirty(true);
+        window.office.setDirty(true, { autoSave: autoSaving() });
         shell.setTitle();
       }
+      scheduleAutoSave();
     },
     markClean() {
       state.dirty = false;
       window.office.setDirty(false);
       shell.setTitle();
     },
-    async save({ saveAs = false, ext } = {}) {
+    // auto: AutoSave writing an opened file back in place, never asking anything.
+    async save({ saveAs = false, ext, auto = false } = {}) {
+      if (auto) return autoSave();
       if (saveAs && !ext && opts.customSaveAs) return opts.customSaveAs();
       if (!saveAs && !ext && opts.customSave && (await opts.customSave())) return true;
+      const rev = state.rev;
       const payload = await opts.getSaveData();
       const baseName = state.name.replace(/\.[^.]+$/, '');
+      // A file Work can't write back (.odt, .xls, .odp…) is saved next to the original.
+      const besideOriginal = !state.path && info.file?.importedFrom ? `${info.file.importedFrom.replace(/\.[^.\\/]+$/, '')}.${opts.defaultExt}` : null;
       const res = await window.office.save({
         app: opts.app,
         payload,
         path: ext ? null : state.path,
         saveAs: saveAs || !!ext,
-        suggestedName: ext ? `${baseName}.${ext}` : state.path || `${baseName}.${opts.defaultExt}`,
+        suggestedName: ext ? `${baseName}.${ext}` : state.path || besideOriginal || `${baseName}.${opts.defaultExt}`,
       });
       if (!res) return false;
-      state.path = res.path;
-      state.name = res.name;
-      shell.markClean();
+      autoError = '';
+      saved(res, rev);
+      drawAuto();
       toast(res.cloud ? `Saved ${res.name} to ${res.cloud}` : `Saved ${res.name}`);
       return true;
     },
@@ -301,6 +313,95 @@ export async function createShell(opts) {
     },
   };
 
+  // AutoSave: a file that has a place on disk saves itself a moment after each
+  // change, and closing it saves instead of asking. New files still get Save As.
+  let autoOn = true;
+  let autoTimer = null;
+  let autoBusy = false;
+  let autoError = '';
+  const autoDelay = () => (info.file?.cloud ? 8000 : 2000);
+  function autoSaving() {
+    return autoOn && !autoError && !!state.path;
+  }
+  function saved(res, rev) {
+    const moved = res.path !== state.path;
+    state.path = res.path;
+    state.name = res.name;
+    // Changes made while the file was being written still need saving.
+    if (state.rev === rev) shell.markClean();
+    else scheduleAutoSave();
+    if (moved) drawAuto();
+  }
+  function scheduleAutoSave(delay = autoDelay()) {
+    clearTimeout(autoTimer);
+    if (state.dirty && autoSaving()) autoTimer = setTimeout(() => autoSave(), delay);
+  }
+  async function autoSave() {
+    if (!state.dirty || !autoSaving()) return false;
+    // Mid-edit (typing in a cell or text box) or a busy save: try again shortly.
+    if (autoBusy || opts.canAutoSave?.() === false) {
+      scheduleAutoSave();
+      return false;
+    }
+    autoBusy = true;
+    try {
+      if (opts.autoSave) return await opts.autoSave();
+      const rev = state.rev;
+      const payload = await opts.getSaveData();
+      const res = await window.office.save({ app: opts.app, payload, path: state.path, quiet: true });
+      if (res?.error) throw new Error(res.error);
+      if (!res) return false;
+      saved(res, rev);
+      autoBtn.title = `AutoSave is on. Saved ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+      return true;
+    } catch (err) {
+      // Stop retrying and fall back to asking on close until the next manual save.
+      autoError = String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+      toast(`AutoSave is paused: ${autoError}`, 'error');
+      window.office.setDirty(state.dirty, { autoSave: false });
+      drawAuto();
+      return false;
+    } finally {
+      autoBusy = false;
+    }
+  }
+  function drawAuto() {
+    const on = autoOn && !!state.path;
+    autoBtn.classList.toggle('on', on);
+    autoBtn.classList.toggle('paused', on && !!autoError);
+    autoBtn.setAttribute('aria-checked', String(on));
+    autoBtn.title = !autoOn
+      ? 'AutoSave is off. Turn it on to save changes to this file as you work.'
+      : !state.path
+        ? 'AutoSave turns on once this file is saved. Click to save it.'
+        : autoError
+          ? `AutoSave is paused: ${autoError}`
+          : 'AutoSave is on. Changes are saved to this file as you work.';
+    if (state.dirty) window.office.setDirty(true, { autoSave: autoSaving() });
+  }
+  autoBtn.onclick = async () => {
+    if (autoOn && !state.path) {
+      await shell.save();
+      return;
+    }
+    autoOn = !autoOn;
+    autoError = '';
+    await window.office.settings.set({ autoSave: autoOn });
+    drawAuto();
+    if (autoOn && !state.path) await shell.save();
+    scheduleAutoSave(0);
+  };
+  const loadAuto = () =>
+    window.office.settings.get().then((st) => {
+      autoOn = st.autoSave !== false;
+      drawAuto();
+      scheduleAutoSave();
+    });
+  // Another window may have turned it on or off.
+  window.addEventListener('focus', loadAuto);
+  drawAuto();
+  loadAuto();
+
   const ribbon = new Ribbon(ribbonHost, { tabs, accent: meta.accent, onFile: () => shell.openBackstage(), onSelect: (id) => opts.onTab?.(id) });
   const backstage = new Backstage(shell, opts, meta);
   root.append(backstage.node);
@@ -341,6 +442,7 @@ export async function createShell(opts) {
   });
 
   window.office.onSaveAndClose(async () => {
+    clearTimeout(autoTimer);
     if (await shell.save()) window.office.close();
   });
 

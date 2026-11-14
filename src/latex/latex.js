@@ -611,6 +611,7 @@ const shell = await createShell({
     return true;
   },
   customSaveAs: () => saveCurrentAs(),
+  autoSave: () => saveAll({ quiet: true }),
   exportPdf: () => downloadPdf(),
   print: () => api.openPdf(mainFile).then((r) => r?.error && toast(r.error, 'error')),
   exports: [{ label: 'Project as a .zip', detail: 'Every .tex, .bib and picture in the project, plus the compiled PDF, in one .zip file.', icon: 'zip', run: () => downloadZip() }],
@@ -1216,7 +1217,8 @@ async function saveFile(path) {
   return true;
 }
 
-async function saveAll() {
+// quiet: AutoSave, with no toast and no history version for every pause in typing.
+async function saveAll({ quiet = false } = {}) {
   let n = 0;
   for (const [path, buf] of buffers) {
     if (buf.dirty && (await saveFile(path))) n += 1;
@@ -1224,8 +1226,9 @@ async function saveAll() {
   drawTree();
   drawCrumb();
   updateDirty();
-  if (n) toast(`Saved ${n} file${n === 1 ? '' : 's'}`);
+  if (n && !quiet) toast(`Saved ${n} file${n === 1 ? '' : 's'}`);
   await flushReview();
+  if (quiet) return true;
   api.history.snapshot({ reason: 'save' }).then((r) => r?.error && console.warn(r.error));
   return true;
 }
