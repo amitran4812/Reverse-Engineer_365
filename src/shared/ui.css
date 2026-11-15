@@ -454,3 +454,6 @@ button { cursor: default; }
 .theme-choice-system .theme-sample { background: linear-gradient(90deg, #e8eaee 50%, #17181b 50%); }
 .theme-choice-system .theme-sample i:nth-child(2) { background: linear-gradient(90deg, #f7f8fa 50%, #1c1e22 50%); }
 .theme-choice-system .theme-sample i:nth-child(3) { background: linear-gradient(90deg, #fff 50%, #232528 50%); }
+.ai-key-card .ai-key-pick { grid-column: 1 / -1; max-width: 420px; margin-bottom: 2px; }
+.ai-key-card code { font-size: 12px; }
+.ai-key-card [hidden] { display: none; }

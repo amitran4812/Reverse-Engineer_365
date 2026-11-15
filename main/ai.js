@@ -1,19 +1,34 @@
 'use strict';
 
-// OpenAI (ChatGPT models) and Google Gemini, for people who'd rather use
-// those than Claude. Same contract as claude.js: stream text deltas to the
-// renderer, honour a JSON schema when a feature asks for one, and send
+// The other AIs, for people who'd rather use those than Claude: ChatGPT
+// sign-in, OpenAI, Gemini, and any service with an OpenAI-compatible API
+// (Grok, Groq, OpenRouter, Mistral, DeepSeek, Ollama on this computer, or a
+// base URL of your own). Same contract as claude.js: stream text deltas to
+// the renderer, honour a JSON schema when a feature asks for one, and send
 // attached files along. Keys stay in the main process.
 
 const settings = require('./settings');
 const attachments = require('./attachments');
 const chatgptAuth = require('./chatgpt');
+const shared = require('../common/ai-providers');
+
+const envBase = (id) => process.env[`REA_${id.toUpperCase()}_BASE_URL`];
 
 const PROVIDERS = {
   chatgpt: { label: 'ChatGPT' },
-  openai: { label: 'OpenAI', keysUrl: 'https://platform.openai.com/api-keys', base: () => process.env.REA_OPENAI_BASE_URL || 'https://api.openai.com/v1' },
-  gemini: { label: 'Gemini', keysUrl: 'https://aistudio.google.com/apikey', base: () => process.env.REA_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta' },
+  openai: { label: 'OpenAI', keysUrl: 'https://platform.openai.com/api-keys', base: () => envBase('openai') || 'https://api.openai.com/v1' },
+  gemini: { label: 'Gemini', keysUrl: 'https://aistudio.google.com/apikey', base: () => envBase('gemini') || 'https://generativelanguage.googleapis.com/v1beta' },
 };
+for (const p of shared.KEYED.filter((x) => x.compat)) {
+  PROVIDERS[p.id] = {
+    label: shared.LABELS[p.id],
+    compat: true,
+    local: Boolean(p.local),
+    keysUrl: p.keys,
+    // Ollama and "Other" can point anywhere; the rest only at their own service.
+    base: () => envBase(p.id) || ((p.local || p.custom) && settings.readRaw().aiBase?.[p.id]) || p.base,
+  };
+}
 
 const active = new Map();
 
@@ -153,6 +168,108 @@ const gemini = {
   },
 };
 
+// Services with an OpenAI-compatible chat completions API. They differ in
+// what they accept, so a request that's refused (400/422) is tried again
+// simpler: JSON mode with the schema in the prompt instead of a strict
+// schema, then no response format, then without pictures for text-only
+// models. Structured replies are collected and cleaned up before they're
+// passed on, and a model's <think> section is left out.
+function compatParts(blocks, text, opts) {
+  const parts = [];
+  for (const b of blocks) {
+    if (b.type === 'image') {
+      if (opts.images) parts.push({ type: 'image_url', image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } });
+      else parts.push({ type: 'text', text: '(A picture was attached, but this model can’t see pictures.)' });
+    } else if (b.type === 'document') {
+      if (opts.pdf) parts.push({ type: 'file', file: { filename: b.title || 'document.pdf', file_data: `data:application/pdf;base64,${b.source.data}` } });
+      else parts.push({ type: 'text', text: `(The PDF "${b.title || 'document.pdf'}" was attached, but this AI can’t read PDF files. Attach it as text, or use Claude, OpenAI, Gemini or OpenRouter for PDFs.)` });
+    } else parts.push({ type: 'text', text: b.text });
+  }
+  if (parts.every((x) => x.type === 'text')) return [...parts.map((x) => x.text), text].join('\n\n');
+  return [...parts, { type: 'text', text }];
+}
+
+const COMPAT_STEPS = [
+  { format: 'schema', images: true },
+  { format: 'json', images: true },
+  { format: 'prompt', images: true },
+  { format: 'prompt', images: false },
+];
+
+const compat = {
+  request(id, { system, messages, format }, model, step) {
+    const info = shared.byId[id];
+    const asked = format && step.format !== 'schema';
+    const sys = asked ? `${system}\n\nReply with only a JSON value that matches this JSON schema, with no other text and no code fences:\n${JSON.stringify(format)}` : system;
+    const body = {
+      model,
+      stream: true,
+      messages: [
+        { role: 'system', content: sys },
+        ...messages.map((m) => ({
+          role: m.role,
+          content: m.attachments?.length && m.role === 'user'
+            ? compatParts(attachments.blocks(m.attachments), m.content, { images: step.images && !info.noImages, pdf: info.pdf })
+            : m.content,
+        })),
+      ],
+    };
+    if (format && step.format === 'schema') body.response_format = { type: 'json_schema', json_schema: { name: 'result', strict: true, schema: format } };
+    if (format && step.format === 'json') body.response_format = { type: 'json_object' };
+    return body;
+  },
+  headers(id, key) {
+    const h = { 'content-type': 'application/json' };
+    if (key) h.authorization = `Bearer ${key}`;
+    // OpenRouter shows the app's name in its activity page.
+    if (id === 'openrouter') Object.assign(h, { 'http-referer': 'https://github.com/amitran4812/Reverse-Engineer_365', 'x-title': 'Work' });
+    return h;
+  },
+  async stream(id, key, model, payload, signal, onText) {
+    const p = PROVIDERS[id];
+    const base = p.base();
+    if (!base) throw new ProviderError(400, 'Add the server’s base URL first (File > Options).');
+    const hasPics = payload.messages.some((m) => m.attachments?.length);
+    const steps = payload.format ? COMPAT_STEPS.filter((st) => st.images || hasPics) : [COMPAT_STEPS[0], ...(hasPics ? [COMPAT_STEPS[3]] : [])];
+    let res;
+    for (const step of steps) {
+      res = await fetch(`${base}/chat/completions`, { method: 'POST', headers: this.headers(id, key), body: JSON.stringify(this.request(id, payload, model, step)), signal });
+      if (res.ok || ![400, 422].includes(res.status)) break;
+    }
+    if (!res.ok) throw await failure(res, p.label);
+    const think = shared.thinkFilter();
+    let full = '';
+    const emit = (t) => {
+      if (!t) return;
+      if (payload.format) full += t;
+      else onText(t);
+    };
+    let stop = null;
+    await readSse(res, (d) => {
+      if (d.error) throw new ProviderError(500, `${p.label} error: ${d.error.message || d.error}`);
+      const c = d.choices?.[0];
+      if (c?.delta?.content) emit(think(c.delta.content));
+      if (c?.delta?.refusal) emit(c.delta.refusal);
+      if (c?.finish_reason) stop = c.finish_reason;
+    });
+    emit(think(null));
+    if (payload.format && full) onText(shared.extractJson(full));
+    return stop === 'length' ? 'max_tokens' : stop === 'content_filter' ? 'refusal' : 'end_turn';
+  },
+  async models(id, key, typed) {
+    const p = PROVIDERS[id];
+    const base = ((p.local || id === 'custom') && shared.cleanBase(typed)) || p.base();
+    if (!base) throw new ProviderError(400, 'Add the server’s base URL first.');
+    const res = await fetch(`${base}/models`, { headers: this.headers(id, key) });
+    if (!res.ok) throw await failure(res, p.label);
+    const list = (await res.json()).data || [];
+    const ids = shared.chatModels(list.filter((m) => !m.architecture?.output_modalities || m.architecture.output_modalities.includes('text')).map((m) => m.id));
+    // OpenRouter: free models first, since they cost nothing.
+    if (id === 'openrouter') return ids.sort((a, b) => (b.endsWith(':free') - a.endsWith(':free')) || a.localeCompare(b));
+    return ids.sort();
+  },
+};
+
 function responsesParts(blocks, text) {
   const parts = blocks.map((b) => {
     if (b.type === 'image') return { type: 'input_image', image_url: `data:${b.source.media_type};base64,${b.source.data}` };
@@ -215,6 +332,26 @@ const chatgpt = {
 };
 
 const IMPL = { chatgpt, openai, gemini };
+for (const id of Object.keys(PROVIDERS)) {
+  if (PROVIDERS[id].compat) {
+    IMPL[id] = {
+      stream: (key, model, payload, signal, onText) => compat.stream(id, key, model, payload, signal, onText),
+      models: (key, base) => compat.models(id, key, base),
+    };
+  }
+}
+
+// What to tell someone when a service can't be reached at all.
+function unreachable(providerId, err) {
+  const p = PROVIDERS[providerId];
+  const msg = err?.cause?.code || err?.message || String(err);
+  if (p.local && /ECONNREFUSED|fetch failed/i.test(msg)) return `Could not reach Ollama at ${p.base()}. Start Ollama (it runs in the background once installed) and try again.`;
+  if (/ENOTFOUND|EAI_AGAIN/.test(msg)) return `Could not reach ${p.label}. Check the address and your internet connection.`;
+  return `Could not reach ${p.label}: ${err?.message || err}`;
+}
+
+// Keyless services (Ollama, or a server of your own without a key) still go through the same path.
+const needsKey = (id) => !(PROVIDERS[id].local || id === 'custom');
 
 async function start(sender, id, payload, providerId) {
   const p = PROVIDERS[providerId];
@@ -226,7 +363,7 @@ async function start(sender, id, payload, providerId) {
   } catch (err) {
     return send({ type: 'error', message: err.message });
   }
-  if (!key) return send({ type: 'error', message: `Add your ${p.label} API key first (File > Options).` });
+  if (!key && needsKey(providerId)) return send({ type: 'error', message: `Add your ${p.label} API key first (File > Options).` });
   if (!model) return send({ type: 'error', message: `Pick a ${p.label} model in File > Options.` });
   const controller = new AbortController();
   active.set(id, controller);
@@ -236,27 +373,27 @@ async function start(sender, id, payload, providerId) {
     else send({ type: 'done', stopReason: stop });
   } catch (err) {
     if (err?.name === 'AbortError') send({ type: 'done', stopReason: 'cancelled' });
-    else send({ type: 'error', message: err instanceof ProviderError ? err.message : `Could not reach ${p.label}: ${err?.message || err}` });
+    else send({ type: 'error', message: err instanceof ProviderError ? err.message : unreachable(providerId, err) });
   } finally {
     active.delete(id);
   }
 }
 
 // Checks a key and returns the chat models it can use.
-async function models(providerId, key) {
+async function models(providerId, key, base) {
   const p = PROVIDERS[providerId];
   if (!p) return { ok: false, message: 'Unknown provider.' };
   try {
     const k = providerId === 'chatgpt' ? await chatgptAuth.token() : (key || '').trim() || settings.getSecret(`ai-key:${providerId}`);
-    if (!k) return { ok: false, message: `Paste your ${p.label} API key first.` };
-    return { ok: true, models: await IMPL[providerId].models(k) };
+    if (!k && needsKey(providerId)) return { ok: false, message: `Paste your ${p.label} API key first.` };
+    return { ok: true, models: await IMPL[providerId].models(k, base) };
   } catch (err) {
-    return { ok: false, message: err instanceof ProviderError || err?.friendly ? err.message : `Could not reach ${p.label}: ${err?.message || err}` };
+    return { ok: false, message: err instanceof ProviderError || err?.friendly ? err.message : unreachable(providerId, err) };
   }
 }
 
 // Picture generation for notes. Uses an image model on whichever of the
-// OpenAI or Gemini keys is saved (the chosen AI first). Claude and a ChatGPT
+// OpenAI, Gemini or Grok keys is saved (the chosen AI first). Claude and a ChatGPT
 // sign-in have no image model for apps, so the caller falls back to an
 // SVG drawing when this returns { ok: false, fallback: true }.
 const imageModels = {
@@ -298,6 +435,30 @@ async function openaiImage(key, prompt) {
   throw new ProviderError(500, 'OpenAI returned no picture.');
 }
 
+// Grok's picture model, through xAI's OpenAI-style images endpoint.
+async function xaiImage(key, prompt) {
+  const base = PROVIDERS.xai.base();
+  let model = 'grok-2-image';
+  try {
+    const res = await fetch(`${base}/models`, { headers: { authorization: `Bearer ${key}` } });
+    const ids = res.ok ? ((await res.json()).data || []).map((m) => m.id).filter((id) => /image/.test(id)).sort() : [];
+    model = ids[ids.length - 1] || model;
+  } catch {}
+  const res = await fetch(`${base}/images/generations`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model, prompt, n: 1, response_format: 'b64_json' }),
+  });
+  if (!res.ok) throw await failure(res, 'Grok');
+  const d = (await res.json()).data?.[0];
+  if (d?.b64_json) return `data:image/jpeg;base64,${d.b64_json}`;
+  if (d?.url) {
+    const img = await fetch(d.url);
+    return `data:${img.headers.get('content-type') || 'image/jpeg'};base64,${Buffer.from(await img.arrayBuffer()).toString('base64')}`;
+  }
+  throw new ProviderError(500, 'Grok returned no picture.');
+}
+
 async function geminiImage(key, prompt) {
   const model = await imageModels.gemini(key);
   if (!model) throw new ProviderError(404, 'Your Gemini key has no picture model.');
@@ -317,12 +478,12 @@ async function image(prompt) {
   const text = String(prompt || '').trim().slice(0, 4000);
   if (!text) return { ok: false, message: 'Describe the picture first.' };
   const chosen = settings.readRaw().provider;
-  const order = ['openai', 'gemini'].sort((a, b) => (b === chosen) - (a === chosen));
+  const order = ['openai', 'gemini', 'xai'].sort((a, b) => (b === chosen) - (a === chosen));
   const keyed = order.map((id) => ({ id, key: settings.getSecret(`ai-key:${id}`) })).filter((p) => p.key);
   if (!keyed.length) return { ok: false, fallback: true };
   const { id, key } = keyed[0];
   try {
-    const src = id === 'openai' ? await openaiImage(key, text) : await geminiImage(key, text);
+    const src = await { openai: openaiImage, gemini: geminiImage, xai: xaiImage }[id](key, text);
     return { ok: true, src, by: PROVIDERS[id].label };
   } catch (err) {
     return { ok: false, message: err instanceof ProviderError ? err.message : `Could not reach ${PROVIDERS[id].label}: ${err?.message || err}` };

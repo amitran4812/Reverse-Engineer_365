@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { app, safeStorage } = require('electron');
 const { mergeRecent, sortRecent } = require('../common/recent');
+const aiShared = require('../common/ai-providers');
 
 const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (best quality)' },
@@ -16,7 +17,8 @@ const MODELS = [
 
 const DEFAULTS = { model: 'claude-opus-5-5', effort: 'medium', recent: [], provider: 'anthropic', aiModels: {}, theme: 'system' };
 const THEMES = ['system', 'light', 'dark'];
-const AI = { anthropic: 'Claude', chatgpt: 'ChatGPT', openai: 'OpenAI', gemini: 'Gemini' };
+const AI = aiShared.LABELS;
+const KEYED = aiShared.KEYED_IDS;
 
 function file() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -73,7 +75,15 @@ function setSecret(name, value) {
 
 function publicSettings() {
   const raw = readRaw();
-  const others = Object.fromEntries(['openai', 'gemini'].map((id) => [id, { hasKey: Boolean(getSecret(`ai-key:${id}`)), model: raw.aiModels?.[id] || '' }]));
+  // Keyless services (Ollama, a server of your own) count as connected once they have a model.
+  const others = Object.fromEntries(KEYED.map((id) => {
+    const p = aiShared.byId[id];
+    const key = Boolean(getSecret(`ai-key:${id}`));
+    const model = raw.aiModels?.[id] || '';
+    const base = raw.aiBase?.[id] || '';
+    const hasKey = key || (p.local && Boolean(model)) || (p.custom && Boolean(base && model));
+    return [id, { hasKey, savedKey: key, model, base, name: p.custom ? raw.aiName?.[id] || '' : '' }];
+  }));
   const chatgpt = getSecret('ai-chatgpt');
   // "hasKey" means signed in for ChatGPT, so the provider lists treat it like the others.
   others.chatgpt = { hasKey: Boolean(chatgpt), email: chatgpt?.email || '', model: raw.aiModels?.chatgpt || '' };
@@ -81,7 +91,7 @@ function publicSettings() {
   const hasKey = Boolean(getApiKey());
   return {
     provider,
-    providerLabel: AI[provider],
+    providerLabel: (provider === 'custom' && others.custom.name) || AI[provider],
     ready: provider === 'anthropic' ? hasKey : others[provider].hasKey && Boolean(others[provider].model),
     ai: others,
     coach: Boolean(raw.coach),
@@ -96,16 +106,21 @@ function publicSettings() {
   };
 }
 
-function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, coach, autoUpdate, autoSave, theme }) {
+function update({ apiKey, model, effort, cloudClients, provider, aiKeys, aiModels, aiBase, aiName, coach, autoUpdate, autoSave, theme }) {
   let raw = readRaw();
   if (aiKeys && typeof aiKeys === 'object') {
-    for (const [id, k] of Object.entries(aiKeys)) if (['openai', 'gemini'].includes(id) && typeof k === 'string') setSecret(`ai-key:${id}`, k.trim() || null);
+    for (const [id, k] of Object.entries(aiKeys)) if (KEYED.includes(id) && typeof k === 'string') setSecret(`ai-key:${id}`, k.trim() || null);
     raw = readRaw();
   }
   if (aiModels && typeof aiModels === 'object') {
     raw.aiModels = { ...(raw.aiModels || {}) };
-    for (const [id, m] of Object.entries(aiModels)) if (['chatgpt', 'openai', 'gemini'].includes(id) && typeof m === 'string') raw.aiModels[id] = m.trim().slice(0, 100);
+    for (const [id, m] of Object.entries(aiModels)) if ((id === 'chatgpt' || KEYED.includes(id)) && typeof m === 'string') raw.aiModels[id] = m.trim().slice(0, 200);
   }
+  if (aiBase && typeof aiBase === 'object') {
+    raw.aiBase = { ...(raw.aiBase || {}) };
+    for (const [id, b] of Object.entries(aiBase)) if ((aiShared.byId[id]?.local || aiShared.byId[id]?.custom) && typeof b === 'string') raw.aiBase[id] = aiShared.cleanBase(b);
+  }
+  if (aiName && typeof aiName === 'object' && typeof aiName.custom === 'string') raw.aiName = { ...(raw.aiName || {}), custom: aiName.custom.trim().slice(0, 40) };
   if (provider && AI[provider]) raw.provider = provider;
   if (typeof coach === 'boolean') raw.coach = coach;
   if (typeof autoUpdate === 'boolean') raw.autoUpdate = autoUpdate;

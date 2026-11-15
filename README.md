@@ -1,6 +1,6 @@
 # Work
 
-An installable desktop office suite with AI built in (Claude by default, or OpenAI or Gemini with your own key):
+An installable desktop office suite with AI built in (Claude by default, or any AI you have a key for, such as Grok, OpenAI, Gemini, Groq, OpenRouter, Mistral, DeepSeek, or Ollama on your own computer):
 
 - **Write**: a word processor that opens and saves `.docx`, plus HTML, Markdown and plain text, and opens OpenDocument `.odt`. It also has a **LaTeX mode** for `.tex` projects: files, code and a live PDF preview side by side (see [LaTeX projects](#latex-projects)), and a **Notes mode** for quick notes: switch with **Document / Notes** at the top right, or start with **New > Notes**. Every new line is a bullet, `/` inserts checklists, tables, drawings and plots, and the page can be lined, grid or dotted in six colours. Draw with a mouse, finger or stylus (pen pressure works), and double-click a picture to draw on it. Add write-anywhere areas where you click anywhere to type, voice notes, equations and file attachments. **Send to Present** turns a document's text, lists, pictures and tables into a new presentation, designed by the AI you've connected or laid out one slide per heading without one.
 - **Plot**: a spreadsheet with formulas, multiple sheets, fill handle, sorting, `.xlsx`/`.csv`/`.ods` open and save, and `.xls`, `.xlsm` and `.xltx` open. Its **Analysis** tab plots large data files, and **Send to Present** puts the plots you pick, with a table of rows if you like, on a slide in a new presentation.
@@ -11,7 +11,7 @@ An installable desktop office suite with AI built in (Claude by default, or Open
 - **Projects**: keep the files for one piece of work together (papers, drafts, a LaTeX project, data, slides) and chat with Claude about all of them at once. Add files any time, including ones you made earlier, from **File › Add to project** in any app.
 - **Google Drive and OneDrive**: open and save files in your cloud drives. Google Sheets stay live while open: your edits (and Claude's) show up in Google Sheets within a second, and edits made in Google Sheets show up in Plot.
 - **Share**: the Share button in every app invites people by email with edit or view access, through Google Drive or OneDrive.
-- **Other AIs**: connect OpenAI (ChatGPT models) or Gemini with your own API key and every AI feature works the same way. Claude stays the default.
+- **Other AIs**: connect Grok, OpenAI, Gemini, Groq, OpenRouter, Mistral, DeepSeek, Ollama (free, on your computer) or any OpenAI-compatible server with your own API key, and every AI feature works the same way. Several have free tiers. Claude stays the default.
 - **Windows integration**: Write, Plot, Present and Read each get their own Start menu and desktop shortcut, icon and taskbar group. Right-click a file for **Open in Write / Plot / Present**, or use **Open with**, and **New > Write document / Plot workbook / Present presentation** in Explorer.
 - **Accounts**: keep personal, college and work apart. Add as many accounts as you like; each has its own Claude key, cloud sign-ins, recent files, history and cache.
 
@@ -22,7 +22,7 @@ Every app has a familiar ribbon toolbar, a File screen (New, Open, Save, Export,
 | App | Claude features |
 | --- | --- |
 | Write | Draft from a description, continue writing, improve or shorten a selection, change tone, summarize, proofread with one-click corrections, translate, chat about the document, and **Send to Present**: design a presentation from the document, with short bullets, speaker notes and your pictures and tables placed on the slides |
-| Write (Notes) | Summarize notes into key points, decisions and action items; pull out action items as a checklist; tidy up rough notes; turn a web link or a YouTube video into notes; transcribe voice notes, dictation and meeting recordings (needs an OpenAI or Gemini key); write an equation from a description; insert a plot or a picture from a typed instruction (pictures use an OpenAI or Gemini key's image model when one is saved, otherwise the chat AI draws an illustration) |
+| Write (Notes) | Summarize notes into key points, decisions and action items; pull out action items as a checklist; tidy up rough notes; turn a web link or a YouTube video into notes; transcribe voice notes, dictation and meeting recordings (needs an OpenAI, Groq or Gemini key); write an equation from a description; insert a plot or a picture from a typed instruction (pictures use an OpenAI, Gemini or Grok key's image model when one is saved, otherwise the chat AI draws an illustration) |
 | Write (LaTeX) | **LaTeX helper**: write LaTeX from a description ("a 3-column table of results"), turn data into a table, convert plain text or math to LaTeX, explain a command, answer "which command do I need?", improve the wording without touching commands, and fix compile errors |
 | Plot | Write a formula for the active cell, explain a formula, analyze the data, generate a table, clean up a messy selection |
 | Claude app | Make a deck, spreadsheet or document from a command and any attached files, then refine it by chatting |
@@ -82,11 +82,13 @@ Compiling uses [Tectonic](https://tectonic-typesetting.github.io/), a self-conta
 
 The key is encrypted with your operating system's keychain (Electron `safeStorage`) and is only sent to Anthropic. **Sign out** removes it. You can also set the `ANTHROPIC_API_KEY` environment variable instead.
 
-### Use ChatGPT, OpenAI or Gemini instead
+### Use ChatGPT or another AI instead
 
 **ChatGPT (no key):** in **File > Options > AI assistant**, click **Sign in with ChatGPT**, sign in in your browser, pick a model and **Save**. Work then uses your ChatGPT Plus or Pro plan through OpenAI's Sign in with ChatGPT for open-source apps, so there's nothing to pay separately and no key to copy. Usage counts toward your plan's limits, and you can cap or disconnect Work in ChatGPT's settings.
 
-**API keys:** click **Get a key**, create and copy a key on the provider's page, and come back to Work: it fills the copied key in and checks it for you. Or paste an OpenAI key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)) or a Gemini key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)), click **Check key and list models**, pick a model and **Save**. Then choose it under **Use for AI features**, or switch from the menu at the top of any AI pane. The Claude app, every side pane, What to say and file attachments (PDF, images, Office files, text) work with each provider; structured results use each provider's JSON schema output. Keys are encrypted and kept per account, and each is only sent to its own provider.
+**API keys:** click **Get a key**, create and copy a key on the provider's page, and come back to Work: it fills the copied key in and checks it for you. Or paste an OpenAI key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)) or a Gemini key ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)), click **Check key and list models**, pick a model and **Save**. **Saving** also switches AI features to that service; you can change it again under **Use for AI features**, or from the menu at the top of any AI pane.
+
+**Other services:** under **Service**, pick Grok ([console.x.ai](https://console.x.ai/)), Groq ([console.groq.com/keys](https://console.groq.com/keys), free tier), OpenRouter ([openrouter.ai/settings/keys](https://openrouter.ai/settings/keys), with free models), Mistral ([console.mistral.ai/api-keys](https://console.mistral.ai/api-keys), free plan) or DeepSeek, and connect it the same way. **Ollama** runs models on your own computer with no key: install it from [ollama.com](https://ollama.com/download), run `ollama pull llama3.2` (or any model), then **Check and list models**. **Other (OpenAI-compatible)** takes any server's base URL, such as LM Studio (`http://localhost:1234/v1`) or Together, with a key if it needs one. If a service doesn't list its models, choose **Type a model name**. Models that can't follow a JSON schema are asked for JSON in the prompt instead, and their answers are tidied before use. The Claude app, every side pane, What to say and file attachments (PDF, images, Office files, text) work with each provider; structured results use each provider's JSON schema output. Keys are encrypted and kept per account, and each is only sent to its own provider.
 
 Why an API key for Claude and Gemini? Anthropic doesn't allow third-party apps to offer Claude.ai (Pro/Max) login, so Work uses the official API key from the Anthropic Console, billed to your Console account. Gemini's Google sign-in for the API bills the app publisher's Cloud project rather than you, so Work uses your own Gemini key (free tier available in Google AI Studio). ChatGPT is the one provider that lets an open-source app use your own plan by signing in.
 
@@ -190,7 +192,7 @@ main/            Electron main process
   cloud/         Google Drive, Google Sheets live sync and OneDrive (OAuth + APIs)
   settings.js    settings + encrypted API key
   profiles.js    accounts: one data folder and process per account
-  ai.js          OpenAI and Gemini (same streaming contract as claude.js)
+  ai.js          ChatGPT, OpenAI, Gemini and OpenAI-compatible services (same streaming contract as claude.js)
   formats/imports.js  reads .pptx, .odp, .odt, .xls, .ods
   formats/       .docx, .xlsx/.csv and .pptx conversion
   latex.js       LaTeX projects: files, compiling with Tectonic or a TeX install
@@ -237,7 +239,7 @@ Free code signing provided by [SignPath.io](https://signpath.io), certificate by
 
 Work doesn't collect telemetry or send anything to the project. It connects to other services only for features you turn on:
 
-- AI features send your prompt, and any files or document text you attach, to the provider you choose with your own key: Anthropic (Claude), OpenAI or Google (Gemini).
+- AI features send your prompt, and any files or document text you attach, to the provider you choose with your own key: Anthropic (Claude), OpenAI, Google (Gemini), xAI (Grok), Groq, OpenRouter, Mistral, DeepSeek, or a server you name. With Ollama, nothing leaves your computer.
 - Google Drive, Google Sheets and OneDrive are contacted only after you sign in to them, to open, save and share the files you pick.
 - Compiling LaTeX with the built-in engine can download LaTeX packages it doesn't have yet from the Tectonic project's package server.
 - Update checks download release information and installers from this repository's GitHub Releases. You can turn them off in File > Options > Updates.

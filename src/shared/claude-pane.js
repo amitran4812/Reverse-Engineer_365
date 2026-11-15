@@ -14,7 +14,7 @@ import { marked } from 'marked';
 import { icon } from './icons.js';
 import { dialog, escapeHtml, h, settingsForm, toast } from './shell.js';
 import { preparePdfs, projectChip } from './projects.js';
-import { AI_PROVIDERS, activeModelLabel, aiSettings } from './ai-settings.js';
+import { AI_PROVIDERS, activeModelLabel, aiSettings, providerName } from './ai-settings.js';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -212,17 +212,17 @@ export class ClaudePane {
     this.modelLabel.textContent = activeModelLabel(s);
     if (!this.pendingQuick) this.input.placeholder = this.placeholder();
     // Switch between the AIs that are connected for this account.
-    const usable = AI_PROVIDERS.filter((p) => p.id === s.provider || (p.id === 'anthropic' ? s.hasKey : s.ai[p.id].hasKey && s.ai[p.id].model));
-    this.providerPick.innerHTML = usable.map((p) => `<option value="${p.id}" ${p.id === s.provider ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('');
+    const usable = AI_PROVIDERS.filter((p) => p.id === s.provider || (p.id === 'anthropic' ? s.hasKey : s.ai[p.id]?.hasKey && s.ai[p.id]?.model));
+    this.providerPick.innerHTML = usable.map((p) => `<option value="${p.id}" ${p.id === s.provider ? 'selected' : ''}>${escapeHtml(providerName(s, p.id))}</option>`).join('');
     this.providerPick.hidden = usable.length < 2;
     this.setup.innerHTML = '';
     if (!s.ready) {
       if (s.provider === 'anthropic') {
         this.setup.append(quickSignIn(() => this.loadSettings()));
-        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Or connect Claude</b><p>Claude needs a key from your Anthropic account: click the button, copy the key it shows you, and come back. Work fills it in. You can also use OpenAI or Gemini in File > Options.</p></div>`));
+        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Or connect Claude</b><p>Claude needs a key from your Anthropic account: click the button, copy the key it shows you, and come back. Work fills it in. You can also use another AI in File > Options, including ones with a free tier like Gemini, Groq and OpenRouter, or Ollama on your own computer.</p></div>`));
         this.setup.append(await settingsForm(() => this.loadSettings()));
       } else {
-        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect ${escapeHtml(s.providerLabel)}</b><p>${s.provider === 'chatgpt' ? 'Sign in with your ChatGPT account' : `Add your ${escapeHtml(s.providerLabel)} API key`} and pick a model.</p></div>`));
+        this.setup.append(h('div', 'cp-note', `${icon('key', 18)}<div><b>Connect ${escapeHtml(s.providerLabel)}</b><p>${s.provider === 'chatgpt' ? 'Sign in with your ChatGPT account' : s.provider === 'ollama' ? 'Start Ollama on this computer' : `Add your ${escapeHtml(s.providerLabel)} API key`} and pick a model.</p></div>`));
         this.setup.append(await aiSettings(() => this.loadSettings()));
       }
     }
