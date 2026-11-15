@@ -760,7 +760,7 @@ ipcMain.handle('notes:attach', (e) => require('./media').pickAttachments(senderW
 ipcMain.handle('notes:open-attachment', (e, file) => require('./media').openAttachment(file || {}).catch((err) => ({ ok: false, message: err.message })));
 ipcMain.handle('notes:save-attachment', (e, file) => require('./media').saveAttachment(senderWin(e), dialog, file || {}).catch((err) => ({ ok: false, message: err.message })));
 ipcMain.handle('claude:verify', (e, key) => claude.verify(key));
-ipcMain.handle('ai:models', (e, provider, key) => require('./ai').models(provider, key));
+ipcMain.handle('ai:models', (e, provider, key, base) => require('./ai').models(provider, key, base));
 ipcMain.handle('chatgpt:sign-in', async () => {
   try {
     return { ok: true, ...(await require('./chatgpt').signIn()) };
@@ -774,10 +774,10 @@ ipcMain.handle('chatgpt:sign-out', () => {
   return settings.publicSettings();
 });
 // An API key the person just copied from a provider's key page, so it can be filled in for them.
-const KEY_SHAPES = { anthropic: /^sk-ant-[\w-]{20,}$/, openai: /^sk-[\w-]{20,}$/, gemini: /^AIza[\w-]{30,}$/ };
+const KEY_SHAPES = { anthropic: /^sk-ant-[\w-]{20,}$/, ...Object.fromEntries(require('../common/ai-providers').KEYED.filter((p) => p.shape).map((p) => [p.id, p.shape])) };
 ipcMain.handle('app:clipboard-key', (e, provider) => {
   const text = clipboard.readText().trim();
-  return KEY_SHAPES[provider]?.test(text) && !(provider === 'openai' && text.startsWith('sk-ant-')) ? text : '';
+  return KEY_SHAPES[provider]?.test(text) ? text : '';
 });
 
 // --rea-new=docs|sheets|slides comes from the taskbar jump list.

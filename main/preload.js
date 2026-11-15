@@ -197,7 +197,7 @@ contextBridge.exposeInMainWorld('office', {
     },
     cancel: (id) => ipcRenderer.send('claude:cancel', id),
     verify: (key) => ipcRenderer.invoke('claude:verify', key),
-    models: (provider, key) => ipcRenderer.invoke('ai:models', provider, key),
+    models: (provider, key, base) => ipcRenderer.invoke('ai:models', provider, key, base),
     chatgptSignIn: () => ipcRenderer.invoke('chatgpt:sign-in'),
     chatgptSignOut: () => ipcRenderer.invoke('chatgpt:sign-out'),
     clipboardKey: (provider) => ipcRenderer.invoke('app:clipboard-key', provider),

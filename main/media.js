@@ -1,9 +1,9 @@
 'use strict';
 
 // Voice notes, recordings and attachments for Write's notes. Speech becomes
-// text through an OpenAI key (its transcription model) or a Gemini key (a
-// chat model that takes audio); Claude and a ChatGPT sign-in have no audio
-// input for apps. Attachments open from a copy in the account's temp folder.
+// text through an OpenAI or Groq key (their transcription models) or a
+// Gemini key (a chat model that takes audio); Claude and a ChatGPT sign-in
+// have no audio input for apps. Attachments open from a copy in the account's temp folder.
 
 const { app, shell } = require('electron');
 const fs = require('fs/promises');
@@ -21,7 +21,7 @@ const keyFor = (id) => settings.getSecret(`ai-key:${id}`);
 // Which saved key can transcribe, the chosen AI first.
 function transcriber() {
   const chosen = settings.readRaw().provider;
-  const order = ['openai', 'gemini'].sort((a, b) => (b === chosen) - (a === chosen));
+  const order = ['openai', 'groq', 'gemini'].sort((a, b) => (b === chosen) - (a === chosen));
   return order.find((id) => keyFor(id)) || null;
 }
 
@@ -34,16 +34,19 @@ async function failure(res, label) {
   return new Error(`${label} couldn’t transcribe this (error ${res.status}${msg ? `: ${msg}` : ''}).`);
 }
 
-async function openaiTranscribe(key, buf, mime, name) {
+// OpenAI's and Groq's speech-to-text take the same request.
+const WHISPER = { openai: ['gpt-4o-transcribe', 'whisper-1'], groq: ['whisper-large-v3-turbo', 'whisper-large-v3'] };
+
+async function openaiTranscribe(key, buf, mime, name, id = 'openai') {
   const send = (model) => {
     const form = new FormData();
     form.append('model', model);
     form.append('file', new Blob([buf], { type: mime }), name);
-    return fetch(`${PROVIDERS.openai.base()}/audio/transcriptions`, { method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form });
+    return fetch(`${PROVIDERS[id].base()}/audio/transcriptions`, { method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form });
   };
-  let res = await send('gpt-4o-transcribe');
-  if (res.status === 404 || res.status === 400) res = await send('whisper-1');
-  if (!res.ok) throw await failure(res, 'OpenAI');
+  let res = await send(WHISPER[id][0]);
+  if (res.status === 404 || res.status === 400) res = await send(WHISPER[id][1]);
+  if (!res.ok) throw await failure(res, PROVIDERS[id].label);
   return String((await res.json()).text || '').trim();
 }
 
@@ -64,13 +67,13 @@ async function geminiTranscribe(key, buf, mime) {
 // Speech to text. audio: { data (base64) | path, mime, name }.
 async function transcribe(audio) {
   const id = transcriber();
-  if (!id) return { ok: false, needsKey: true, message: 'Turning speech into text needs an OpenAI or Gemini key (File > Options > AI). Claude and a ChatGPT sign-in can’t take audio from apps.' };
+  if (!id) return { ok: false, needsKey: true, message: 'Turning speech into text needs an OpenAI, Groq or Gemini key (File > Options > AI). Claude and a ChatGPT sign-in can’t take audio from apps.' };
   try {
     const buf = audio.path ? await fs.readFile(audio.path) : Buffer.from(String(audio.data || ''), 'base64');
-    const max = id === 'openai' ? OPENAI_MAX : GEMINI_MAX;
+    const max = id === 'gemini' ? GEMINI_MAX : OPENAI_MAX;
     if (buf.length > max) return { ok: false, message: `That recording is ${(buf.length / 1048576).toFixed(0)} MB. ${PROVIDERS[id].label} takes up to ${Math.round(max / 1048576)} MB, so trim it or save it as audio only (for example .m4a or .mp3).` };
     const mime = audio.mime || 'audio/webm';
-    const text = id === 'openai' ? await openaiTranscribe(keyFor(id), buf, mime, audio.name || 'recording.webm') : await geminiTranscribe(keyFor(id), buf, mime);
+    const text = id === 'gemini' ? await geminiTranscribe(keyFor(id), buf, mime) : await openaiTranscribe(keyFor(id), buf, mime, audio.name || 'recording.webm', id);
     if (!text) return { ok: false, message: 'No speech was found in that recording.' };
     return { ok: true, text, by: PROVIDERS[id].label };
   } catch (err) {

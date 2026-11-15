@@ -132,7 +132,7 @@ let active = null;
 export async function record({ mode, host, onDone }) {
   if (active) return active.stop();
   if (mode === 'dictate' && !(await window.office.notes.canTranscribe())) {
-    toast('Dictation needs an OpenAI or Gemini key (File > Options > AI). Claude and a ChatGPT sign-in can’t take audio from apps. Voice notes still work.', 'error');
+    toast('Dictation needs an OpenAI, Groq or Gemini key (File > Options > AI). Claude and a ChatGPT sign-in can’t take audio from apps. Voice notes still work.', 'error');
     return null;
   }
   await window.office.notes.microphone();

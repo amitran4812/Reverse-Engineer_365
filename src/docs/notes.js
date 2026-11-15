@@ -196,7 +196,7 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
       label: `Picture: ${what}`, icon: 'image',
       prompt: `Draw the picture below as one self-contained SVG: a clean, colorful flat illustration or diagram, with viewBox="0 0 800 500", width="800" height="500", no external images, fonts or scripts, and text only where the request needs it.\n\nPicture: ${what}`,
       format: SVG_SCHEMA, working: 'Drawing the picture', maxTokens: 24000, autoApply: true,
-      summary: (d) => `**${d.title || 'Your picture'}** is in your notes. Connect an OpenAI or Gemini key in File > Options for photo-style pictures.`,
+      summary: (d) => `**${d.title || 'Your picture'}** is in your notes. Connect an OpenAI, Gemini or Grok key in File > Options for photo-style pictures.`,
       actions: (d) => [{ label: 'Insert picture again', icon: 'image', once: false, run: () => insert(d) }],
     });
   }
@@ -599,9 +599,9 @@ export function createNotes({ editor, paper, canvas, getShell, insertTable, inse
         ] },
       ] },
       { label: 'Voice', items: [
-        { type: 'big', icon: 'mic', label: 'Voice note', title: 'Record a voice note into your notes. With an OpenAI or Gemini key it is transcribed too.', run: voiceNote },
+        { type: 'big', icon: 'mic', label: 'Voice note', title: 'Record a voice note into your notes. With an OpenAI, Groq or Gemini key it is transcribed too.', run: voiceNote },
         { type: 'stack', items: [
-          { type: 'small', icon: 'mic', label: 'Dictate', title: 'Speak and Work types it at the cursor (needs an OpenAI or Gemini key)', run: dictate },
+          { type: 'small', icon: 'mic', label: 'Dictate', title: 'Speak and Work types it at the cursor (needs an OpenAI, Groq or Gemini key)', run: dictate },
           { type: 'small', icon: 'textbox', label: 'Transcribe a recording', title: 'Turn a meeting or lecture recording into text', run: transcribeRecording },
         ] },
       ] },

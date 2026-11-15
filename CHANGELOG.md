@@ -2,6 +2,18 @@
 
 Each version of Work and what it adds or fixes. The newest version is at the top. Download any version from [Releases](https://github.com/amitran4812/Reverse-Engineer_365/releases). From 0.2.4 on, Work updates itself.
 
+## 0.2.47: Use any AI with your own API key
+
+- **Paste a key from almost any AI and every AI feature uses it.** In **File > Options > AI assistant**, under **Service**, pick Grok (xAI), OpenAI, Gemini, Groq, OpenRouter, Mistral or DeepSeek, paste your key, check it, pick a model and click **Save and use**. The Claude app, every side pane, Send to Present, What to say, notes tools and attached files all switch to it. Claude stays the default, and you can switch between the AIs you've connected from the menu at the top of any AI pane.
+- **Free ways to use the AI.** The list shows which services have a free tier: Gemini (Google AI Studio), Groq, Mistral's free plan and OpenRouter's free models. For OpenRouter, **Show free models only** is on by default, so you only see models that cost nothing.
+- **Ollama on your own computer.** Pick **Ollama**, install it from the button, download a model (for example `ollama pull llama3.2`), and Work uses it with no key and no internet. Nothing you write leaves your computer.
+- **Any other OpenAI-compatible server.** Pick **Other**, give its base URL (LM Studio, Together, a company server and similar), a key if it needs one and a name to show in Work.
+- **Type a model name** when a service doesn't list its models, or when you want one that isn't in the list.
+- Models that can't follow a strict answer format still work with Send to Present and the other features that need one. Work asks them for plain JSON and tidies the answer. Thinking that some open models write out (`<think>`) is left out of the answer.
+- Pictures you attach go to models that can see them, and are left out with a note for text-only models instead of failing.
+- **Voice notes and dictation can use a Groq key**, which has free speech-to-text. **Pictures in notes can use a Grok key**, as well as OpenAI or Gemini.
+- Keys are stored encrypted for this account only, and each one is only sent to its own service.
+
 ## 0.2.45: Save goes back to your file, and AutoSave
 
 - **Save writes straight back to the file you opened.** Open a PowerPoint, Word or Excel file (.pptx, .docx, .xlsx), or an .ods, .csv, .html or .txt file, press **Ctrl+S** and it is saved in the same place and the same format. Work no longer asks where to save it. **Save As** is still there when you want a copy.
